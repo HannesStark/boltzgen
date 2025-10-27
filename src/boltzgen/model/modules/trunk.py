@@ -350,12 +350,14 @@ class TemplateModule(nn.Module):
         b_frame_mask = b_frame_mask[..., None]
 
         # Compute asym mask, template features only attend within the same chain
+        from boltzgen.utils.device import get_autocast_device_type
+
         B, T = res_type.shape[:2]  # noqa: N806
         asym_mask = (asym_id[:, :, None] == asym_id[:, None, :]).float()
         asym_mask = asym_mask[:, None].expand(-1, T, -1, -1)
 
         # Compute template features
-        with torch.autocast(device_type="cuda", enabled=False):
+        with torch.autocast(device_type=get_autocast_device_type(), enabled=False):
             # Compute distogram
             cb_dists = torch.cdist(cb_coords, cb_coords)
             boundaries = torch.linspace(self.min_dist, self.max_dist, self.num_bins - 1)
@@ -499,12 +501,14 @@ class TokenDistanceModule(nn.Module):
             The updated pairwise embeddings.
 
         """
+        from boltzgen.utils.device import get_autocast_device_type
+
         # Load relevant features
         token_distance_mask = feats["token_distance_mask"]
         token_coords = feats["center_coords"]
 
         # Compute template features
-        with torch.autocast(device_type="cuda", enabled=False):
+        with torch.autocast(device_type=get_autocast_device_type(), enabled=False):
             # Compute distogram
             dists = torch.cdist(token_coords, token_coords)
             boundaries = torch.linspace(self.min_dist, self.max_dist, self.num_bins - 1)

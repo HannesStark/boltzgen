@@ -294,14 +294,20 @@ class RefoldingValidator(design.DesignValidator):
 
     def on_epoch_end(self, model):
         # Cleanup
+        from boltzgen.utils.device import empty_cache, get_device_type
+
         del self.folding_model
         self.folding_model = None
         del self.affinity_model
         self.affinity_model = None
-        torch._C._cuda_clearCublasWorkspaces()
+
+        # CUDA-specific cleanup
+        if get_device_type() == "cuda":
+            torch._C._cuda_clearCublasWorkspaces()
+
         torch._dynamo.reset()
         gc.collect()
-        torch.cuda.empty_cache()
+        empty_cache()
 
         # Compute standard metrics
         self.common_on_epoch_end(model, logname="val_monomer_ligand")

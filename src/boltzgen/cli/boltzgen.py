@@ -50,6 +50,7 @@ from boltzgen.data.mol import load_canonicals
 from boltzgen.data.parse.schema import YamlDesignParser
 from boltzgen.data.write.mmcif import to_mmcif
 from boltzgen.task.task import Task
+from boltzgen.utils.device import get_device_capability, get_device_count
 
 ### Paths and constants ####
 # Get the path to the project root (where main.py and configs/ are located)
@@ -860,7 +861,7 @@ class BinderDesignPipeline:
             )
 
         # Handle use_kernels argument
-        device_capability = torch.cuda.get_device_capability()
+        device_capability = get_device_capability()
         use_kernels = None
         if args.use_kernels == "auto":
             use_kernels = device_capability[0] >= 8
@@ -881,7 +882,7 @@ class BinderDesignPipeline:
         )
 
         devices = (
-            args.devices if args.devices is not None else torch.cuda.device_count()
+            args.devices if args.devices is not None else get_device_count()
         )
         print(f"Using {devices} devices")
 
