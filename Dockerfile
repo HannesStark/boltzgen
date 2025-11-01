@@ -44,7 +44,7 @@ ARG DOWNLOAD_WEIGHTS=false
 ARG HF_TOKEN=""
 RUN mkdir -p "${HF_HOME}" && \
     if [ "${DOWNLOAD_WEIGHTS}" = "true" ]; then \
-        HF_TOKEN="${HF_TOKEN}" boltzgen download --models-cache-dir "${HF_HOME}" --force-download --show-paths; \
+        HF_TOKEN="${HF_TOKEN}" boltzgen download --cache "${HF_HOME}" --force_download; \
     fi
 
 ARG USERNAME=boltzgen
