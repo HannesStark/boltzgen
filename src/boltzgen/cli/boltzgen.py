@@ -322,12 +322,6 @@ def add_configure_arguments(
         help="Threshold used for RMSD-based filters (lower is better).",
         default=None,
     )
-    p.add_argument(
-        "--local_files_only",
-        action="store_true",
-        help="Run in offline mode, use model weights and data from the local cache.",
-        default=False,
-    )
 
 
 def add_models_download_options(p: argparse.ArgumentParser) -> None:
@@ -1297,7 +1291,6 @@ def get_artifact_path(
             library_name="boltzgen",
             force_download=args.force_download,
             token=args.models_token,
-            local_files_only=args.local_files_only,
             cache_dir=args.cache,
         )
         result = Path(result)

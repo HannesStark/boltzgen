@@ -3,16 +3,6 @@ from torch import Tensor, nn
 
 from boltzgen.model.layers import initialize as init
 
-_cueq_available = False
-try:
-    from cuequivariance_torch.primitives.triangle import (
-        triangle_multiplicative_update as _triangle_multiplicative_update,
-    )
-
-    _cueq_available = True
-except ModuleNotFoundError:
-    _cueq_available = False
-
 
 @torch.compiler.disable  # noqa: E402 – decorator must follow import of torch
 def _kernel_triangular_mult(
@@ -30,7 +20,11 @@ def _kernel_triangular_mult(
     g_out_weight: Tensor,
     eps: float,
 ):
-    if not _cueq_available:
+    try:
+        from cuequivariance_torch.primitives.triangle import (
+            triangle_multiplicative_update as _triangle_multiplicative_update,
+        )
+    except ModuleNotFoundError:
         raise RuntimeError(
             "cuEquivariance kernels requested via use_kernels=True but the package is not available."
         )

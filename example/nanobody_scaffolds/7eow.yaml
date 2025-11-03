@@ -17,37 +17,26 @@ structure_groups:
       visibility: 0
       res_index: 26..34,52..59,98..118
 
-# Flexible lengths for CDR 1
 exclude: 
   - chain:
       id: B
       res_index: 26..28 # take out 3
+  - chain:
+      id: B
+      res_index: 52..54 # take out 3
+  - chain:
+      id: B
+      res_index: 98..104 # take out seven
 
 design_insertions:
   - insertion:
       id: B
       res_index: 26 # The res_index'th residue will be a designed one (starting to count from 1)
       num_residues: 1..5
-
-# Flexible lengths for CDR 2
-exclude: 
-  - chain:
-      id: B
-      res_index: 52..54 # take out 3
-
-design_insertions:
   - insertion:
       id: B
       res_index: 52 # The res_index'th residue will be a designed one (starting to count from 1)
       num_residues: 1..5
-
-# Flexible lengths for CDR 3
-exclude: 
-  - chain:
-      id: B
-      res_index: 98..104 # take out seven
-
-design_insertions:
   - insertion:
       id: B
       res_index: 98 # The res_index'th residue will be a designed one (starting to count from 1)

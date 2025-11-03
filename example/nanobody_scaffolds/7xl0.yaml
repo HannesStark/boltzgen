@@ -17,32 +17,13 @@ structure_groups:
       res_index: 26..33,51..57,97..110
 
 
-# Flexible lengths for CDR 1
 exclude: 
   - chain:
       id: A
       res_index: 26..28 # take out 3
-
-design_insertions:
-  - insertion:
-      id: A
-      res_index: 26 # The res_index'th residue will be a designed one (starting to count from 1)
-      num_residues: 1..5
-
-# Flexible lengths for CDR 2
-exclude: 
   - chain:
       id: A
       res_index: 51..53 # take out 3
-
-design_insertions:
-  - insertion:
-      id: A
-      res_index: 51 # The res_index'th residue will be a designed one (starting to count from 1)
-      num_residues: 1..5
-
-# Flexible lengths for CDR 3
-exclude: 
   - chain:
       id: A
       res_index: 97..102 # take out 6
@@ -50,8 +31,17 @@ exclude:
 design_insertions:
   - insertion:
       id: A
+      res_index: 26 # The res_index'th residue will be a designed one (starting to count from 1)
+      num_residues: 1..5
+  - insertion:
+      id: A
+      res_index: 51 # The res_index'th residue will be a designed one (starting to count from 1)
+      num_residues: 1..5
+  - insertion:
+      id: A
       res_index: 97 # The res_index'th residue will be a designed one (starting to count from 1)
       num_residues: 1..12
+  
 
 # reindex the residue index which is used in the positional encoding
 reset_res_index:

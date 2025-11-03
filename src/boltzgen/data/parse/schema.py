@@ -1394,15 +1394,6 @@ class YamlDesignParser:
                             )
                         new_chain_to_msa[renamed_id] = msa
                     chain_to_msa.update(new_chain_to_msa)
-                    # Update chain_to_msa dictionary. Set defaults given by file_msa_flag for proteins. Insert -1 (no msa) for {dna, rna, ligand}.
-                    for chain in data.chains:
-                        chain_id = chain["name"].item()
-                        if chain_id not in chain_to_msa:
-                            if chain["mol_type"] == const.chain_type_ids["PROTEIN"]:
-                                chain_to_msa[chain_id] = file_msa_flag
-                            else:
-                                chain_to_msa[chain_id] = -1
-                    chain_to_msa.update(new_chain_to_msa)
                 else:
                     path = item["file"]["path"]
                     (

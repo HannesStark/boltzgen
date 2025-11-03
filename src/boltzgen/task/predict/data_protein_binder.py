@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from boltzgen.data.data import StructureInfo
 from pathlib import Path
 import re
 from typing import Dict, List, Optional
@@ -286,7 +287,7 @@ class PredictionDataset(torch.utils.data.Dataset):
 
         # Load record
         record = load_record(pdb_id, self.dataset.record_dir)
-
+        
         # Get the structure
         try:
             if self.inverse_fold:
