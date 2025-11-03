@@ -83,11 +83,11 @@ class PairformerModule(nn.Module):
                     mask,
                     pair_mask,
                     chunk_size_tri_attn,
-                    use_kernels=use_kernels,
+                    use_kernels,
                 )
             else:
                 s, z = layer(
-                    s, z, mask, pair_mask, chunk_size_tri_attn, use_kernels=use_kernels
+                    s, z, mask, pair_mask, chunk_size_tri_attn, use_kernels
                 )
         return s, z
 
@@ -236,7 +236,7 @@ class PairformerNoSeqModule(nn.Module):
                 # torch.utils.checkpoint does not accept keyword arguments, wrap the
                 # call in a lambda that closes over use_kernels.
                 z = torch.utils.checkpoint.checkpoint(
-                    partial(layer, use_kernels=use_kernels),
+                    partial(layer, use_kernels),
                     z,
                     pair_mask,
                     chunk_size_tri_attn,
@@ -246,7 +246,7 @@ class PairformerNoSeqModule(nn.Module):
                     z,
                     pair_mask,
                     chunk_size_tri_attn,
-                    use_kernels=use_kernels,
+                    use_kernels,
                 )
         return z
 

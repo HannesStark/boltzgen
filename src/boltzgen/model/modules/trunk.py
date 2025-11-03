@@ -390,7 +390,7 @@ class TemplateModule(nn.Module):
         # Compute input projections
         v = self.z_proj(self.z_norm(z[:, None])) + a_tij
         v = v.view(B * T, *v.shape[2:])
-        v = v + self.pairformer(v, pair_mask, use_kernels=use_kernels)
+        v = v + self.pairformer(v, pair_mask, use_kernels)
         v = self.v_norm(v)
         v = v.view(B, T, *v.shape[1:])
 
@@ -528,7 +528,7 @@ class TokenDistanceModule(nn.Module):
         (B,) = a_ij.shape[:1]  # noqa: N806
         v = self.z_proj(self.z_norm(z)) + a_ij
         v = v.view(B, *v.shape[1:])
-        v = v + self.pairformer(v, pair_mask, use_kernels=use_kernels)
+        v = v + self.pairformer(v, pair_mask, use_kernels)
         v = self.v_norm(v)
         v = v.view(B, *v.shape[1:])
 
@@ -668,7 +668,7 @@ class MSAModule(nn.Module):
                     chunk_size_transition_msa,
                     chunk_size_outer_product,
                     chunk_size_tri_attn,
-                    use_kernels=use_kernels,
+                    use_kernels,
                 )
             else:
                 z, m = self.layers[i](
@@ -681,7 +681,7 @@ class MSAModule(nn.Module):
                     chunk_size_transition_msa,
                     chunk_size_outer_product,
                     chunk_size_tri_attn,
-                    use_kernels=use_kernels,
+                    use_kernels,
                 )
         return z
 
@@ -776,7 +776,7 @@ class MSALayer(nn.Module):
 
         # Compute pairwise stack
         z = self.pairformer_layer(
-            z, token_mask, chunk_size_tri_attn, use_kernels=use_kernels
+            z, token_mask, chunk_size_tri_attn, use_kernels
         )
 
         return z, m

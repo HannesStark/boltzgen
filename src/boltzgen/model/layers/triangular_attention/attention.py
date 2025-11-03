@@ -97,7 +97,7 @@ class TriangleAttention(nn.Module):
         return chunk_layer(
             partial(
                 self.mha,
-                use_kernels=use_kernels,
+                use_kernels,
             ),
             mha_inputs,
             chunk_size=chunk_size,
@@ -161,7 +161,7 @@ class TriangleAttention(nn.Module):
                 mask_bias,
                 mask,
                 chunk_size,
-                use_kernels=use_kernels,
+                use_kernels,
             )
         else:
             x = self.mha(
@@ -170,7 +170,7 @@ class TriangleAttention(nn.Module):
                 triangle_bias,
                 mask_bias,
                 mask,
-                use_kernels=use_kernels,
+                use_kernels,
             )
 
         if not self.starting:

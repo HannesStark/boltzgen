@@ -125,7 +125,7 @@ class AffinityModule(nn.Module):
         z = self.pairformer_stack(
             z,
             pair_mask=cross_pair_mask,
-            use_kernels=use_kernels,
+            use_kernels,
         )
 
         out_dict = {}
