@@ -1,0 +1,85 @@
+# Builds the artifacts, test out publish and install with test pypi, then submit a real release.
+# Action will be triggered upon a GitHub release.
+name: Publish to PyPi
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # Manually trigger a release within the Actions UI.
+
+jobs:
+  build-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v2.3.1
+        with:
+          python-version: 3.10
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install setuptools setuptools-scm wheel twine check-manifest
+
+      - name: Build tarball and wheels
+        run: |
+          git clean -xdf
+          git restore -SW .
+          python -m build --sdist --wheel .
+      - name: Check built artifacts
+        run: |
+          python -m twine check dist/*
+          pwd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: releases
+          path: dist
+
+  test-built-dist:
+    needs: build-artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v2.3.1
+        name: Install Python
+        with:
+          python-version: 3.10
+      - uses: actions/download-artifact@v4
+        with:
+          name: releases
+          path: dist
+      - name: List contents of built dist
+        run: |
+          ls -ltrh
+          ls -ltrh dist
+      - name: Publish package to TestPyPI
+        if: github.event_name == 'push'
+        uses: pypa/gh-action-pypi-publish@v1.13.0
+        with:
+          user: __token__
+          password: ${{ secrets.TESTPYPI_TOKEN }}
+          repository_url: https://test.pypi.org/legacy/
+          verbose: true
+
+      - name: Check uploaded package
+        if: github.event_name == 'push'
+        run: |
+          sleep 3
+          python -m pip install --upgrade pip
+          python -m pip install --extra-index-url https://test.pypi.org/simple --upgrade de
+          python -c "import boltzgen; print(boltzgen.__version__)"
+  upload-to-pypi:
+    needs: test-built-dist
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: releases
+          path: dist
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.13.0
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_TOKEN }}
+          verbose: true
