@@ -1,4 +1,4 @@
-# Builds the artifacts, test out publish and install with test pypi, then submit a real release.
+# Builds the artifacts, tests out publishing and install via the test pypi, then submits a real release.
 # Action will be triggered upon a GitHub release.
 name: Publish to PyPi
 
