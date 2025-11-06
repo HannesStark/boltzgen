@@ -94,6 +94,8 @@ class InputEmbedder(nn.Module):
         add_design_mask_flag: bool = False,
         add_binding_specification: bool = False,
         add_ss_specification: bool = False,
+        add_tau_conditioning: bool = False,
+        tau_conditioning_args: Optional[Dict] = None,
     ) -> None:
         """Initialize the input embedder.
 
@@ -118,6 +120,16 @@ class InputEmbedder(nn.Module):
         self.add_design_mask_flag = add_design_mask_flag
         self.add_binding_specification = add_binding_specification
         self.add_ss_specification = add_ss_specification
+        self.add_tau_conditioning = add_tau_conditioning
+        
+        if add_tau_conditioning:
+            from boltzgen.model.modules.tau_conditioning import TauConditioning
+            tau_args = tau_conditioning_args or {}
+            self.tau_conditioning = TauConditioning(
+                token_s=token_s,
+                token_z=token_z,
+                **tau_args,
+            )
 
         self.atom_encoder = AtomEncoder(
             atom_s=atom_s,
@@ -241,6 +253,9 @@ class InputEmbedder(nn.Module):
             s = s + self.binding_specification_conditioning_init(feats["binding_type"])
         if self.add_ss_specification:
             s = s + self.ss_specification_init(feats["ss_type"])
+        
+        # Note: Tau conditioning is applied at the model level after s and z are computed
+        # This allows proper conditioning on both sequence and pairwise embeddings
 
         return s
 

@@ -23,6 +23,14 @@ from boltzgen.model.layers.triangular_attention.utils import (
     permute_final_dims,
 )
 
+_cueq_available = False
+try:
+    from cuequivariance_torch.primitives.triangle import triangle_attention
+    _cueq_available = True
+except ModuleNotFoundError:
+    _cueq_available = False
+    triangle_attention = None
+
 import torch.nn as nn
 from scipy.stats import truncnorm
 
@@ -265,6 +273,10 @@ def _attention(
 @torch.compiler.disable
 def kernel_triangular_attn(q, k, v, tri_bias, mask, scale):
     from cuequivariance_torch.primitives.triangle import triangle_attention
+    if not _cueq_available:
+        raise RuntimeError(
+            "cuEquivariance kernels requested via use_kernels=True but the package is not available."
+        )
     return triangle_attention(q, k, v, tri_bias, mask=mask, scale=scale)
 
 
