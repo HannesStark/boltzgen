@@ -1,0 +1,95 @@
+# tezepelumab 5j13
+# Target: TSLP
+# Heavy chain (label not auth): C
+# Light chain (label not auth): B
+# Full heavy chain sequence: MGILPSPGMPALLSLVSLLSVLLMGCVAETGQMQLVESGGGVVQPGRSLRLSCAASGFTFRTYGMHWVRQAPGKGLEWVAVIWYDGSNKHYADSVKGRFTITRDNSKNTLNLQMNSLRAEDTAVYYCARAPQWELVHEAFDIWGQGTMVTVSSASTKGPSVFPLAPCSRSTSESTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSNFGTQTYTCNVDHKPSNTKVDKTVERKGTKHHHHHH
+# Full light chain sequence: MGILPSPGMPALLSLVSLLSVLLMGCVAETGSYVLTQPPSVSVAPGQTARITCGGNNLGSKSVHWYQQKPGQAPVLVVYDDSDRPSWIPERFSGSNSGNTATLTISRGEAGDEADYYCQVWDSSSDHVVFGGGTKLTVLGQPKAAPSVTLFPPSSEELQANKATLVCLISDFYPGAVTVAWKADSSPVKAGVETTTPSKQSNNKYAASSYLSLTPEQWKSHRSYSCQVTHEGSTVEKTVAPTECS
+# Variable heavy region: 32 - 153
+# Variable light region: 32 - 139
+# Heavy CDRs: GFTFRTY WYDGSN APQWELVHEAFDI
+# Light CDRs: GGNNLGSKSVH DDSDRPS QVWDSSSDHVV
+#
+path: tezepelumab.5j13.cif
+include:
+  - chain:
+      id: C  # heavy
+      res_index: 32..153
+  - chain:
+      id: B  # light
+      res_index: 32..139
+design:
+  - chain:
+      id: C
+      res_index: 57..63,83..88,130..142
+  - chain:
+      id: B
+      res_index: 54..64,80..86,119..129
+
+structure_groups:
+  - group:
+      id: C
+      visibility: 2
+  - group:
+      id: B
+      visibility: 2
+  - group:
+      id: C
+      res_index: 57..63,83..88,130..142
+      visibility: 0
+  - group:
+      id: B
+      res_index: 54..64,80..86,119..129
+      visibility: 0
+
+exclude:
+  - chain:
+      id: C
+      res_index: 57..63
+  - chain:
+      id: C
+      res_index: 83..88
+  - chain:
+      id: C
+      res_index: 130..142
+  - chain:
+      id: B
+      res_index: 54..64
+  - chain:
+      id: B
+      res_index: 80..86
+  - chain:
+      id: B
+      res_index: 119..129
+
+design_insertions:
+  - insertion:
+      id: C
+      res_index: 57
+      num_residues: 7..9
+  - insertion:
+      id: C
+      res_index: 83
+      num_residues: 5..8
+  - insertion:
+      id: C
+      res_index: 130
+      num_residues: 3..21
+  - insertion:
+      id: B
+      res_index: 54
+      num_residues: 10..17
+  - insertion:
+      id: B
+      res_index: 80
+      num_residues: 7
+  - insertion:
+      id: B
+      res_index: 119
+      num_residues: 8..12
+
+# reindex the residue index which is used in the positional encoding
+reset_res_index:
+  - chain:
+      id: C
+  - chain:
+      id: B

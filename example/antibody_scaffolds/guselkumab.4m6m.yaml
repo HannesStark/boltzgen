@@ -1,0 +1,95 @@
+# guselkumab 4m6m
+# Target: IL23A
+# Heavy chain (label not auth): B
+# Light chain (label not auth): A
+# Full heavy chain sequence: EVQLVQSGAEVKKPGESLKISCKGSGYSFSNYWIGWVRQMPGKGLEWMGIIDPSNSYTRYSPSFQGQVTISADKSISTAYLQWSSLKASDTAMYYCARWYYKPFDVWGQGTLVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPKSCHHHHHH
+# Full light chain sequence: QSVLTQPPSVSGAPGQRVTISCTGSSSNIGSGYDVHWYQQLPGTAPKLLIYGNSKRPSGVPDRFSGSKSGTSASLAITGLQSEDEADYYCASWTDGLSLVVFGGGTKLTVLGQPKAAPSVTLFPPSSEELQANKATLVCLISDFYPGAVTVAWKADSSPVKAGVETTTPSKQSNNKYAASSYLSLTPEQWKSHRSYSCQVTHEGSTVEKTVAPTECS
+# Variable heavy region: 1 - 117
+# Variable light region: 1 - 111
+# Heavy CDRs: GYSFSNY DPSNSY WYYKPFDV
+# Light CDRs: TGSSSNIGSGYDVH GNSKRPS ASWTDGLSLVV
+#
+path: guselkumab.4m6m.cif
+include:
+  - chain:
+      id: B  # heavy
+      res_index: 1..117
+  - chain:
+      id: A  # light
+      res_index: 1..111
+design:
+  - chain:
+      id: B
+      res_index: 26..32,52..57,99..106
+  - chain:
+      id: A
+      res_index: 23..36,52..58,91..101
+
+structure_groups:
+  - group:
+      id: B
+      visibility: 2
+  - group:
+      id: A
+      visibility: 2
+  - group:
+      id: B
+      res_index: 26..32,52..57,99..106
+      visibility: 0
+  - group:
+      id: A
+      res_index: 23..36,52..58,91..101
+      visibility: 0
+
+exclude:
+  - chain:
+      id: B
+      res_index: 26..32
+  - chain:
+      id: B
+      res_index: 52..57
+  - chain:
+      id: B
+      res_index: 99..106
+  - chain:
+      id: A
+      res_index: 23..36
+  - chain:
+      id: A
+      res_index: 52..58
+  - chain:
+      id: A
+      res_index: 91..101
+
+design_insertions:
+  - insertion:
+      id: B
+      res_index: 26
+      num_residues: 7..9
+  - insertion:
+      id: B
+      res_index: 52
+      num_residues: 5..8
+  - insertion:
+      id: B
+      res_index: 99
+      num_residues: 3..21
+  - insertion:
+      id: A
+      res_index: 23
+      num_residues: 10..17
+  - insertion:
+      id: A
+      res_index: 52
+      num_residues: 7
+  - insertion:
+      id: A
+      res_index: 91
+      num_residues: 8..12
+
+# reindex the residue index which is used in the positional encoding
+reset_res_index:
+  - chain:
+      id: B
+  - chain:
+      id: A

@@ -1,0 +1,95 @@
+# belimumab 5y9k
+# Target: TNFSF13B/CD257/BAFF
+# Heavy chain (label not auth): B
+# Light chain (label not auth): A
+# Full heavy chain sequence: QVQLQQSGAEVKKPGSSVRVSCKASGGTFNNNAINWVRQAPGQGLEWMGGIIPMFGTAKYSQNFQGRVAITADESTGTASMELSSLRSEDTAVYYCARSRDLLLFPHHALSPWGRGTMVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPKSCDKTHHHHHH
+# Full light chain sequence: SSELTQDPAVSVALGQTVRVTCQGDSLRSYYASWYQQKPGQAPVLVIYGKNNRPSGIPDRFSGSSSGNTASLTITGAQAEDEADYYCSSRDSSGNHWVFGGGTELTVLGQPKAAPSVTLFPPSSEELQANKATLVCLISDFYPGAVTVAWKADSSPVKAGVETTTPSKQSNNKYAASSYLSLTPEQWKSHRSYSCQVTHEGSTVEKTVAPTECS
+# Variable heavy region: 1 - 123
+# Variable light region: 1 - 108
+# Heavy CDRs: GGTFNNN IPMFGT SRDLLLFPHHALSP
+# Light CDRs: QGDSLRSYYAS GKNNRPS SSRDSSGNHWV
+#
+path: belimumab.5y9k.cif
+include:
+  - chain:
+      id: B  # heavy
+      res_index: 1..123
+  - chain:
+      id: A  # light
+      res_index: 1..108
+design:
+  - chain:
+      id: B
+      res_index: 26..32,52..57,99..112
+  - chain:
+      id: A
+      res_index: 23..33,49..55,88..98
+
+structure_groups:
+  - group:
+      id: B
+      visibility: 2
+  - group:
+      id: A
+      visibility: 2
+  - group:
+      id: B
+      res_index: 26..32,52..57,99..112
+      visibility: 0
+  - group:
+      id: A
+      res_index: 23..33,49..55,88..98
+      visibility: 0
+
+exclude:
+  - chain:
+      id: B
+      res_index: 26..32
+  - chain:
+      id: B
+      res_index: 52..57
+  - chain:
+      id: B
+      res_index: 99..112
+  - chain:
+      id: A
+      res_index: 23..33
+  - chain:
+      id: A
+      res_index: 49..55
+  - chain:
+      id: A
+      res_index: 88..98
+
+design_insertions:
+  - insertion:
+      id: B
+      res_index: 26
+      num_residues: 7..9
+  - insertion:
+      id: B
+      res_index: 52
+      num_residues: 5..8
+  - insertion:
+      id: B
+      res_index: 99
+      num_residues: 3..21
+  - insertion:
+      id: A
+      res_index: 23
+      num_residues: 10..17
+  - insertion:
+      id: A
+      res_index: 49
+      num_residues: 7
+  - insertion:
+      id: A
+      res_index: 88
+      num_residues: 8..12
+
+# reindex the residue index which is used in the positional encoding
+reset_res_index:
+  - chain:
+      id: B
+  - chain:
+      id: A

@@ -1,0 +1,22 @@
+entities:
+- file:
+    include:
+    - chain:
+        id: A
+    path: 7uxq.cif
+- file:
+    path:
+    - ../antibody_scaffolds/adalimumab.6cr1.yaml
+    - ../antibody_scaffolds/belimumab.5y9k.yaml
+    - ../antibody_scaffolds/dupilumab.6wgb.yaml
+    - ../antibody_scaffolds/golimumab.5yoy.yaml
+    - ../antibody_scaffolds/guselkumab.4m6m.yaml
+    - ../antibody_scaffolds/nirsevimab.5udc.yaml
+    - ../antibody_scaffolds/sarilumab.8iow.yaml
+    - ../antibody_scaffolds/secukinumab.6wio.yaml
+    - ../antibody_scaffolds/tezepelumab.5j13.yaml
+    - ../antibody_scaffolds/tralokinumab.5l6y.yaml
+    - ../antibody_scaffolds/ustekinumab.3hmw.yaml
+    - ../antibody_scaffolds/mab1.3h42.yaml
+    - ../antibody_scaffolds/necitumumab.6b3s.yaml
+    - ../antibody_scaffolds/crenezumab.5vzy.yaml

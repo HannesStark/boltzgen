@@ -50,6 +50,7 @@ from boltzgen.data.mol import load_canonicals
 from boltzgen.data.parse.schema import YamlDesignParser
 from boltzgen.data.write.mmcif import to_mmcif
 from boltzgen.task.task import Task
+from importlib.metadata import PackageNotFoundError, version as pkg_version
 
 ### Paths and constants ####
 # Get the path to the project root (where main.py and configs/ are located)
@@ -486,6 +487,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="boltzgen",
         description="Boltzgen command line interface",
+    )
+    # Support: boltzgen -v / --version
+    def get_package_version() -> str:
+        try:
+            return pkg_version("boltzgen")
+        except PackageNotFoundError:
+            return "unknown"
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"boltzgen {get_package_version()}",
+        help="Print version and exit",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     build_run_parser(subparsers)

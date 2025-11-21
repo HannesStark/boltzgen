@@ -1,0 +1,95 @@
+# nirsevimab 5udc
+# Target: Respiratory Syncytial Virus
+# Heavy chain (label not auth): A
+# Light chain (label not auth): B
+# Full heavy chain sequence: QVQLVQSGAEVKKPGSSVMVSCQASGGLLEDYIINWVRQAPGQGPEWMGGIIPVLGTVHYGPKFQGRVTITADESTDTAYMELSSLRSEDTAMYYCATETALVVSETYLPHYFDNWGQGTLVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKRVEPKS
+# Full light chain sequence: DIQMTQSPSSLSAAVGDRVTITCQASQDIVNYLNWYQQKPGKAPKLLIYVASNLETGVPSRFSGSGSGTDFSLTISSLQPEDVATYYCQQYDNLPLTFGGGTKVEIKRTVAAPSVFIFPPSDEQLKSGTASVVCLLNNFYPREAKVQWKVDNALQSGNSQESVTEQDSKDSTYSLSSTLTLSKADYEKHKVYACEVTHQGLSSPVTKSFNRGEC
+# Variable heavy region: 1 - 126
+# Variable light region: 1 - 107
+# Heavy CDRs: GGLLEDY IPVLGT ETALVVSETYLPHYFDN
+# Light CDRs: QASQDIVNYLN VASNLET QQYDNLPLT
+#
+path: nirsevimab.5udc.cif
+include:
+  - chain:
+      id: A  # heavy
+      res_index: 1..126
+  - chain:
+      id: B  # light
+      res_index: 1..107
+design:
+  - chain:
+      id: A
+      res_index: 26..32,52..57,99..115
+  - chain:
+      id: B
+      res_index: 24..34,50..56,89..97
+
+structure_groups:
+  - group:
+      id: A
+      visibility: 2
+  - group:
+      id: B
+      visibility: 2
+  - group:
+      id: A
+      res_index: 26..32,52..57,99..115
+      visibility: 0
+  - group:
+      id: B
+      res_index: 24..34,50..56,89..97
+      visibility: 0
+
+exclude:
+  - chain:
+      id: A
+      res_index: 26..32
+  - chain:
+      id: A
+      res_index: 52..57
+  - chain:
+      id: A
+      res_index: 99..115
+  - chain:
+      id: B
+      res_index: 24..34
+  - chain:
+      id: B
+      res_index: 50..56
+  - chain:
+      id: B
+      res_index: 89..97
+
+design_insertions:
+  - insertion:
+      id: A
+      res_index: 26
+      num_residues: 7..9
+  - insertion:
+      id: A
+      res_index: 52
+      num_residues: 5..8
+  - insertion:
+      id: A
+      res_index: 99
+      num_residues: 3..21
+  - insertion:
+      id: B
+      res_index: 24
+      num_residues: 10..17
+  - insertion:
+      id: B
+      res_index: 50
+      num_residues: 7
+  - insertion:
+      id: B
+      res_index: 89
+      num_residues: 8..12
+
+# reindex the residue index which is used in the positional encoding
+reset_res_index:
+  - chain:
+      id: A
+  - chain:
+      id: B

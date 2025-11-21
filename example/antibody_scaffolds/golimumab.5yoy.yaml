@@ -1,0 +1,95 @@
+# golimumab 5yoy
+# Target: TNF/TNFA
+# Heavy chain (label not auth): H
+# Light chain (label not auth): E
+# Full heavy chain sequence: SKLQVQLVESGGGVVQPGRSLRLSCAASGFIFSSYAMHWVRQAPGNGLEWVAFMSYDGSNKKYADSVKGRFTISRDNSKNTLYLQMNSLRAEDTAVYYCARDRGIAAGGNYYYYGMDVWGQGTTVTVSS
+# Full light chain sequence: AGSEIVLTQSPATLSLSPGERATLSCRASQSVYSYLAWYQQKPGQAPRLLIYDASNRATGIPARFSGSGSGTDFTLTISSLEPEDFAVYYCQQRSNWPPFTFGPGTKVDIKTSENLYFQ
+# Variable heavy region: 4 - 129
+# Variable light region: 4 - 111
+# Heavy CDRs: GFIFSSY SYDGSN DRGIAAGGNYYYYGMDV
+# Light CDRs: RASQSVYSYLA DASNRAT QQRSNWPPFT
+#
+path: golimumab.5yoy.cif
+include:
+  - chain:
+      id: H  # heavy
+      res_index: 4..129
+  - chain:
+      id: E  # light
+      res_index: 4..111
+design:
+  - chain:
+      id: H
+      res_index: 29..35,55..60,102..118
+  - chain:
+      id: E
+      res_index: 27..37,53..59,92..101
+
+structure_groups:
+  - group:
+      id: H
+      visibility: 2
+  - group:
+      id: E
+      visibility: 2
+  - group:
+      id: H
+      res_index: 29..35,55..60,102..118
+      visibility: 0
+  - group:
+      id: E
+      res_index: 27..37,53..59,92..101
+      visibility: 0
+
+exclude:
+  - chain:
+      id: H
+      res_index: 29..35
+  - chain:
+      id: H
+      res_index: 55..60
+  - chain:
+      id: H
+      res_index: 102..118
+  - chain:
+      id: E
+      res_index: 27..37
+  - chain:
+      id: E
+      res_index: 53..59
+  - chain:
+      id: E
+      res_index: 92..101
+
+design_insertions:
+  - insertion:
+      id: H
+      res_index: 29
+      num_residues: 7..9
+  - insertion:
+      id: H
+      res_index: 55
+      num_residues: 5..8
+  - insertion:
+      id: H
+      res_index: 102
+      num_residues: 3..21
+  - insertion:
+      id: E
+      res_index: 27
+      num_residues: 10..17
+  - insertion:
+      id: E
+      res_index: 53
+      num_residues: 7
+  - insertion:
+      id: E
+      res_index: 92
+      num_residues: 8..12
+
+# reindex the residue index which is used in the positional encoding
+reset_res_index:
+  - chain:
+      id: H
+  - chain:
+      id: E

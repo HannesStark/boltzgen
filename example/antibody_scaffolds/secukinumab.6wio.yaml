@@ -1,0 +1,95 @@
+# secukinumab 6wio
+# Target: IL17A
+# Heavy chain (label not auth): A
+# Light chain (label not auth): B
+# Full heavy chain sequence: EVQLVESGGGLVQPGGSLRLSCAASGFTFSNYWMNWVRQAPGKGLEWVAAINQDGSEKYYVGSVKGRFTISRDNAKNSLYLQMNSLRVEDTAVYYCVRDYYDILTDYYIHYWYFDLWGRGTLVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPKSC
+# Full light chain sequence: EIVLTQSPGTLSLSPGERATLSCRASQSVSSSYLAWYQQKPGQAPRLLIYGASSRATGIPDRFSGSGSGTDFTLTISRLEPEDFAVYYCQQYGSSPCTFGQGTRLEIKRTVAAPSVFIFPPSDEQLKSGTASVVCLLNNFYPREAKVQWKVDNALQSGNSQESVTEQDSKDSTYSLSSTLTLSKADYEKHKVYACEVTQGTTSVTKSFNRGEC
+# Variable heavy region: 1 - 127
+# Variable light region: 1 - 108
+# Heavy CDRs: GFTFSNY NQDGSE DYYDILTDYYIHYWYFDL
+# Light CDRs: RASQSVSSSYLA GASSRAT QQYGSSPCT
+#
+path: secukinumab.6wio.cif
+include:
+  - chain:
+      id: A  # heavy
+      res_index: 1..127
+  - chain:
+      id: B  # light
+      res_index: 1..108
+design:
+  - chain:
+      id: A
+      res_index: 26..32,52..57,99..116
+  - chain:
+      id: B
+      res_index: 24..35,51..57,90..98
+
+structure_groups:
+  - group:
+      id: A
+      visibility: 2
+  - group:
+      id: B
+      visibility: 2
+  - group:
+      id: A
+      res_index: 26..32,52..57,99..116
+      visibility: 0
+  - group:
+      id: B
+      res_index: 24..35,51..57,90..98
+      visibility: 0
+
+exclude:
+  - chain:
+      id: A
+      res_index: 26..32
+  - chain:
+      id: A
+      res_index: 52..57
+  - chain:
+      id: A
+      res_index: 99..116
+  - chain:
+      id: B
+      res_index: 24..35
+  - chain:
+      id: B
+      res_index: 51..57
+  - chain:
+      id: B
+      res_index: 90..98
+
+design_insertions:
+  - insertion:
+      id: A
+      res_index: 26
+      num_residues: 7..9
+  - insertion:
+      id: A
+      res_index: 52
+      num_residues: 5..8
+  - insertion:
+      id: A
+      res_index: 99
+      num_residues: 3..21
+  - insertion:
+      id: B
+      res_index: 24
+      num_residues: 10..17
+  - insertion:
+      id: B
+      res_index: 51
+      num_residues: 7
+  - insertion:
+      id: B
+      res_index: 90
+      num_residues: 8..12
+
+# reindex the residue index which is used in the positional encoding
+reset_res_index:
+  - chain:
+      id: A
+  - chain:
+      id: B

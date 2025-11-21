@@ -1,0 +1,95 @@
+# necitumumab 6b3s
+# Target: EGFR
+# Heavy chain (label not auth): B
+# Light chain (label not auth): C
+# Full heavy chain sequence: QVQLQESGPGLVKPSQTLSLTCTVSGGSISSGDYYWSWIRQPPGKGLEWIGYIYYSGSTDYNPSLKSRVTMSVDTSKNQFSLKVNSVTAADTAVYYCARVSIFGVGTFDYWGQGTLVTVSSASTKGPSVFPLAPSSKSTSGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPKS
+# Full light chain sequence: EIVMTQSPATLSLSPGERATLSCRASQSVSSYLAWYQQKPGQAPRLLIYDASNRATGIPARFSGSGSGTDFTLTISSLEPEDFAVYYCHQYGSTPLTFGGGTKAEIKRTVAAPSVFIFPPSDEQLKSGTASVVCLLNNFYPREAKVQWKVDNALQSGNSQESVTEQDSKDSTYSLSSTLTLSKADYEKHKVYACEVTHQGLSSPVTKSFNRGA
+# Variable heavy region: 1 - 121
+# Variable light region: 1 - 107
+# Heavy CDRs: GGSISSGDY YYSGS VSIFGVGTFDY
+# Light CDRs: RASQSVSSYLA DASNRAT HQYGSTPLT
+#
+path: necitumumab.6b3s.cif
+include:
+  - chain:
+      id: B  # heavy
+      res_index: 1..121
+  - chain:
+      id: C  # light
+      res_index: 1..107
+design:
+  - chain:
+      id: B
+      res_index: 26..34,54..58,100..110
+  - chain:
+      id: C
+      res_index: 24..34,50..56,89..97
+
+structure_groups:
+  - group:
+      id: B
+      visibility: 2
+  - group:
+      id: C
+      visibility: 2
+  - group:
+      id: B
+      res_index: 26..34,54..58,100..110
+      visibility: 0
+  - group:
+      id: C
+      res_index: 24..34,50..56,89..97
+      visibility: 0
+
+exclude:
+  - chain:
+      id: B
+      res_index: 26..34
+  - chain:
+      id: B
+      res_index: 54..58
+  - chain:
+      id: B
+      res_index: 100..110
+  - chain:
+      id: C
+      res_index: 24..34
+  - chain:
+      id: C
+      res_index: 50..56
+  - chain:
+      id: C
+      res_index: 89..97
+
+design_insertions:
+  - insertion:
+      id: B
+      res_index: 26
+      num_residues: 7..9
+  - insertion:
+      id: B
+      res_index: 54
+      num_residues: 5..8
+  - insertion:
+      id: B
+      res_index: 100
+      num_residues: 3..21
+  - insertion:
+      id: C
+      res_index: 24
+      num_residues: 10..17
+  - insertion:
+      id: C
+      res_index: 50
+      num_residues: 7
+  - insertion:
+      id: C
+      res_index: 89
+      num_residues: 8..12
+
+# reindex the residue index which is used in the positional encoding
+reset_res_index:
+  - chain:
+      id: B
+  - chain:
+      id: C

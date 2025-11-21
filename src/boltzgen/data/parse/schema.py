@@ -1970,7 +1970,7 @@ class YamlDesignParser:
 
         # Parse and apply design insertions
         if design_insertions is not None:
-            num_inserted = 0
+            num_inserted = defaultdict(int)
             for list_element in design_insertions:
                 insertion = list_element["insertion"]
                 if "id" not in insertion:
@@ -1981,7 +1981,7 @@ class YamlDesignParser:
                     raise ValueError(msg)
                 chain_id = insertion["id"]
                 res_index = insertion["res_index"] - 1  # 1 index input to 0 indexed
-                res_index += num_inserted
+                res_index += num_inserted[chain_id]
                 ss_insert_type = insertion.get("secondary_structure", "UNSPECIFIED")
 
                 # We add +1 because the parse_range function is usually used for indexing where we then convert the 1 based inputs to 0 indexing
@@ -1989,7 +1989,7 @@ class YamlDesignParser:
                 num_residues = parse_range(num_residues)
                 num_residues = np.random.choice(num_residues).item()
                 num_residues += 1
-                num_inserted += num_residues
+                num_inserted[chain_id] += num_residues
 
                 if chain_id not in structure.chains["name"]:
                     msg = f"Specified chain id {chain_id} not in file {path}."
