@@ -4,6 +4,7 @@ from typing import Dict, List
 
 import numpy as np
 import torch
+import gemmi
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import BasePredictionWriter
 from torch import Tensor
@@ -517,8 +518,6 @@ class DesignWriter(BasePredictionWriter):
                 print(msg)
 
     def combine_mmcif_models(self, mmcif_strings):
-        import gemmi
-
         gemmi_structure = gemmi.Structure()
         for model_number, mmcif_string in enumerate(mmcif_strings, start=1):
             block = gemmi.cif.read_string(mmcif_string).sole_block()
