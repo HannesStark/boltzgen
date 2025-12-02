@@ -165,6 +165,8 @@ You can check the indexing in your mmcif file by opening it in https://molstar.o
 
 ![](assets/label_seq_id.png)
 
+When using a pdb file as input, the indexing will automatically be set to a 1 based indexing without any gaps (even if there are gaps in the structure). Checking via https://molstar.org/viewer/ will not work in that case, so count the real existing residues in your pdb for indexing instead.
+
 After you constructed your `.yaml` file we recommend that you run the `check` command on it:
 1. Run `boltzgen check example/vanilla_peptide_with_target_binding_site/beetletert.yaml`.  
 2. Visualize the resulting mmcif file in a protein structure viewer (e.g. PyMOL, Chimera, or online: https://molstar.org/viewer/).
