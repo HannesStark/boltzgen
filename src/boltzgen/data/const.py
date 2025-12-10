@@ -3495,6 +3495,7 @@ eval_keys = (
         "atom_to_token",
         "mol_type",
         "backbone_mask",
+        "pae",  # full PAE matrix
     ]
 )
 

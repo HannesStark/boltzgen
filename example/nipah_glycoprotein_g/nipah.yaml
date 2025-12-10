@@ -1,0 +1,13 @@
+entities:
+  # Specify a designed protein chain
+  - protein: 
+      id: C
+      sequence: 80..160
+
+  # Specification of the target which is extracted from a .cif file
+  - file:
+      path: nipah_from_pdb.cif
+      # Which chain and residues in the .cif file to use as target (uses only chain A here)
+      include:
+        - chain:
+            id: A

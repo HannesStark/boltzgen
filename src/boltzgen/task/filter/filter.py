@@ -499,6 +499,8 @@ class Filter(Task):
 
         top_dir2 = self.top_dir / "before_refolding"
         top_dir2.mkdir(parents=True, exist_ok=True)
+        top_pae_dir = self.top_dir / "pae"
+        top_pae_dir.mkdir(parents=True, exist_ok=True)
         for i, (idx, row) in tqdm(
             enumerate(self.df[: self.top_budget].iterrows()),
             desc="copy top design files",
@@ -513,10 +515,19 @@ class Filter(Task):
             dst = self.top_dir / new_filename
             shutil.copy2(src, dst)
 
+            # Copy PAE npz file if it exists
+            npz_filename = Path(filename).stem + ".npz"
+            npz_src = self.design_dir / "fold_out_npz" / npz_filename
+            if npz_src.exists():
+                npz_new_filename = f"rank{i:0{num_digits}d}_{npz_filename}"
+                shutil.copy2(npz_src, top_pae_dir / npz_new_filename)
+
         # save to output/diverse_* directory
         self.div_dir.mkdir(parents=True, exist_ok=True)
         div_dir2 = self.div_dir / "before_refolding"
         div_dir2.mkdir(parents=True, exist_ok=True)
+        div_pae_dir = self.div_dir / "pae"
+        div_pae_dir.mkdir(parents=True, exist_ok=True)
         for i in tqdm(self.diverse_selection, desc="copy diversity files"):
             src = self.design_dir / self.df_m.loc[i, "file_name"]
             qualityrank = self.df_m.loc[i, "final_rank"]
@@ -526,6 +537,13 @@ class Filter(Task):
 
             src = self.design_dir / "refold_cif" / self.df_m.loc[i, "file_name"]
             shutil.copy2(src, self.div_dir / new_filename)
+
+            # Copy PAE npz file if it exists
+            npz_filename = Path(filename).stem + ".npz"
+            npz_src = self.design_dir / "fold_out_npz" / npz_filename
+            if npz_src.exists():
+                npz_new_filename = f"rank{qualityrank:0{num_digits}d}_{npz_filename}"
+                shutil.copy2(npz_src, div_pae_dir / npz_new_filename)
         self.df_div.to_csv(
             self.outdir / f"final_designs_metrics_{self.budget}.csv", index=False
         )

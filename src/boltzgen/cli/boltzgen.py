@@ -1320,6 +1320,47 @@ def check_design_spec(
     print(f"Design specification visualization is written to {str(output_path)}")
 
 
+def _ensure_cache_writable(cache_dir: Path | None) -> None:
+    """
+    Ensure the cache directory exists and is writable.
+    
+    Raises PermissionError with helpful message if the cache is not writable.
+    """
+    # Determine effective cache directory
+    if cache_dir is not None:
+        effective_cache = Path(cache_dir)
+    else:
+        # huggingface_hub uses HF_HOME/hub or ~/.cache/huggingface/hub
+        hf_home = os.environ.get("HF_HOME")
+        if hf_home:
+            effective_cache = Path(hf_home)
+        else:
+            effective_cache = Path.home() / ".cache" / "huggingface"
+    
+    hub_dir = effective_cache / "hub"
+    
+    try:
+        # Try to create the hub directory if it doesn't exist
+        hub_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Test that we can write to it
+        test_file = hub_dir / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+    except PermissionError:
+        raise PermissionError(
+            f"Cannot write to cache directory: {effective_cache}\n\n"
+            f"This typically happens when running in Docker with a mounted volume.\n"
+            f"To fix this, either:\n"
+            f"  1. Fix permissions on the host directory:\n"
+            f"     sudo chown -R 1000:1000 <your-cache-directory>\n"
+            f"  2. Or run the container as root (not recommended):\n"
+            f"     docker run --user root ...\n"
+            f"  3. Or run the container with your host user:\n"
+            f"     docker run --user $(id -u):$(id -g) ..."
+        )
+
+
 def get_artifact_path(
     args, artifact: str, repo_type: str = "model", verbose: bool = True
 ) -> Path:
@@ -1331,6 +1372,10 @@ def get_artifact_path(
             raise ValueError(
                 f"Invalid artifact: {artifact}. Expected format: huggingface:<repo_id>:<filename>"
             )
+        
+        # Pre-check cache directory permissions before attempting download
+        _ensure_cache_writable(args.cache)
+        
         result = huggingface_hub.hf_hub_download(
             repo_id,
             filename,
