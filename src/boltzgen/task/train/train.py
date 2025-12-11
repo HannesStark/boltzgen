@@ -14,6 +14,7 @@ from pytorch_lightning.strategies import DDPStrategy
 
 from boltzgen.task.task import Task
 from boltzgen.task.train.data import DataConfig, TrainingDataModule
+from boltzgen.utils.xpu import SingleXPUStrategy, XPUMixedPrecision
 
 
 class Training(Task):
@@ -201,7 +202,16 @@ class Training(Task):
 
         # Set up trainer
         strategy = "auto"
-        if (isinstance(devices, int) and devices > 1) or (
+        
+        # Check if XPU accelerator is requested and use custom strategy
+        if self.trainer.get("accelerator") == "xpu":
+            # Handle precision for XPU - use custom XPU precision plugin
+            precision = self.trainer.pop("precision", None)
+            precision_plugin = None
+            if precision in ("16-mixed", "bf16-mixed"):
+                precision_plugin = XPUMixedPrecision(precision=precision)
+            strategy = SingleXPUStrategy(precision_plugin=precision_plugin)
+        elif (isinstance(devices, int) and devices > 1) or (
             isinstance(devices, (list, listconfig.ListConfig)) and len(devices) > 1
         ):
             strategy = DDPStrategy(

@@ -17,14 +17,14 @@ from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 import torch
+from scipy.stats import truncnorm
+from torch import nn
 
 from boltzgen.model.layers.triangular_attention.utils import (
     flatten_final_dims,
     permute_final_dims,
 )
-
-import torch.nn as nn
-from scipy.stats import truncnorm
+from boltzgen.model.modules.utils import get_autocast_device_type
 
 
 def _prod(nums):
@@ -145,23 +145,22 @@ class Linear(nn.Linear):
         with torch.no_grad():
             if init_fn is not None:
                 init_fn(self.weight, self.bias)
+            elif init == "default":
+                lecun_normal_init_(self.weight)
+            elif init == "relu":
+                he_normal_init_(self.weight)
+            elif init == "glorot":
+                glorot_uniform_init_(self.weight)
+            elif init == "gating":
+                gating_init_(self.weight)
+                if bias:
+                    self.bias.fill_(1.0)
+            elif init == "normal":
+                normal_init_(self.weight)
+            elif init == "final":
+                final_init_(self.weight)
             else:
-                if init == "default":
-                    lecun_normal_init_(self.weight)
-                elif init == "relu":
-                    he_normal_init_(self.weight)
-                elif init == "glorot":
-                    glorot_uniform_init_(self.weight)
-                elif init == "gating":
-                    gating_init_(self.weight)
-                    if bias:
-                        self.bias.fill_(1.0)
-                elif init == "normal":
-                    normal_init_(self.weight)
-                elif init == "final":
-                    final_init_(self.weight)
-                else:
-                    raise ValueError("Invalid init string.")
+                raise ValueError("Invalid init string.")
 
         self.precision = precision
 
@@ -169,7 +168,7 @@ class Linear(nn.Linear):
         d = input.dtype
 
         if self.precision is not None:
-            with torch.autocast("cuda", enabled=False):
+            with torch.autocast(get_autocast_device_type(), enabled=False):
                 bias = (
                     self.bias.to(dtype=self.precision)
                     if self.bias is not None
@@ -182,7 +181,7 @@ class Linear(nn.Linear):
                 ).to(dtype=d)
 
         if d is torch.bfloat16:
-            with torch.autocast("cuda", enabled=False):
+            with torch.autocast(get_autocast_device_type(), enabled=False):
                 bias = self.bias.to(dtype=d) if self.bias is not None else None
                 return nn.functional.linear(input, self.weight.to(dtype=d), bias)
 
@@ -202,7 +201,7 @@ class LayerNorm(nn.Module):
     def forward(self, x):
         d = x.dtype
         if d is torch.bfloat16:
-            with torch.autocast("cuda", enabled=False):
+            with torch.autocast(get_autocast_device_type(), enabled=False):
                 out = nn.functional.layer_norm(
                     x,
                     self.c_in,
@@ -230,7 +229,7 @@ def softmax_no_cast(t: torch.Tensor, dim: int = -1) -> torch.Tensor:
     """
     d = t.dtype
     if d is torch.bfloat16:
-        with torch.autocast("cuda", enabled=False):
+        with torch.autocast(get_autocast_device_type(), enabled=False):
             s = torch.nn.functional.softmax(t, dim=dim)
     else:
         s = torch.nn.functional.softmax(t, dim=dim)
@@ -391,6 +390,7 @@ class Attention(nn.Module):
                 Whether to use the cuEquivariance triangle kernel.
 
         Returns
+        -------
             [*, Q, C_q] attention update
         """
         q, k, v = self._prep_qkv(q_x, kv_x, apply_scale=not use_kernels)

@@ -13,9 +13,9 @@ from typing import List, Optional, Union
 import torch
 from omegaconf import OmegaConf, listconfig
 from pytorch_lightning import LightningModule, Trainer
-
 from pytorch_lightning.strategies import DDPStrategy
 
+from boltzgen.model.models.boltz import Boltz
 from boltzgen.task.predict.data_from_generated import FromGeneratedDataModule
 from boltzgen.task.predict.writer import (
     DesignWriter,
@@ -23,7 +23,7 @@ from boltzgen.task.predict.writer import (
 )
 from boltzgen.task.task import Task
 from boltzgen.utils.pipeline_progress_bar import PipelineProgressBar
-from boltzgen.model.models.boltz import Boltz
+from boltzgen.utils.xpu import SingleXPUStrategy, XPUMixedPrecision
 
 
 class Predict(Task):
@@ -160,20 +160,29 @@ class Predict(Task):
                 )
             )
 
-        # Set up trainer
-        strategy = "auto"
-        num_devices = (
-            len(devices)
-            if isinstance(devices, (list, listconfig.ListConfig))
-            else devices
-        )
-        if num_devices > 1:
-            strategy = DDPStrategy()
-            if num_devices > len(self.data.predict_set):
-                devices = max(1, len(self.data.predict_set))
-                msg = f"Fewer designs than devices. Setting devices to {devices}."
-                print(msg)
-                self.trainer["devices"] = devices
+        # Check if XPU accelerator is requested and use custom strategy
+        if self.trainer.get("accelerator") == "xpu":
+            # Handle precision for XPU - use custom XPU precision plugin
+            precision = self.trainer.pop("precision", None)
+            precision_plugin = None
+            if precision in ("16-mixed", "bf16-mixed"):
+                precision_plugin = XPUMixedPrecision(precision=precision)
+            strategy = SingleXPUStrategy(precision_plugin=precision_plugin)
+        else:
+            # Set up trainer
+            strategy = "auto"
+            num_devices = (
+                len(devices)
+                if isinstance(devices, (list, listconfig.ListConfig))
+                else devices
+            )
+            if num_devices > 1:
+                strategy = DDPStrategy()
+                if num_devices > len(self.data.predict_set):
+                    devices = max(1, len(self.data.predict_set))
+                    msg = f"Fewer designs than devices. Setting devices to {devices}."
+                    print(msg)
+                    self.trainer["devices"] = devices
 
         self.lightning_trainer = Trainer(
             default_root_dir=self.output,

@@ -9,6 +9,7 @@ from boltzgen.model.loss.confidence import (
     lddt_dist,
 )
 from boltzgen.model.loss.diffusion import weighted_rigid_align
+from boltzgen.model.modules.utils import get_autocast_device_type
 
 
 def factored_lddt_loss(
@@ -20,7 +21,7 @@ def factored_lddt_loss(
     cardinality_weighted=False,
     exclude_ions=False,
 ):
-    with torch.autocast("cuda", enabled=False):
+    with torch.autocast(get_autocast_device_type(), enabled=False):
         # extract necessary features
         B = atom_mask.shape[0]
 
@@ -294,7 +295,7 @@ def factored_lddt_loss_ensemble(
     cardinality_weighted=False,
     exclude_ions=False,
 ):
-    with torch.autocast("cuda", enabled=False):
+    with torch.autocast(get_autocast_device_type(), enabled=False):
         # DEPRECATED
         # extract necessary features
         K, L = true_atom_coords.shape[1:3]
@@ -892,7 +893,7 @@ def compute_plddt_mae(
     token_level_confidence=False,
     multiplicity=1,
 ):
-    with torch.autocast("cuda", enabled=False):
+    with torch.autocast(get_autocast_device_type(), enabled=False):
         # extract necessary features
         atom_mask = true_coords_resolved_mask
         R_set_to_rep_atom = feats["r_set_to_rep_atom"]
@@ -1037,7 +1038,7 @@ def compute_pde_mae(
     true_coords_resolved_mask,
     multiplicity=1,
 ):
-    with torch.autocast("cuda", enabled=False):
+    with torch.autocast(get_autocast_device_type(), enabled=False):
         # extract necessary features
         token_to_rep_atom = feats["token_to_rep_atom"].float()
         token_to_rep_atom = token_to_rep_atom.repeat_interleave(multiplicity, 0)
@@ -1424,7 +1425,7 @@ def align_to_reference(
     ligand_weight=10.0,
     representative_atoms=False,
 ):
-    with torch.autocast("cuda", enabled=False):
+    with torch.autocast(get_autocast_device_type(), enabled=False):
         ensemble_atom_coords_ref = reference_atom_coords.unsqueeze(0).repeat_interleave(
             multiplicity, 0
         )
@@ -1585,7 +1586,7 @@ def weighted_minimum_rmsd(
     representative_atoms=False,
     protein_lig_rmsd=False,
 ):
-    with torch.autocast("cuda", enabled=False):
+    with torch.autocast(get_autocast_device_type(), enabled=False):
         atom_coords = feats["coords"]
         B, K = atom_coords.shape[0:2]
         assert B == 1, "Validation is not supported for batch size > 1"

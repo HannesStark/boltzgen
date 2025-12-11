@@ -3,6 +3,8 @@ from typing import Dict, Tuple
 import torch
 from torch import Tensor
 
+from boltzgen.model.modules.utils import get_autocast_device_type
+
 
 def distogram_loss(
     output: Dict[str, Tensor],
@@ -26,7 +28,7 @@ def distogram_loss(
         Per example loss.
 
     """
-    with torch.autocast("cuda", enabled=False):
+    with torch.autocast(get_autocast_device_type(), enabled=False):
         # Get predicted distograms
         pred = output["pdistogram"].float()  # (B, L, L, num_distograms, disto_bins)
         D = pred.shape[3] # num_distograms  # noqa: N806

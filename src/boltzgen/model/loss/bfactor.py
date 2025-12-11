@@ -1,7 +1,9 @@
-from typing import Dict, Tuple
+from typing import Dict
 
 import torch
 from torch import Tensor
+
+from boltzgen.model.modules.utils import get_autocast_device_type
 
 
 def bfactor_loss_fn(
@@ -22,7 +24,7 @@ def bfactor_loss_fn(
     Tensor
         The globally averaged loss.
     """
-    with torch.autocast("cuda", enabled=False):
+    with torch.autocast(get_autocast_device_type(), enabled=False):
         # Get predicted distograms
         pred = output["pbfactor"].float()  # (B, L, bins)
         bins = pred.shape[2] # num_bins

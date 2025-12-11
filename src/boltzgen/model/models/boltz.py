@@ -1,9 +1,7 @@
-from math import e
-
 import math
-from pathlib import Path
 import time
-from typing import Any, Dict, Optional, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
@@ -11,12 +9,12 @@ from pytorch_lightning import Callback, LightningModule
 from torch import Tensor, nn
 from torchmetrics import MeanMetric
 
-from boltzgen.data.rmsd_computation import get_true_coordinates
 import boltzgen.model.layers.initialize as init
 from boltzgen.data import const
 from boltzgen.data.mol import (
     minimum_lddt_symmetry_dist,
 )
+from boltzgen.data.rmsd_computation import get_true_coordinates
 from boltzgen.model.layers.miniformer import MiniformerModule
 from boltzgen.model.layers.pairformer import PairformerModule
 from boltzgen.model.loss.bfactor import bfactor_loss_fn
@@ -25,14 +23,17 @@ from boltzgen.model.loss.confidence import (
 )
 from boltzgen.model.loss.distogram import distogram_loss
 from boltzgen.model.loss.res_type import res_type_loss_fn
-
+from boltzgen.model.modules.affinity import AffinityModule
 from boltzgen.model.modules.confidence import ConfidenceModule
 from boltzgen.model.modules.diffusion import AtomDiffusion
 from boltzgen.model.modules.diffusion_conditioning import (
     DiffusionConditioning,
 )
 from boltzgen.model.modules.encoders import RelativePositionEncoder
-from boltzgen.model.modules.affinity import AffinityModule
+from boltzgen.model.modules.inverse_fold import (
+    InverseFoldingDecoder,
+    InverseFoldingEncoder,
+)
 from boltzgen.model.modules.masker import BoltzMasker
 from boltzgen.model.modules.trunk import (
     BFactorModule,
@@ -43,14 +44,9 @@ from boltzgen.model.modules.trunk import (
     TemplateModule,
     TokenDistanceModule,
 )
+from boltzgen.model.modules.utils import get_autocast_device_type
 from boltzgen.model.optim.ema import EMA
 from boltzgen.model.optim.scheduler import AlphaFoldLRScheduler
-from boltzgen.model.modules.inverse_fold import (
-    InverseFoldingEncoder,
-    InverseFoldingDecoder,
-)
-
-import torch
 
 
 class Boltz(LightningModule):
@@ -519,7 +515,7 @@ class Boltz(LightningModule):
         if self.inference_logging:
             print("\nRunning Trunk.\n")
         with torch.set_grad_enabled(
-            (self.training and self.structure_prediction_training)
+            self.training and self.structure_prediction_training
         ):
             if self.inverse_fold:
                 if self.enable_if_input_embedder:
@@ -557,11 +553,9 @@ class Boltz(LightningModule):
             if not self.inverse_fold:
                 for i in range(recycling_steps + 1):
                     with torch.set_grad_enabled(
-                        (
-                            self.training
-                            and self.structure_prediction_training
-                            and (i == recycling_steps)
-                        )
+                        self.training
+                        and self.structure_prediction_training
+                        and (i == recycling_steps)
                     ):
                         # Issue with unused parameters in autocast
                         if (
@@ -655,7 +649,7 @@ class Boltz(LightningModule):
             ):
                 if self.inference_logging:
                     print("\nRunning Structure Module.\n")
-                with torch.autocast("cuda", enabled=False):
+                with torch.autocast(get_autocast_device_type(), enabled=False):
                     if not self.inverse_fold:
                         struct_out = self.structure_module.sample(
                             s_trunk=s.float(),
@@ -711,7 +705,7 @@ class Boltz(LightningModule):
                 feats["coords"] = atom_coords  # (multiplicity, L, 3)
                 assert len(feats["coords"].shape) == 3
 
-                with torch.autocast("cuda", enabled=False):
+                with torch.autocast(get_autocast_device_type(), enabled=False):
                     if not self.inverse_fold:
                         struct_out = self.structure_module(
                             s_trunk=s.float(),
@@ -769,7 +763,7 @@ class Boltz(LightningModule):
             ]
             s_inputs = self.input_embedder(feats, affinity=True)
 
-            with torch.autocast("cuda", enabled=False):
+            with torch.autocast(get_autocast_device_type(), enabled=False):
                 if self.affinity_ensemble:
                     dict_out_affinity1 = self.affinity_module1(
                         s_inputs=s_inputs.detach(),
@@ -1095,6 +1089,15 @@ class Boltz(LightningModule):
             for k, v in self.train_confidence_loss_dict_logger.items():
                 self.log(f"train/{k}", v, prog_bar=False, on_step=False, on_epoch=True)
 
+    def _get_device(self):
+        """Get the appropriate device for tensor creation."""
+        # Prioritize XPU over CUDA when both are available
+        if hasattr(torch, "xpu") and torch.xpu.is_available():
+            return "xpu"
+        if torch.cuda.is_available():
+            return "cuda"
+        return "cpu"
+
     def gradient_norm(self, module):
         parameters = [
             p.grad.norm(p=2) ** 2
@@ -1102,18 +1105,14 @@ class Boltz(LightningModule):
             if p.requires_grad and p.grad is not None
         ]
         if len(parameters) == 0:
-            return torch.tensor(
-                0.0, device="cuda" if torch.cuda.is_available() else "cpu"
-            )
+            return torch.tensor(0.0, device=self._get_device())
         norm = torch.stack(parameters).sum().sqrt()
         return norm
 
     def parameter_norm(self, module):
         parameters = [p.norm(p=2) ** 2 for p in module.parameters() if p.requires_grad]
         if len(parameters) == 0:
-            return torch.tensor(
-                0.0, device="cuda" if torch.cuda.is_available() else "cpu"
-            )
+            return torch.tensor(0.0, device=self._get_device())
         norm = torch.stack(parameters).sum().sqrt()
         return norm
 
@@ -1226,7 +1225,7 @@ class Boltz(LightningModule):
                         self.current_checkpoint_index
                     ]
                     self.load_checkpoint_weights(checkpoint_path)
-                    print(f"Switched checkpoint.")
+                    print("Switched checkpoint.")
                 if self.current_checkpoint_index + 1 < len(self.switch_points):
                     self.next_switch_point = self.switch_points[
                         self.current_checkpoint_index + 1
@@ -1298,10 +1297,7 @@ class Boltz(LightningModule):
             if "keys_dict_batch" in self.predict_args:
                 for key in self.predict_args["keys_dict_batch"]:
                     pred_dict[key] = batch[key]
-            if (
-                "return_z_feats" in self.predict_args
-                and self.predict_args["return_z_feats"]
-            ):
+            if self.predict_args.get("return_z_feats"):
                 pred_dict["z_feats"] = out["z_feats"]
             pred_dict["masks"] = batch["atom_pad_mask"]
             pred_dict["token_masks"] = batch["token_pad_mask"]
@@ -1370,8 +1366,7 @@ class Boltz(LightningModule):
                 print("| WARNING: ran out of memory, skipping batch")
                 torch.cuda.empty_cache()
                 return {"exception": True}
-            else:
-                raise e
+            raise e
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure the optimizer."""
@@ -1456,7 +1451,7 @@ class Boltz(LightningModule):
                 decay_factor=self.training_args.lr_decay_factor,
             )
             return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
-        elif self.training_args.lr_scheduler == "onecycle":
+        if self.training_args.lr_scheduler == "onecycle":
             scheduler = torch.optim.lr_scheduler.OneCycleLR(
                 optimizer,
                 max_lr=self.training_args.max_lr,
@@ -1480,8 +1475,8 @@ class Boltz(LightningModule):
             except:
                 import traceback
 
-                traceback.print_exc()  # noqa: T201
-                print(f"Image logging failed for {name} {str(path)}.")  # noqa: T201
+                traceback.print_exc()
+                print(f"Image logging failed for {name} {path!s}.")
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         # Ignore the lr from the checkpoint

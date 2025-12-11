@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
+from boltzgen.model.modules.utils import get_autocast_device_type
     
 def res_type_loss_fn(
     output: Dict[str, Tensor],
@@ -23,7 +24,7 @@ def res_type_loss_fn(
     Tensor
         The globally averaged loss.
     """
-    with torch.autocast("cuda", enabled=False):
+    with torch.autocast(get_autocast_device_type(), enabled=False):
         pred = output["res_type"]
         true = feats["res_type"].float()
         multiplicity = pred.shape[0] // true.shape[0]
