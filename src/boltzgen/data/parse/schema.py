@@ -643,6 +643,8 @@ def parse_range(ranges, c_start=0, c_end=None):
 
     indices = []
     for spec in spec_list:
+        start = None
+        end = None
         if re.fullmatch(r"\d+", spec):
             # Single number. Convert it from 1 indexed to 0 indexed.
             start = int(spec) - 1
@@ -665,13 +667,14 @@ def parse_range(ranges, c_start=0, c_end=None):
             start -= 1
             end = c_end - c_start
             indices += list(range(c_start + start, c_end))
-    if start < 0:
-        msg = f"There is a 0 in the specified range(s) {ranges}. Residue indices are 1 indexed."
-        raise ValueError(msg)
 
-    if c_end is not None and end > c_end - c_start:
-        msg = f"Specified end {ranges} is higher than the length of the chain."
-        raise ValueError(msg)
+        if start is not None and start < 0:
+            msg = f"There is a 0 in the specified range(s) {ranges}. Residue indices are 1 indexed."
+            raise ValueError(msg)
+
+        if c_end is not None and end is not None and end > c_end - c_start:
+            msg = f"Specified end {ranges} is higher than the length of the chain."
+            raise ValueError(msg)
     return indices
 
 
