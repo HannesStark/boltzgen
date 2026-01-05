@@ -177,7 +177,7 @@ def compute_bond_loss(pred_atom_coords, true_coords, feats):
         pred_bond_coords = pred_atom_coords[
             :, feats["connections_edge_index"][index_batch]
         ]
-        true_bond_coords = pred_atom_coords[
+        true_bond_coords = true_coords[
             :, feats["connections_edge_index"][index_batch]
         ]
         pred_bond_lengths = torch.linalg.norm(
