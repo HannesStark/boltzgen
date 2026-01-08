@@ -1,3 +1,4 @@
+import json
 from boltzgen.utils.quiet import quiet_startup
 
 
@@ -284,12 +285,12 @@ class Filter(Task):
                     {
                         "feature": "GLY_fraction",
                         "lower_is_better": True,
-                        "threshold": 0.2,
+                        "threshold": 0.3,
                     },
                     {
                         "feature": "GLU_fraction",
                         "lower_is_better": True,
-                        "threshold": 0.2,
+                        "threshold": 0.3,
                     },
                     {
                         "feature": "LEU_fraction",
@@ -299,7 +300,7 @@ class Filter(Task):
                     {
                         "feature": "VAL_fraction",
                         "lower_is_better": True,
-                        "threshold": 0.2,
+                        "threshold": 0.3,
                     },
                 ]
             )
@@ -312,6 +313,7 @@ class Filter(Task):
         self.load_dataframe()
         self.reset_outdir()
         self.filter_df()
+        self.absolute_metrics()
         self.sort_df()
         self.optimize_diversity()
         self.write_outdir()
@@ -416,6 +418,61 @@ class Filter(Task):
                 f"Only {num_pass} designs pass filters. We highly recommend relaxing the thresholds."
             )
         print("\n")
+
+    def absolute_metrics(self):
+        norm_path = Path("src/boltzgen/resources/metrics_normalization.json")
+        if not norm_path.exists():
+            return
+
+        with norm_path.open("r") as f:
+            norm_stats = json.load(f)
+
+        for col, stats in norm_stats.items():
+            mean = stats["mean"]
+            std = stats["std"]
+            if col in self.df.columns:
+                self.df[col + "_z"] = (self.df[col] - mean) / std
+
+        importances = {
+            "affinity_probability_binary1": 1.5,
+            "design_iiptm": 1.0,
+            "design_ptm": 0.5,
+            "min_design_to_target_pae": -1.0,  # lower is better
+            "design_hydrophobicity": -0.125,  # lower is better
+            "design_largest_hydrophobic_patch_refolded": -0.15,  # lower is better
+            "delta_sasa_refolded": 0.25,
+            "plip_saltbridge_refolded": 0.25,
+            "plip_hbonds_refolded": 0.25,
+        }
+
+        self.df["absolute_score"] = 0.0
+        for base_col, weight in importances.items():
+            if base_col in self.df.columns:
+                norm_col = base_col + "_z"
+                self.df["absolute_score"] += weight * self.df[norm_col]
+        total_importance = sum(abs(w) for w in importances.values())
+        self.df["absolute_score"] /= total_importance
+
+        self.df["structure_confidence"] = 0.0
+        weight_sum = 0
+        for col in ["design_iiptm", "design_ptm", "min_design_to_target_pae"]:
+            weight = importances[col]
+            norm_col = col + "_z"
+            weight_sum += abs(weight)
+            self.df["structure_confidence"] += weight * self.df[norm_col]
+        self.df["structure_confidence"] /= weight_sum
+
+        for flt in self.filters:
+            feat = flt["feature"]
+            filter_col = f"pass_{feat}_filter"
+            if "fraction" in feat:
+                # If this is a "fraction" feature, meaning a res_type fraction filter, only apply the penalty if num_design > 8
+                mask_fail = (self.df["num_design"] > 8) & (self.df[filter_col] == False)
+            else:
+                mask_fail = self.df[filter_col] == False
+
+            self.df.loc[mask_fail, "absolute_score"] *= 0.1
+
 
     def sort_df(self):
         rank_df = pd.DataFrame(index=self.df.index)
@@ -854,7 +911,6 @@ class Filter(Task):
         pdf_path = self.outdir / f"results_overview.pdf"
         pdf = PdfPages(pdf_path)
 
-
         def _ensure_width(fig, target_w=8.5):
             w, h = fig.get_size_inches()
             if abs(w - target_w) > 0.01:
@@ -1201,8 +1257,6 @@ class Filter(Task):
                 continue
 
         pdf.close()
-
-
 
         print(
             "A description of metrics and summarizing plots was written to:", pdf_path

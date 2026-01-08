@@ -565,6 +565,36 @@ class Analyze(Task):
             "designed_chain_sequence": design_chain_seq,
         }
 
+        # Add per-chain sequences to csv when designing multiple chains
+        design_token_indices = torch.where(feat["design_mask"].bool() & feat["token_pad_mask"].bool())[0]
+        designed_chain_ids = feat["asym_id"][design_token_indices].unique().tolist()
+        if len(designed_chain_ids) > 1:
+            for chain_id in designed_chain_ids:
+                chain_mask = feat["asym_id"] == chain_id
+
+                # Full chain sequence
+                chain_res_types = res_type_argmax[chain_mask]
+                full_chain_seq = "".join(
+                    [
+                        const.prot_token_to_letter.get(const.tokens[t], "X")
+                        for t in chain_res_types
+                    ]
+                )
+
+                # Designed residues only from this chain
+                design_chain_mask = feat["design_mask"].bool() & feat["token_pad_mask"].bool() & chain_mask
+                design_res_types = res_type_argmax[design_chain_mask]
+                design_seq = "".join(
+                    [
+                        const.prot_token_to_letter.get(const.tokens[t], "X")
+                        for t in design_res_types
+                    ]
+                )
+
+                metrics[f"designed_sequence_{chain_id}"] = design_seq
+                metrics[f"full_sequence_{chain_id}"] = full_chain_seq
+
+
         target_id = re.search(rf"{self.data.cfg.target_id_regex}", sample_id).group(1)
 
         # Get masks

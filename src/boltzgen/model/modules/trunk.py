@@ -670,6 +670,7 @@ class MSAModule(nn.Module):
                     chunk_size_outer_product,
                     chunk_size_tri_attn,
                     use_kernels=use_kernels,
+                    use_reentrant=False,
                 )
             else:
                 z, m = self.layers[i](

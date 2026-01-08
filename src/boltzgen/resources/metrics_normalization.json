@@ -1,0 +1,38 @@
+{
+    "design_iiptm": {
+        "mean": 0.3828427453913554,
+        "std": 0.10621994686776445
+    },
+    "design_ptm": {
+        "mean": 0.6548983461494845,
+        "std": 0.041925380367595154
+    },
+    "min_design_to_target_pae": {
+        "mean": 8.665374909044512,
+        "std": 3.8643855151416453
+    },
+    "design_hydrophobicity": {
+        "mean": 43.95844996189343,
+        "std": 7.565721364606706
+    },
+    "design_largest_hydrophobic_patch_refolded": {
+        "mean": 608.7238163271427,
+        "std": 440.3199461402019
+    },
+    "delta_sasa_refolded": {
+        "mean": 1368.936707104108,
+        "std": 514.8573173243741
+    },
+    "plip_saltbridge_refolded": {
+        "mean": 1.746922289263117,
+        "std": 1.9177749177139145
+    },
+    "plip_hbonds_refolded": {
+        "mean": 7.099706654392513,
+        "std": 4.456755351208993
+    },
+    "affinity_probability_binary1": {
+        "mean": 0.4726671722992441,
+        "std": 0.19092615494037402
+    }
+}

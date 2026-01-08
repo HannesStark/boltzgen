@@ -557,7 +557,7 @@ class ConfidenceHeads(nn.Module):
             interaction_pae=interaction_pae,
             min_design_to_target_pae=min_design_to_target_pae
             if feats["design_mask"].sum() > 0
-            else torch.nan,
+            else torch.tensor([torch.nan]),
             min_interaction_pae=min_interaction_pae,
         )
 

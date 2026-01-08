@@ -1484,18 +1484,65 @@ class YamlDesignParser:
                     ValueError(msg)
 
                 # Map index
-                if all_parsed_chains[c1].sampleidx_to_specidx is not None:
+                if (
+                    c1 in all_parsed_chains.keys()
+                    and all_parsed_chains[c1].sampleidx_to_specidx is not None
+                ):
                     r1 = np.where(all_parsed_chains[c1].sampleidx_to_specidx == r1)[0][
                         0
                     ].item()
-                if all_parsed_chains[c2].sampleidx_to_specidx is not None:
+                    c1, r1, a1 = atom_idx_map[(c1, r1, a1)]
+                else:
+                    # we have a chain coming from a file where we just use the residue index
+                    chain = data.chains[data.chains["name"] == c1]
+                    c1 = chain["asym_id"].item()
+
+                    res_start = chain["res_idx"].item()
+                    res_end = chain["res_idx"].item() + chain["res_num"].item()
+                    residues = data.residues[res_start:res_end]
+                    residue = residues[residues["res_idx"] == r1]
+                    r1 = res_start + residue["res_idx"].item()
+
+                    atom_start = residue["atom_idx"].item()
+                    atom_end = residue["atom_idx"].item() + residue["atom_num"].item()
+                    atoms = data.atoms[atom_start:atom_end]
+                    assert a1 in atoms["name"], (
+                        f"Atom {a1} not found in residue {r1} of chain {c1}"
+                    )
+                    a1 = np.where(atoms["name"] == a1)[0].item()
+                    a1 = (
+                        residue["atom_idx"].item() + a1
+                    )  # THIS STILL NEEDS TO BE CORRECTED
+
+                if (
+                    c2 in all_parsed_chains.keys()
+                    and all_parsed_chains[c2].sampleidx_to_specidx is not None
+                ):
                     r2 = np.where(all_parsed_chains[c2].sampleidx_to_specidx == r2)[0][
                         0
                     ].item()
+                    c2, r2, a2 = atom_idx_map[(c2, r2, a2)]
+                else:
+                    # we have a chain coming from a file where we just use the residue index
+                    chain = data.chains[data.chains["name"] == c2]
+                    c2 = chain["asym_id"].item()
 
-                c1, r1, a1 = atom_idx_map[(c1, r1, a1)]
-                c2, r2, a2 = atom_idx_map[(c2, r2, a2)]
+                    res_start = chain["res_idx"].item()
+                    res_end = chain["res_idx"].item() + chain["res_num"].item()
+                    residues = data.residues[res_start:res_end]
+                    residue = residues[residues["res_idx"] == r2]
+                    r2 = res_start + residue["res_idx"].item()
 
+                    atom_start = residue["atom_idx"].item()
+                    atom_end = residue["atom_idx"].item() + residue["atom_num"].item()
+                    atoms = data.atoms[atom_start:atom_end]
+                    assert a2 in atoms["name"], (
+                        f"Atom {a2} not found in residue {r2} of chain {c2}"
+                    )
+                    a2 = np.where(atoms["name"] == a2)[0].item()
+                    a2 = (
+                        residue["atom_idx"].item() + a2
+                    )  # THIS STILL NEEDS TO BE CORRECTED
                 covalents.append((c1, c2, r1, r2, a1, a2))
             elif "total_len" in constraints:
                 continue

@@ -1,0 +1,37 @@
+entities:
+  - protein:
+      id: B
+      sequence: 1..3C1..2C1..3 ###1to3 residues before first CYS, 1to2 residues, second CYS, followed by 1to3 residues
+  - file:
+      path: 4g37.pdb 
+
+      include:
+        - chain:
+           id: A
+        - chain:
+           id: C # XLX
+  - ligand:
+      id: D
+      smiles: "CC(=O)NCCNC(C)=O"
+
+constraints:
+    ## constraints from the file.
+    # covalent bond between C3 in XLX (from CCD) and SG in chain A of 4g37.pdb
+  - bond:
+      atom1: [A, 105, SG]
+      atom2: [C, 1, C3]
+    # additional covalent bond between C11 in XLX (from CCD) and SG in chain B (design)
+  - bond:
+      atom1: [B, 2, SG]
+      atom2: [C, 1, C11]
+    ## constraints from the smiles.
+  - bond:
+    # covalent bond between C1 in D (from smiles) and OG in chain A of 4g37.pdb
+      atom1: [A, 339, OG]
+      atom2: [D, 1, C1]
+    # additional covalent bond between C6 in D (from smiles) and SG in chain B (design)
+  - bond:
+      atom1: [B, 4, SG]
+      atom2: [D, 1, C6]
+
+#boltzgen run example/small_molecule_from_file_and_smiles/4g37.yaml --output workbench --protocol protein-anything  --num_designs 2 --devices 1 --steps design

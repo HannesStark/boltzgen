@@ -34,7 +34,7 @@ if [[ "$MODE" == "submit" ]]; then
 elif [[ "$MODE" == "process" ]]; then
 
     boltzgen merge "$OUT"/task-* --output "$MERGED_OUT"
-    boltzgen run "$DESIGN_SPEC" --steps filtering --output "$MERGED_OUT"
+    boltzgen run "$DESIGN_SPEC" --steps filtering --protocol protein-anything --output "$MERGED_OUT"
 
 else
     echo "Usage: $0 {submit|process}"
