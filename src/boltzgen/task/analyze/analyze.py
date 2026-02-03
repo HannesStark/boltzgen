@@ -535,14 +535,25 @@ class Analyze(Task):
 
         # Get designed sequence
         res_type_argmax = torch.argmax(feat["res_type"], dim=-1)
-        design_seq_tensor = res_type_argmax[
-            feat["design_mask"].bool() & feat["token_pad_mask"].bool()
-        ]
-        design_chain_id = feat["asym_id"][
-            torch.where(feat["design_mask"].bool() & feat["token_pad_mask"].bool())[0][
-                0
-            ]
-        ].item()
+        design_mask_combined = feat["design_mask"].bool() & feat["token_pad_mask"].bool()
+        design_indices = torch.where(design_mask_combined)[0]
+
+        # Validate that there are designed residues
+        if len(design_indices) == 0:
+            msg = (
+                f"Skipping {path.name}: No designed residues found. "
+                f"The design_mask has {feat['design_mask'].sum().item()} marked residues, "
+                f"but 0 overlap with valid tokens. "
+                f"Please check your design specification YAML file:\n"
+                f"  - Ensure you have a 'design:' block specifying residues to redesign\n"
+                f"  - Verify chain IDs and residue indices are correct\n"
+                f"  - Run 'boltzgen check your_file.yaml' to validate your configuration"
+            )
+            print(msg)
+            return None
+
+        design_seq_tensor = res_type_argmax[design_mask_combined]
+        design_chain_id = feat["asym_id"][design_indices[0]].item()
         design_chain_seq = res_type_argmax[design_chain_id == feat["asym_id"]]
         design_seq = "".join(
             [
