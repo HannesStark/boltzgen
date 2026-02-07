@@ -1,0 +1,100 @@
+================================================================================
+TAU SEQUENCE DOWNLOAD
+================================================================================
+
+1. Downloading Human TAU Isoforms
+--------------------------------------------------------------------------------
+
+Tau-F (2N4R) - longest isoform, 441 aa
+Downloading P10636-1...
+  Downloaded: 758 aa
+  Header: >sp|P10636-1|TAU_HUMAN Isoform PNS-tau of Microtubule-associated protein tau OS=...
+
+Tau-E (1N4R) - 412 aa
+Downloading P10636-2...
+  Downloaded: 352 aa
+  Header: >sp|P10636-2|TAU_HUMAN Isoform Fetal-tau of Microtubule-associated protein tau O...
+
+Tau-D (0N4R) - 383 aa
+Downloading P10636-3...
+  Downloaded: 316 aa
+  Header: >sp|P10636-3|TAU_HUMAN Isoform Tau-A of Microtubule-associated protein tau OS=Ho...
+
+Tau-C (2N3R) - 410 aa
+Downloading P10636-4...
+  Downloaded: 381 aa
+  Header: >sp|P10636-4|TAU_HUMAN Isoform Tau-B of Microtubule-associated protein tau OS=Ho...
+
+Tau-B (1N3R) - 381 aa
+Downloading P10636-5...
+  Downloaded: 410 aa
+  Header: >sp|P10636-5|TAU_HUMAN Isoform Tau-C of Microtubule-associated protein tau OS=Ho...
+
+Tau-A (0N3R) - 352 aa (shortest brain isoform)
+Downloading P10636-6...
+  Downloaded: 383 aa
+  Header: >sp|P10636-6|TAU_HUMAN Isoform Tau-D of Microtubule-associated protein tau OS=Ho...
+
+================================================================================
+2. Downloading Mammalian Orthologs
+--------------------------------------------------------------------------------
+
+Human (Homo sapiens)
+Downloading P10636...
+  Downloaded: 758 aa
+  Header: >sp|P10636|TAU_HUMAN Microtubule-associated protein tau OS=Homo sapiens OX=9606 ...
+
+Mouse (Mus musculus)
+Downloading P10637...
+  Downloaded: 733 aa
+  Header: >sp|P10637|TAU_MOUSE Microtubule-associated protein tau OS=Mus musculus OX=10090...
+
+Rat (Rattus norvegicus)
+Downloading P19332...
+  Downloaded: 752 aa
+  Header: >sp|P19332|TAU_RAT Microtubule-associated protein tau OS=Rattus norvegicus OX=10...
+
+Bovine (Bos taurus)
+Downloading O02804...
+  Downloaded: 202 aa
+  Header: >sp|Q27956|LIF_BOVIN Leukemia inhibitory factor OS=Bos taurus OX=9913 GN=LIF PE=...
+
+Chicken (Gallus gallus)
+Downloading P50428...
+  Downloaded: 506 aa
+  Header: >sp|P50428|ARSA_MOUSE Arylsulfatase A OS=Mus musculus OX=10090 GN=Arsa PE=1 SV=2...
+
+Macaque (Macaca fascicularis)
+Downloading Q4R572...
+  Downloaded: 246 aa
+  Header: >sp|Q4R572|1433B_MACFA 14-3-3 protein beta/alpha OS=Macaca fascicularis OX=9541 ...
+
+================================================================================
+3. Creating Combined FASTA
+--------------------------------------------------------------------------------
+
+Combined FASTA saved to: data/tau/tau_all_sequences.fasta
+Total sequences: 12
+
+================================================================================
+4. Downloading Canonical Human TAU (2N4R)
+--------------------------------------------------------------------------------
+Downloading P10636-1...
+  Downloaded: 758 aa
+  Header: >sp|P10636-1|TAU_HUMAN Isoform PNS-tau of Microtubule-associated protein tau OS=...
+
+Canonical TAU saved to: data/tau/tau_2N4R_human.fasta
+
+================================================================================
+DOWNLOAD COMPLETE
+================================================================================
+
+Files created:
+  1. data/tau/tau_all_sequences.fasta - All sequences for MSA
+  2. data/tau/tau_2N4R_human.fasta - Canonical human TAU
+  3. Individual FASTA files in data/tau/
+
+Next steps:
+  1. Build MSA with: scripts/build_tau_msa.py
+  2. Run ESMFold on canonical TAU
+  3. Compute conservation and disorder scores

@@ -1,0 +1,55 @@
+================================================================================
+DOCKING PROXY DEMO
+================================================================================
+
+TAU sequence length: 758 aa
+Target regions: 7
+
+================================================================================
+PEPTIDE SCORES
+================================================================================
+
+TAT (poly-basic): YGRKKRRQRRR
+--------------------------------------------------------------------------------
+Best target: PHF6_star (Pos 275-280)
+  Electrostatic:   0.121
+  Hydrophobic:     0.000
+  H-bond:          0.455
+  Total:           0.173
+  Weighted:        0.173
+
+Penetratin: RQIKIWFQNRRMKWKK
+--------------------------------------------------------------------------------
+Best target: PHF6_star (Pos 275-280)
+  Electrostatic:   0.073
+  Hydrophobic:     1.242
+  H-bond:          0.375
+  Total:           0.631
+  Weighted:        0.631
+
+Hydrophobic peptide: AILAILAIL
+--------------------------------------------------------------------------------
+Best target: PHF6_star (Pos 275-280)
+  Electrostatic:   0.000
+  Hydrophobic:     4.882
+  H-bond:          0.000
+  Total:           1.953
+  Weighted:        1.953
+
+Acidic peptide: DDDEEEE
+--------------------------------------------------------------------------------
+Best target: microtubule_binding_R1 (Pos 244-274)
+  Electrostatic:   0.000
+  Hydrophobic:     0.000
+  H-bond:          0.258
+  Total:           0.077
+  Weighted:        0.077
+
+Polar peptide: NQSTNQST
+--------------------------------------------------------------------------------
+Best target: proline_rich_phospho (Pos 199-244)
+  Electrostatic:   0.000
+  Hydrophobic:     0.000
+  H-bond:          0.587
+  Total:           0.176
+  Weighted:        0.176

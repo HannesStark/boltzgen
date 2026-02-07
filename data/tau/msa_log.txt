@@ -1,0 +1,38 @@
+================================================================================
+TAU MSA CONSTRUCTION
+================================================================================
+
+1. Attempting MSA with Clustal Omega...
+Warning: clustalo not found. Install with: brew install clustal-omega (Mac) or apt-get install clustalo (Linux)
+
+2. Creating simple MSA from human isoforms...
+
+Found 6 human TAU isoforms
+Simple MSA saved to: data/tau/tau_msa.fasta
+
+Note: For production use, align with Clustal Omega or MAFFT
+
+================================================================================
+3. Analyzing MSA
+================================================================================
+
+Canonical TAU (2N4R):
+  Length: 758 aa
+  Header: sp|P10636-1|TAU_HUMAN Isoform PNS-tau of Microtubule-associated protein tau OS=H...
+
+Conservation scores saved to: data/tau/tau_entropy.npy
+Sequence info saved to: data/tau/tau_sequence_info.txt
+
+================================================================================
+MSA CONSTRUCTION COMPLETE
+================================================================================
+
+Files created:
+  1. data/tau/tau_msa.fasta - Multiple sequence alignment
+  2. data/tau/tau_entropy.npy - Conservation scores
+  3. data/tau/tau_sequence_info.txt - Sequence info
+
+Next steps:
+  1. Run ESMFold for structure prediction
+  2. Extract pLDDT scores (disorder)
+  3. Combine conservation + disorder for target selection

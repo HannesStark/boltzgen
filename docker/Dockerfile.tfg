@@ -1,0 +1,66 @@
+# TFG-specific BoltzGen Image
+# Extends base BoltzGen with BBB classifier and TAU scoring modules
+
+FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV HF_HOME=/cache/huggingface
+ENV TORCH_HOME=/cache/torch
+
+WORKDIR /workspace
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3-pip \
+    git \
+    wget \
+    curl \
+    vim \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create symlink for python
+RUN ln -s /usr/bin/python3.11 /usr/bin/python
+
+# Install BoltzGen
+RUN git clone https://github.com/HannesStark/boltzgen.git /boltzgen && \
+    cd /boltzgen && \
+    pip install --no-cache-dir -e .
+
+# Install additional dependencies for TFG
+RUN pip install --no-cache-dir \
+    pandas \
+    tqdm \
+    scikit-learn \
+    numpy \
+    scipy
+
+# Copy TFG custom modules
+COPY src/features /workspace/tfg/src/features
+COPY src/scoring /workspace/tfg/src/scoring
+COPY src/msa /workspace/tfg/src/msa
+
+# Copy BBB model and TAU data
+COPY models/bbb_classifier.pt /workspace/tfg/models/bbb_classifier.pt
+COPY data/tau /workspace/tfg/data/tau
+
+# Copy design specs and scripts
+COPY workbench/tau_peptide_baseline.yaml /workspace/design_spec.yaml
+COPY scripts/rerank_baseline_designs.py /workspace/scripts/rerank.py
+
+# Add tfg to Python path
+ENV PYTHONPATH="/workspace/tfg:${PYTHONPATH}"
+
+# Create output directories
+RUN mkdir -p /workspace/output /workspace/cache
+
+# Download BoltzGen models (do this during build to save time)
+RUN cd /boltzgen && python -c "from src.boltzgen.cli.boltzgen import download_all; download_all()"
+
+# Set working directory
+WORKDIR /workspace
+
+# Default command: show usage
+CMD ["echo", "BoltzGen TFG Image Ready. Use: boltzgen run /workspace/design_spec.yaml --output /workspace/output"]
