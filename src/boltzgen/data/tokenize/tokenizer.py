@@ -50,6 +50,7 @@ class TokenData:
     design: bool
     binding_type: int
     structure_group: int
+    aa_constraint_mask: np.ndarray  # Shape: (20,) - per-residue AA constraints
     ccd: np.ndarray
     target_msa_mask: bool
     design_ss_mask: bool
@@ -266,6 +267,7 @@ class Tokenizer:
                         design=False,
                         binding_type=const.binding_type_ids["UNSPECIFIED"],
                         structure_group=0,
+                        aa_constraint_mask=np.zeros(20, dtype=np.float32),
                         ccd=convert_ccd(res["name"]),
                         target_msa_mask=0,
                         design_ss_mask=0,
@@ -331,6 +333,7 @@ class Tokenizer:
                             design=False,
                             binding_type=const.binding_type_ids["UNSPECIFIED"],
                             structure_group=0,
+                            aa_constraint_mask=np.zeros(20, dtype=np.float32),
                             ccd=convert_ccd(res["name"]),
                             target_msa_mask=0,
                             design_ss_mask=0,
@@ -390,6 +393,7 @@ class Tokenizer:
                         design=False,
                         binding_type=const.binding_type_ids["UNSPECIFIED"],
                         structure_group=0,
+                        aa_constraint_mask=np.zeros(20, dtype=np.float32),
                         ccd=convert_ccd(res["name"]),
                         target_msa_mask=0,
                         design_ss_mask=0,

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import random
 import re
+import warnings
 from typing import Dict, List, Optional
 from collections import defaultdict
 from rdkit.Chem import Mol
@@ -319,8 +320,28 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
         if "binding_type" in metadata:
             binding_type = metadata["binding_type"]
 
+        # Per-residue amino acid constraints for inverse folding
+        aa_constraint_mask = None
+        if "aa_constraint_mask" in metadata:
+            loaded_mask = metadata["aa_constraint_mask"]
+            # Validate the loaded mask is a proper array with expected shape
+            if (
+                isinstance(loaded_mask, np.ndarray)
+                and loaded_mask.ndim == 2
+                and loaded_mask.shape[1] == 20  # 20 canonical amino acids
+            ):
+                aa_constraint_mask = loaded_mask
+            else:
+                warnings.warn(
+                    f"Invalid aa_constraint_mask in NPZ: "
+                    f"type={type(loaded_mask)}, shape={getattr(loaded_mask, 'shape', 'N/A')}. "
+                    f"Expected ndarray with shape (N, 20). Ignoring constraints.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+
         # Get features
-        feat = self.get_feat(generated_path, design_mask, ss_type, binding_type)
+        feat = self.get_feat(generated_path, design_mask, ss_type, binding_type, aa_constraint_mask)
 
         # Get native features
         if self.return_native:
@@ -334,7 +355,7 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
 
         return feat
 
-    def get_feat(self, path, design_mask, ss_type=None, binding_type=None):
+    def get_feat(self, path, design_mask, ss_type=None, binding_type=None, aa_constraint_mask=None):
         # Load design
         if self.extra_mol_dir is not None:
             mols = {
@@ -462,6 +483,9 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
             features["ss_type"] = torch.from_numpy(ss_type).long()
         if binding_type is not None:
             features["binding_type"] = torch.from_numpy(binding_type).long()
+        # Per-residue amino acid constraints for inverse folding
+        if aa_constraint_mask is not None:
+            features["aa_constraint_mask"] = torch.from_numpy(aa_constraint_mask).float()
 
         # If we do not want the design mask to impact the featurizer (e.g. represent atoms as atom14), we set the design mask only here.
         if not self.design:

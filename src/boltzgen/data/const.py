@@ -3525,6 +3525,7 @@ token_features = [
     "res_type_clone",
     "is_standard",
     "design_mask",
+    "aa_constraint_mask",
     "binding_type",
     "structure_group",
     "token_bonds",

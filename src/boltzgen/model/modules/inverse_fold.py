@@ -1,4 +1,5 @@
 from typing import Dict, Tuple, List
+import warnings
 
 import torch
 from torch import Tensor, nn
@@ -588,14 +589,53 @@ class InverseFoldingDecoder(nn.Module):
             f"num_design: {num_design}, num_not_design: {num_not_design}"
         )
 
-        # Create restriction mask that sets the probability of excluded residues to 0
-        if len(self.inverse_fold_restriction) > 0:
-            restriction_mask = torch.zeros(len(const.canonical_tokens), device=s.device)
-            for res_type in self.inverse_fold_restriction:
-                restriction_mask[const.canonical_tokens.index(res_type)] = -self.inf
-            restriction_mask = restriction_mask.unsqueeze(0)
+        # Create per-residue restriction mask
+        # Initialize with per-residue constraints from YAML if available
+        if "aa_constraint_mask" in feats:
+            constraint_mask = feats["aa_constraint_mask"][valid_mask]
+            # Validate shape: should be (num_nodes, 20) for 20 canonical amino acids
+            expected_shape = (num_nodes, len(const.canonical_tokens))
+            if constraint_mask.shape != expected_shape:
+                warnings.warn(
+                    f"aa_constraint_mask shape mismatch: "
+                    f"got {constraint_mask.shape}, expected {expected_shape}. "
+                    f"Ignoring per-residue constraints.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                per_residue_mask = torch.zeros(num_nodes, len(const.canonical_tokens), device=s.device)
+            else:
+                # Check for positions with ALL AAs blocked (would leave no valid options).
+                # This can happen when per-residue 'allowed' and global '--inverse_fold_avoid'
+                # combine to eliminate every amino acid at a position.
+                all_blocked = constraint_mask.sum(dim=1) >= len(const.canonical_tokens)
+                if all_blocked.any():
+                    blocked_positions = torch.where(all_blocked)[0].tolist()
+                    warnings.warn(
+                        f"Positions {blocked_positions} have ALL amino acids blocked "
+                        f"(likely conflict between per-residue 'allowed' and global "
+                        f"'--inverse_fold_avoid'). Relaxing constraints for these positions "
+                        f"to allow all amino acids.",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+                    constraint_mask[all_blocked] = 0  # Allow all AAs for fully-blocked positions
+
+                # Per-residue constraints: values 0=allowed, 1=disallowed
+                per_residue_mask = constraint_mask.clone()
+                # Convert binary mask to logit bias: 0 -> 0, 1 -> -inf
+                per_residue_mask = per_residue_mask * (-self.inf)
         else:
-            restriction_mask = torch.zeros(len(const.canonical_tokens), device=s.device)
+            # No per-residue constraints: all AAs allowed
+            per_residue_mask = torch.zeros(num_nodes, len(const.canonical_tokens), device=s.device)
+
+        # Add global restriction (backward compatible with --inverse_fold_avoid CLI)
+        if len(self.inverse_fold_restriction) > 0:
+            global_mask = torch.zeros(len(const.canonical_tokens), device=s.device)
+            for res_type in self.inverse_fold_restriction:
+                global_mask[const.canonical_tokens.index(res_type)] = -self.inf
+            # Combine: global restrictions apply to ALL positions additively
+            per_residue_mask = per_residue_mask + global_mask.unsqueeze(0)
 
         order = torch.randperm(num_nodes, device=s.device).cpu().numpy().tolist()
         # Non-design residues are not sampled and used as the condition. So the order should filter them out.
@@ -667,7 +707,7 @@ class InverseFoldingDecoder(nn.Module):
                     const.canonicals_offset : len(const.canonical_tokens)
                     + const.canonicals_offset,
                 ]
-                + restriction_mask
+                + per_residue_mask[i : i + 1]  # Position-specific mask
             )
             if self.sampling_temperature is None:
                 ids_canonical = torch.argmax(pred_canonical, dim=-1)

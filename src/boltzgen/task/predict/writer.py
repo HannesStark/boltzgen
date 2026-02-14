@@ -384,34 +384,31 @@ class DesignWriter(BasePredictionWriter):
 
                 # Write metadata
                 metadata_path = f"{self.outdir}/{file_name}.npz"
+                token_mask = sample["token_pad_mask"].bool()
 
-                np.savez_compressed(
-                    metadata_path,
-                    design_mask=design_mask[sample["token_pad_mask"].bool()]
-                    .cpu()
-                    .numpy(),
-                    inverse_fold_design_mask=sample["inverse_fold_design_mask"][
-                        sample["token_pad_mask"].bool()
-                    ]
-                    .cpu()
-                    .numpy()
-                    if "inverse_fold_design_mask" in sample
-                    else None,
-                    mol_type=sample["mol_type"][sample["token_pad_mask"].bool()]
-                    .cpu()
-                    .numpy(),
-                    ss_type=sample["ss_type"][sample["token_pad_mask"].bool()]
-                    .cpu()
-                    .numpy(),
-                    token_resolved_mask=sample["token_resolved_mask"][
-                        sample["token_pad_mask"].bool()
-                    ]
-                    .cpu()
-                    .numpy(),
-                    binding_type=binding_type[sample["token_pad_mask"].bool()]
-                    .cpu()
-                    .numpy(),
-                )
+                # Build metadata dict with required fields
+                metadata_dict = {
+                    "design_mask": design_mask[token_mask].cpu().numpy(),
+                    "mol_type": sample["mol_type"][token_mask].cpu().numpy(),
+                    "ss_type": sample["ss_type"][token_mask].cpu().numpy(),
+                    "token_resolved_mask": sample["token_resolved_mask"][token_mask].cpu().numpy(),
+                    "binding_type": binding_type[token_mask].cpu().numpy(),
+                }
+
+                # Add optional fields only if they have valid values (avoid None -> object array)
+                if "inverse_fold_design_mask" in sample:
+                    metadata_dict["inverse_fold_design_mask"] = (
+                        sample["inverse_fold_design_mask"][token_mask].cpu().numpy()
+                    )
+
+                # Per-residue amino acid constraints (for inverse folding step)
+                # Only save if constraints exist AND have non-zero values
+                if "aa_constraint_mask" in batch:
+                    aa_mask = batch["aa_constraint_mask"][0]
+                    if aa_mask.any():  # Only save if there are actual constraints
+                        metadata_dict["aa_constraint_mask"] = aa_mask[token_mask].cpu().numpy()
+
+                np.savez_compressed(metadata_path, **metadata_dict)
 
                 # Write trajectories
                 if self.save_traj:

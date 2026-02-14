@@ -701,6 +701,12 @@ def process_token_features(  # noqa: C901, PLR0915, PLR0912
     res_type = from_numpy(token_data["res_type"]).long()
     is_standard = from_numpy(token_data["is_standard"])
     design = from_numpy(token_data["design_mask"]).long()
+    # Per-residue amino acid constraint mask (shape: num_tokens x 20)
+    if "aa_constraint_mask" in token_data.dtype.names:
+        aa_constraint_mask = from_numpy(token_data["aa_constraint_mask"]).float()
+    else:
+        # Default: no constraints (all zeros = all AAs allowed)
+        aa_constraint_mask = torch.zeros(len(token_data), len(const.canonical_tokens))
     res_type = one_hot(res_type, num_classes=const.num_tokens)
     modified = from_numpy(token_data["modified"]).long()
     ccd = from_numpy(token_data["ccd"]).long()
@@ -864,6 +870,7 @@ def process_token_features(  # noqa: C901, PLR0915, PLR0912
             res_type = pad_dim(res_type, 0, pad_len)
             is_standard = pad_dim(is_standard, 0, pad_len)
             design = pad_dim(design, 0, pad_len)
+            aa_constraint_mask = pad_dim(aa_constraint_mask, 0, pad_len)
             binding_type = pad_dim(binding_type, 0, pad_len)
             structure_group = pad_dim(structure_group, 0, pad_len)
             pad_mask = pad_dim(pad_mask, 0, pad_len)
@@ -901,6 +908,7 @@ def process_token_features(  # noqa: C901, PLR0915, PLR0912
         "res_type_clone": res_type.clone(),
         "is_standard": is_standard,
         "design_mask": design,
+        "aa_constraint_mask": aa_constraint_mask,
         "binding_type": binding_type,
         "structure_group": structure_group,
         "token_bonds": bonds,

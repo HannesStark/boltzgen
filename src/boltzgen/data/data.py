@@ -1,4 +1,5 @@
 import json
+import warnings
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import re
@@ -1930,6 +1931,7 @@ class DesignInfo(NumpySerializable):
     res_structure_groups: npt.NDArray[np.int_]
     res_ss_types: npt.NDArray[np.int_]
     res_binding_type: npt.NDArray[np.int_]
+    res_aa_constraint_mask: npt.NDArray[np.float32]  # Shape: (num_residues, 20), 0=allowed, 1=disallowed
 
     @classmethod
     def is_valid(self, info: "DesignInfo") -> bool:
@@ -1939,6 +1941,7 @@ class DesignInfo(NumpySerializable):
             len(info.res_design_mask) == len(info.res_structure_groups)
             and len(info.res_structure_groups) == len(info.res_ss_types)
             and len(info.res_ss_types) == len(info.res_binding_type)
+            and len(info.res_aa_constraint_mask) == len(info.res_design_mask)
         ), (
             "There must be a bug in the code. All residue level design info objects should have the same length."
         )
@@ -1953,6 +1956,22 @@ class DesignInfo(NumpySerializable):
 
         if any(~info.res_design_mask.astype(bool) & (info.res_ss_types != 0)):
             msg = "Misspecified design info. There were residues that have a secondary structure type specified but are not set to be designed."
+            raise ValueError(msg)
+
+        # Validate residue constraints
+        has_constraints = info.res_aa_constraint_mask.any(axis=1)
+        if any(has_constraints & ~info.res_design_mask.astype(bool)):
+            warnings.warn(
+                "Residue constraints specified for non-designed residues "
+                "will be ignored during inverse folding.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # Check if any designed position has ALL amino acids blocked
+        all_blocked = info.res_aa_constraint_mask.all(axis=1)
+        if any(all_blocked & info.res_design_mask.astype(bool)):
+            msg = "Invalid residue constraints: some designed positions have all amino acids disallowed."
             raise ValueError(msg)
 
         return True
@@ -2049,6 +2068,7 @@ Token = [
     ("design_mask", np.dtype("?")),
     ("binding_type", np.dtype("i4")),
     ("structure_group", np.dtype("i4")),
+    ("aa_constraint_mask", np.dtype("20f4")),  # Per-residue AA constraints: 20 floats (one per canonical AA)
     ("ccd", np.dtype("5i4")),
     ("target_msa_mask", np.dtype("?")),
     ("design_ss_mask", np.dtype("?")),

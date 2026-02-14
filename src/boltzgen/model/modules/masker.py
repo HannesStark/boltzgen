@@ -88,6 +88,9 @@ class BoltzMasker(Module):
                 new["disto_target"] = clone["disto_target"]
             new["token_pair_mask"] = clone["token_pair_mask"]
             new["binding_type"] = clone["binding_type"]
+            # Per-residue amino acid constraints for inverse folding
+            if "aa_constraint_mask" in clone:
+                new["aa_constraint_mask"] = clone["aa_constraint_mask"]
             new["structure_group"] = clone["structure_group"]
             new["cyclic"] = clone["cyclic"]
             new["modified"] = clone["modified"]
