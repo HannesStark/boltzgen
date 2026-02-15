@@ -1,7 +1,14 @@
 entities:
-  - protein: 
+  - protein:
       id: G
       sequence: 15..20AAAAAAVTTTT18PPP # range between 15 and 20 inclusive on both sides
+      residue_constraints:
+        - position: 1
+          allowed: A # Only Alanine at position 1
+        - position: 3..5
+          disallowed: CM # No Cysteine or Methionine at positions 3-5
+        - position: 8
+          allowed: AGS # Only Ala, Gly, or Ser at position 8
   - protein: 
       id: R
       sequence: 3..5C6C3 # Random number of design residues between 3 and 5, then a Cystein, then 6 design residues, then ...

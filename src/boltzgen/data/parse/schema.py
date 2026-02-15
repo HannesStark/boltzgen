@@ -1662,6 +1662,9 @@ class YamlDesignParser:
                     res_design_mask = np.concatenate([res_design_mask, new_design_mask])
                     res_bind_type = np.concatenate([res_bind_type, fbind_types])
                     ss_type = np.concatenate([ss_type, fss_type])
+                    # File entities have no residue constraints — pad with zeros (all AAs allowed)
+                    file_constraint_mask = np.zeros((len(new_design_mask), len(const.canonical_tokens)), dtype=np.float32)
+                    res_aa_constraint_mask = np.concatenate([res_aa_constraint_mask, file_constraint_mask], axis=0)
                     extra_mols.update(new_extra_mols)
                     if len(renaming) > 0:
                         msg = f"\nChain ids conflict with existing chain ids. Renaming with {renaming}. This is for the structure from '{path}'."

@@ -1,0 +1,33 @@
+# Test file for per-residue amino acid constraints
+# This tests the new residue_constraints feature
+#
+# Usage:
+#   boltzgen check example/residue_constraints_test.yaml
+#   boltzgen run example/residue_constraints_test.yaml --output test_output/ --steps design inverse_folding --num_designs 50
+#
+# Note: Use --num_designs 50 (not 5) for statistically meaningful verification.
+# With only 5 designs, blacklist constraints have a ~21% false-pass probability.
+#
+# Note: Supports both string format ("AGS") and list format ([A, G, S])
+#       String format is preferred for consistency with sequence/binding_types
+
+entities:
+  - protein:
+      id: A
+      sequence: 10
+      residue_constraints:
+        # Position 1: Force Alanine only
+        - position: 1
+          allowed: A
+
+        # Positions 3-5: Exclude Cysteine and Methionine
+        - position: 3..5
+          disallowed: CM
+
+        # Position 8: Allow only small amino acids
+        - position: 8
+          allowed: AGS
+
+        # Position 10: Force Proline
+        - position: 10
+          allowed: P
