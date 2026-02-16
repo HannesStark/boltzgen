@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 import warnings
 
 import torch
@@ -37,6 +37,75 @@ def softmax_dropout(
     raise RuntimeError(
         "Softmax dropout failed to keep at least one edge for each node after 10 attempts."
     )
+
+
+def build_constraint_logit_mask(
+    num_nodes: int,
+    aa_constraint_mask: Optional[Tensor],
+    inverse_fold_restriction: list[str],
+    canonical_tokens: list[str],
+    inf: float,
+    device: torch.device,
+) -> Tensor:
+    """Build per-position inverse-folding logit mask.
+
+    The mask uses additive logit bias semantics:
+    0.0 = allowed, -inf = disallowed.
+    """
+    num_aa = len(canonical_tokens)
+    has_per_residue_constraints = False
+
+    if aa_constraint_mask is None:
+        per_residue_blocked = torch.zeros(
+            num_nodes, num_aa, dtype=torch.bool, device=device
+        )
+    else:
+        expected_shape = (num_nodes, num_aa)
+        if aa_constraint_mask.shape != expected_shape:
+            warnings.warn(
+                f"aa_constraint_mask shape mismatch: "
+                f"got {aa_constraint_mask.shape}, expected {expected_shape}. "
+                f"Ignoring per-residue constraints.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            per_residue_blocked = torch.zeros(
+                num_nodes, num_aa, dtype=torch.bool, device=device
+            )
+        else:
+            has_per_residue_constraints = True
+            per_residue_blocked = aa_constraint_mask.to(device=device) > 0
+
+    global_blocked = torch.zeros(num_aa, dtype=torch.bool, device=device)
+    for res_type in inverse_fold_restriction:
+        global_blocked[canonical_tokens.index(res_type)] = True
+
+    combined_blocked = per_residue_blocked | global_blocked.unsqueeze(0)
+    all_blocked = combined_blocked.all(dim=1)
+
+    if all_blocked.any() and has_per_residue_constraints:
+        blocked_positions = torch.where(all_blocked)[0].tolist()
+        warnings.warn(
+            f"Positions {blocked_positions} have all amino acids blocked by the "
+            f"combination of per-residue constraints and '--inverse_fold_avoid'. "
+            f"Relaxing per-residue constraints for these positions.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        per_residue_blocked = per_residue_blocked.clone()
+        per_residue_blocked[all_blocked] = False
+        combined_blocked = per_residue_blocked | global_blocked.unsqueeze(0)
+
+    still_all_blocked = combined_blocked.all(dim=1)
+    if still_all_blocked.any():
+        blocked_positions = torch.where(still_all_blocked)[0].tolist()
+        raise ValueError(
+            f"Inverse folding has no valid amino acids at token positions "
+            f"{blocked_positions} after applying '--inverse_fold_avoid'. "
+            f"Reduce global restrictions to keep at least one amino acid."
+        )
+
+    return combined_blocked.to(dtype=torch.float32) * (-inf)
 
 
 class MLPAttnGNN(nn.Module):
@@ -589,53 +658,17 @@ class InverseFoldingDecoder(nn.Module):
             f"num_design: {num_design}, num_not_design: {num_not_design}"
         )
 
-        # Create per-residue restriction mask
-        # Initialize with per-residue constraints from YAML if available
+        constraint_mask = None
         if "aa_constraint_mask" in feats:
             constraint_mask = feats["aa_constraint_mask"][valid_mask]
-            # Validate shape: should be (num_nodes, 20) for 20 canonical amino acids
-            expected_shape = (num_nodes, len(const.canonical_tokens))
-            if constraint_mask.shape != expected_shape:
-                warnings.warn(
-                    f"aa_constraint_mask shape mismatch: "
-                    f"got {constraint_mask.shape}, expected {expected_shape}. "
-                    f"Ignoring per-residue constraints.",
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
-                per_residue_mask = torch.zeros(num_nodes, len(const.canonical_tokens), device=s.device)
-            else:
-                # Check for positions with ALL AAs blocked (would leave no valid options).
-                # This can happen when per-residue 'allowed' and global '--inverse_fold_avoid'
-                # combine to eliminate every amino acid at a position.
-                all_blocked = constraint_mask.sum(dim=1) >= len(const.canonical_tokens)
-                if all_blocked.any():
-                    blocked_positions = torch.where(all_blocked)[0].tolist()
-                    warnings.warn(
-                        f"Positions {blocked_positions} have ALL amino acids blocked "
-                        f"(likely conflict between per-residue 'allowed' and global "
-                        f"'--inverse_fold_avoid'). Relaxing constraints for these positions "
-                        f"to allow all amino acids.",
-                        RuntimeWarning,
-                        stacklevel=2,
-                    )
-                    constraint_mask[all_blocked] = 0  # Allow all AAs for fully-blocked positions
-
-                # Per-residue constraints: values 0=allowed, 1=disallowed
-                per_residue_mask = constraint_mask.clone()
-                # Convert binary mask to logit bias: 0 -> 0, 1 -> -inf
-                per_residue_mask = per_residue_mask * (-self.inf)
-        else:
-            # No per-residue constraints: all AAs allowed
-            per_residue_mask = torch.zeros(num_nodes, len(const.canonical_tokens), device=s.device)
-
-        # Add global restriction (backward compatible with --inverse_fold_avoid CLI)
-        if len(self.inverse_fold_restriction) > 0:
-            global_mask = torch.zeros(len(const.canonical_tokens), device=s.device)
-            for res_type in self.inverse_fold_restriction:
-                global_mask[const.canonical_tokens.index(res_type)] = -self.inf
-            # Combine: global restrictions apply to ALL positions additively
-            per_residue_mask = per_residue_mask + global_mask.unsqueeze(0)
+        per_residue_mask = build_constraint_logit_mask(
+            num_nodes=num_nodes,
+            aa_constraint_mask=constraint_mask,
+            inverse_fold_restriction=self.inverse_fold_restriction,
+            canonical_tokens=const.canonical_tokens,
+            inf=self.inf,
+            device=s.device,
+        )
 
         order = torch.randperm(num_nodes, device=s.device).cpu().numpy().tolist()
         # Non-design residues are not sampled and used as the condition. So the order should filter them out.

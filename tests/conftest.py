@@ -1,15 +1,12 @@
-"""Test configuration: mock heavy dependencies for CPU-only unit tests.
+"""Optional test configuration for mocking heavy dependencies.
 
-The per-residue constraint functions under test (_normalize_aa_spec,
-_convert_aa_names_to_indices, parse_residue_constraints) only use numpy
-and the boltzgen.data.const module. However, schema.py transitively
-imports torch, pytorch_lightning, etc. via other boltzgen modules.
+Enable with:
+    pytest --mock-heavy-deps tests/test_residue_constraints.py
 
-This conftest patches those heavy imports so tests can run without GPU
-libraries installed — achieving the "Level 1: No GPU, fast" goal.
+By default no mocking is performed, so integration tests run against
+real dependencies.
 """
 import sys
-from types import ModuleType
 from unittest.mock import MagicMock
 
 
@@ -66,5 +63,17 @@ _MOCK_MODULES = [
     "Bio.PDB",
 ]
 
-for mod in _MOCK_MODULES:
-    _install_mock(mod)
+
+def pytest_addoption(parser) -> None:
+    parser.addoption(
+        "--mock-heavy-deps",
+        action="store_true",
+        default=False,
+        help="Mock heavy optional dependencies for parser-only unit tests.",
+    )
+
+
+def pytest_configure(config) -> None:
+    if config.getoption("--mock-heavy-deps"):
+        for mod in _MOCK_MODULES:
+            _install_mock(mod)
