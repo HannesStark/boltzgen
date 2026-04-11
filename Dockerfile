@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CUDA_HOME=/usr/local/cuda \
     PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu121 \
     HF_HOME=/cache
-    
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     software-properties-common \
@@ -40,9 +40,14 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 &
 
 WORKDIR /app
 
-COPY . /app
+# Install dependencies (cached unless pyproject.toml changes)
+COPY pyproject.toml PYPI_DESCRIPTION.md /app/
+COPY src/boltzgen/__init__.py /app/src/boltzgen/__init__.py
+RUN pip install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cu121 \
+    -e /app "torch>=2.4.1,<2.10"
 
-RUN pip install --no-cache-dir -e /app
+COPY . /app
 
 ARG DOWNLOAD_WEIGHTS=false
 RUN mkdir -p "${HF_HOME}" && \
