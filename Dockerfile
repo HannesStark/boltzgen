@@ -8,7 +8,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     CUDA_HOME=/usr/local/cuda \
     PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu121 \
-    HF_HOME=/cache
+    HF_HOME=/cache \
+    NUMBA_CACHE_DIR=/tmp/numba_cache \
+    TRITON_CACHE_DIR=/tmp/triton_cache \
+    XDG_CACHE_HOME=/tmp/xdg_cache
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
