@@ -34,6 +34,9 @@ ss_conditioning_metrics: false
 sequence_recovery: false
 native: false # This is only required for evaluations when we want to compute sequence recovery 
 compute_lddts: false # This is time intensive to compute
+
+# Expression tag assessment (Tier 1)
+tag_assessment: false
   
 
 data:

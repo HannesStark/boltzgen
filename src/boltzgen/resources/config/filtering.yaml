@@ -13,4 +13,5 @@ random_state:  0
 metrics_override:  null  # overrides metrics None values delete keys
 num_liability_plots:  0
 plot_seq_logos:  false  # make sequence logo diagrams of designed sequence
+filter_tag_clash:  false  # filter out designs where either terminus has expression tag clash risk
 

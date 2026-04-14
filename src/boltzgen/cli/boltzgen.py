@@ -347,6 +347,15 @@ def add_configure_arguments(
         default=None,
     )
 
+    # Expression tag assessment
+    p = parser.add_argument_group("expression tag assessment")
+    p.add_argument(
+        "--skip_tag_analysis",
+        action="store_true",
+        help="Skip expression tag clash assessment in analysis and filtering.",
+        default=False,
+    )
+
 
 def add_models_download_options(p: argparse.ArgumentParser) -> None:
     p = p.add_argument_group("model and data download options")
@@ -1185,6 +1194,7 @@ class BinderDesignPipeline:
                     f"delta_sasa_original={args.skip_inverse_folding}",
                     f"noncovalents_original={args.skip_inverse_folding}",
                     f"allatom_fold_metrics={args.skip_inverse_folding}",
+                    f"tag_assessment={not args.skip_tag_analysis}",
                 ]
                 + config_args_by_step["analysis"],
             )
@@ -1202,6 +1212,7 @@ class BinderDesignPipeline:
             f"use_affinity={use_affinity}",
             f"filter_designfolding={do_design_folding}",
             f"budget={args.budget}",
+            f"filter_tag_clash={not args.skip_tag_analysis}",
         ]
 
         # Add optional filtering arguments

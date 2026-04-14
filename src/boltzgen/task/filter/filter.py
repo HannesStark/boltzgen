@@ -171,6 +171,7 @@ class Filter(Task):
             Dict
         ] = [],  # For example: [{"feature": "design_ALA", "lower_is_better": True, "threshold": 0.3}],
         size_buckets: list[Dict] = [],
+        filter_tag_clash: bool = False,
     ):
         super().__init__()
         assert modality in ["peptide", "antibody"]
@@ -305,6 +306,22 @@ class Filter(Task):
                 ]
             )
         self.filters.extend(additional_filters)
+
+        if filter_tag_clash:
+            self.filters.append(
+                {
+                    "feature": "tag_N_clash_risk",
+                    "lower_is_better": True,
+                    "threshold": 0,
+                }
+            )
+            self.filters.append(
+                {
+                    "feature": "tag_C_clash_risk",
+                    "lower_is_better": True,
+                    "threshold": 0,
+                }
+            )
 
         random.seed(self.random_state)
         np.random.seed(self.random_state)

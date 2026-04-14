@@ -1258,3 +1258,129 @@ def compute_liability_metrics(sequence, liability_modality, liability_peptide_ty
         "; ".join(violation_summary) if violation_summary else ""
     )
     return metrics
+
+
+def compute_tag_tier1_metrics(
+    feat,
+    clash_distance_threshold: float = 8.0,
+    sasa_burial_threshold: float = 5.0,
+) -> dict:
+    """Compute expression-tag clash risk metrics for both N and C termini.
+
+    For each terminus of the design chain, computes:
+    - Minimum Cα distance to the nearest target residue
+    - SASA at the terminus residue (in the bound complex context)
+    - Clash risk flag (True if terminus is close to target AND buried)
+
+    Parameters
+    ----------
+    feat : dict
+        Feature dictionary from the analysis pipeline. Expected keys:
+        ``center_coords``, ``design_mask``, ``asym_id``,
+        ``token_pad_mask``, ``token_resolved_mask``, ``coords``,
+        ``atom_to_token``, ``atom_resolved_mask``.
+    clash_distance_threshold : float
+        Distance in Å below which a terminus is considered close to the
+        target interface (default 8.0).
+    sasa_burial_threshold : float
+        SASA in Å² below which a terminus residue is considered buried
+        (default 5.0).
+
+    Returns
+    -------
+    dict
+        Metrics keyed as ``tag_{N,C}_terminus_to_interface_dist``,
+        ``tag_{N,C}_terminus_sasa``, ``tag_{N,C}_clash_risk``.
+    """
+    metrics: dict = {}
+
+    design_mask = feat["design_mask"].bool()
+    pad_mask = feat["token_pad_mask"].bool()
+    resolved_mask = feat["token_resolved_mask"].bool()
+
+    # Identify the design chain
+    design_token_indices = torch.where(design_mask & pad_mask)[0]
+    if len(design_token_indices) == 0:
+        return metrics
+
+    design_chain_id = feat["asym_id"][design_token_indices[0]].item()
+    chain_mask = feat["asym_id"] == design_chain_id
+    chain_indices = torch.where(chain_mask & pad_mask)[0]
+
+    if len(chain_indices) < 2:
+        return metrics
+
+    # Target resolved tokens (non-design-chain, resolved)
+    target_resolved = (~chain_mask) & pad_mask & resolved_mask
+    target_indices = torch.where(target_resolved)[0]
+    if len(target_indices) == 0:
+        return metrics
+
+    target_center_coords = feat["center_coords"][target_indices]
+
+    # Compute per-terminus metrics
+    terminus_map = {
+        "N": chain_indices[0],
+        "C": chain_indices[-1],
+    }
+
+    # Precompute atom-level masks for SASA
+    # Map from token index to atom indices via atom_to_token
+    atom_to_token = feat["atom_to_token"]  # (num_atoms, num_tokens)
+    atom_resolved = feat["atom_resolved_mask"].bool()
+
+    for term_label, term_token_idx in terminus_map.items():
+        term_center = feat["center_coords"][term_token_idx].unsqueeze(0)
+
+        # --- Distance to nearest target residue ---
+        dists = torch.cdist(term_center, target_center_coords).squeeze(0)
+        min_dist = dists.min().item()
+        metrics[f"tag_{term_label}_terminus_to_interface_dist"] = round(min_dist, 2)
+
+        # --- SASA at terminus residue ---
+        # Get atom mask for this token
+        term_atom_mask = atom_to_token[:, term_token_idx].bool() & atom_resolved
+        # Get atom mask for the full complex (design chain + target)
+        complex_mask = (
+            (atom_to_token.float() @ ((chain_mask | target_resolved) & pad_mask).unsqueeze(-1).float())
+            .bool()
+            .squeeze()
+            & atom_resolved
+        )
+
+        if term_atom_mask.sum() > 0 and complex_mask.sum() > 0:
+            # Use coordinates from feat for SASA computation via biotite
+            coords_3d = feat["coords"][0]  # (num_atoms, 3)
+            complex_coords = coords_3d[complex_mask].cpu().numpy()
+
+            # Build a minimal biotite AtomArray for SASA
+            complex_n = complex_coords.shape[0]
+            atoms_arr = structure.AtomArray(complex_n)
+            atoms_arr.coord = complex_coords
+            # Use uniform VDW radii (1.7 Å, typical carbon) for a fast estimate
+            radii = np.full(complex_n, 1.7, dtype=float)
+
+            area_bound = sasa(
+                atoms_arr,
+                probe_radius=1.4,
+                point_number=200,
+                vdw_radii=radii,
+            )
+
+            # Map terminus atom indices within the complex mask
+            complex_indices = torch.where(complex_mask)[0]
+            term_atom_global = torch.where(term_atom_mask)[0]
+            # Find positions of terminus atoms within the complex subset
+            term_in_complex = torch.isin(complex_indices, term_atom_global)
+            terminus_sasa = float(area_bound[term_in_complex.cpu().numpy()].sum())
+        else:
+            terminus_sasa = 0.0
+
+        metrics[f"tag_{term_label}_terminus_sasa"] = round(terminus_sasa, 2)
+
+        # --- Clash risk ---
+        is_close = min_dist < clash_distance_threshold
+        is_buried = terminus_sasa < sasa_burial_threshold
+        metrics[f"tag_{term_label}_clash_risk"] = bool(is_close and is_buried)
+
+    return metrics

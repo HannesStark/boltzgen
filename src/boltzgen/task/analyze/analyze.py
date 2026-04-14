@@ -32,6 +32,7 @@ from boltzgen.task.analyze.analyze_utils import (
     save_design_only_structure_to_pdb,
     vendi_scores,
     vendi_sequences,
+    compute_tag_tier1_metrics,
 )
 from matplotlib import pyplot as plt
 import matplotlib as mpl
@@ -105,6 +106,7 @@ class Analyze(Task):
         skip_specific_ids: List[str] = None,
         designfolding_metrics: bool = False,
         use_design_mask_for_target: bool = False,
+        tag_assessment: bool = False,
     ) -> None:
         """Initialize the task.
 
@@ -154,6 +156,7 @@ class Analyze(Task):
         self.slurm = slurm
         self.diversity_subset = diversity_subset
         self.use_design_mask_for_target = use_design_mask_for_target
+        self.tag_assessment = tag_assessment
 
         # Prevent each worker process from spawning its own multithreaded pools
         torch.set_num_threads(1)
@@ -840,6 +843,13 @@ class Analyze(Task):
                 metrics[f"bindsite_under_{threshold}rmsd"] = (
                     (min_bindsite_design_distances < threshold).float().mean().item()
                 )
+
+        # Expression tag clash risk assessment (Tier 1)
+        if self.tag_assessment:
+            try:
+                metrics.update(compute_tag_tier1_metrics(feat))
+            except Exception as e:
+                print(f"[Warning] tag assessment failed for {sample_id}: {e}")
 
         # Count free Cysteines
         if self.free_cys:
