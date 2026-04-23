@@ -2201,6 +2201,13 @@ class YamlDesignParser:
                 c_end = c_start + data_chain["res_num"].item()
 
                 # Set values
+                if "binding" in chain:
+                    binding = chain["binding"]
+                    if binding == "all":
+                        fbind_types[c_start:c_end] = const.binding_type_ids["BINDING"]
+                    else:
+                        indices = parse_range(binding, c_start, c_end)
+                        fbind_types[indices] = const.binding_type_ids["BINDING"]
                 if "not_binding" in chain:
                     not_binding = chain["not_binding"]
                     if not_binding == "all":
@@ -2210,13 +2217,6 @@ class YamlDesignParser:
                     else:
                         indices = parse_range(not_binding, c_start, c_end)
                         fbind_types[indices] = const.binding_type_ids["NOT_BINDING"]
-                elif "binding" in chain:
-                    binding = chain["binding"]
-                    if binding == "all":
-                        fbind_types[c_start:c_end] = const.binding_type_ids["BINDING"]
-                    else:
-                        indices = parse_range(binding, c_start, c_end)
-                        fbind_types[indices] = const.binding_type_ids["BINDING"]
 
         # Get file's secondary structure types called fss_types
         fss_type = np.ones(num_res) * const.ss_type_ids["UNSPECIFIED"]
