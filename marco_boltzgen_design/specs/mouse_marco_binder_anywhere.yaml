@@ -1,0 +1,12 @@
+# Protocol: protein-anything
+entities:
+  - protein:
+      id: B
+      sequence: 50..90
+
+  - file:
+      path: ../targets/mouse_Marco_input.cif
+      include:
+        - chain:
+            id: A # TODO: replace with target chain
+            # res_index: 300..420   # TODO optional: restrict to extracellular SRCR domain
