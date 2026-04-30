@@ -1,0 +1,11 @@
+# Protocol: peptide-anything
+entities:
+  - protein:
+      id: P
+      sequence: 12..20
+
+  - file:
+      path: ../targets/human_MARCO_input.cif
+      include:
+        - chain:
+            id: A
