@@ -1,0 +1,16 @@
+# Protocol: nanobody-anything
+# Designs VHH CDRs on provided nanobody scaffolds against human MARCO.
+entities:
+  - file:
+      path: ../targets/human_MARCO_input.cif
+      include:
+        - chain:
+            id: A # TODO replace target chain
+            # res_index: 300..420  # optional SRCR-focused residue range
+
+  - file:
+      path:
+        - ../../example/nanobody_scaffolds/7eow.yaml
+        - ../../example/nanobody_scaffolds/7xl0.yaml
+        - ../../example/nanobody_scaffolds/8coh.yaml
+        - ../../example/nanobody_scaffolds/8z8v.yaml
