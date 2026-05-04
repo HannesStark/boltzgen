@@ -1,0 +1,19 @@
+# Protocol: nanobody-anything
+# NOTE: residue IDs must use mmCIF label_seq_id numbering.
+entities:
+  - file:
+      path: ../targets/human_MARCO_input.cif
+      include:
+        - chain:
+            id: A # TODO
+      binding_types:
+        - chain:
+            id: A # TODO
+            binding: 350,352,356,390..394 # TODO replace human hotspot residues
+
+  - file:
+      path:
+        - ../../example/nanobody_scaffolds/7eow.yaml
+        - ../../example/nanobody_scaffolds/7xl0.yaml
+        - ../../example/nanobody_scaffolds/8coh.yaml
+        - ../../example/nanobody_scaffolds/8z8v.yaml

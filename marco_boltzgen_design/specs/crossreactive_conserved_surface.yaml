@@ -1,0 +1,28 @@
+# Protocol: protein-anything
+# Strategy: enforce binding to conserved, exposed residues for likely cross-reactivity.
+entities:
+  - protein:
+      id: B
+      sequence: 50..90
+
+  - file:
+      path: ../targets/human_MARCO_input.cif
+      include:
+        - chain:
+            id: A
+            # res_index: 300..420
+      binding_types:
+        - chain:
+            id: A
+            binding: 340,344,350,352,356,390..394 # TODO: conserved exposed human residues
+
+  - file:
+      path: ../targets/mouse_Marco_input.cif
+      include:
+        - chain:
+            id: A
+            # res_index: 300..420
+      binding_types:
+        - chain:
+            id: A
+            binding: 337,341,347,349,353,388..392 # TODO: mapped conserved mouse residues
