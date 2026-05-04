@@ -113,7 +113,6 @@ Expected outputs tracked per design (when present in metrics/contacts):
 4. Third round: cross-reactive conserved-surface template.
 5. For VHH, run the analogous nanobody-anything templates with scaffold inputs.
 6. If cross-reactive recovery is low, split into species-selective campaigns.
-5. If cross-reactive recovery is low, split into species-selective campaigns.
 
 ## 7) Manual fill-in checklist
 
@@ -123,7 +122,6 @@ Before serious runs, edit the spec files and complete:
 - [ ] hotspot residue numbers (label_seq_id)
 - [ ] conserved residue mapping (human↔mouse)
 - [ ] desired binder length range (default 50..90 aa for miniproteins)
-- [ ] desired binder length range (default 50..90 aa)
 - [ ] number of designs / budget
 - [ ] GPU/devices and SLURM resources
 - [ ] (optional) whether cysteine is allowed
@@ -135,3 +133,17 @@ Before serious runs, edit the spec files and complete:
 - `protein-anything` includes design-folding; `peptide-anything` has peptide-specific filtering behavior.
 - `nanobody-anything` supports VHH CDR design with nanobody scaffolds.
 - Binding-site residue indexing must use **mmCIF label_seq_id** indexing.
+
+## 8) Blocking-antibody strategy package (new)
+
+A full execution-oriented strategy document and data templates are included:
+- `MARCO_Marco_blocking_antibody_strategy.md`
+- `assays/*_template.csv`
+- `in_vivo/*_template.csv`
+- `analysis/developability_rank.py`
+
+Example developability triage command:
+```bash
+python analysis/developability_rank.py --input results/candidate_vhvl.csv --out results/antibody_developability_ranked.csv
+```
+Input CSV columns: `clone_id,vh,vl`.
