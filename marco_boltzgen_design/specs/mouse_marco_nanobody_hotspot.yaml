@@ -1,0 +1,19 @@
+# Protocol: nanobody-anything
+# NOTE: residue IDs must use mmCIF label_seq_id numbering.
+entities:
+  - file:
+      path: ../targets/mouse_Marco_input.cif
+      include:
+        - chain:
+            id: A # TODO
+      binding_types:
+        - chain:
+            id: A # TODO
+            binding: 347,349,353,388..392 # TODO replace mouse hotspot residues
+
+  - file:
+      path:
+        - ../../example/nanobody_scaffolds/7eow.yaml
+        - ../../example/nanobody_scaffolds/7xl0.yaml
+        - ../../example/nanobody_scaffolds/8coh.yaml
+        - ../../example/nanobody_scaffolds/8z8v.yaml
