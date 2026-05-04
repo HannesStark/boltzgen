@@ -113,6 +113,7 @@ Expected outputs tracked per design (when present in metrics/contacts):
 4. Third round: cross-reactive conserved-surface template.
 5. For VHH, run the analogous nanobody-anything templates with scaffold inputs.
 6. If cross-reactive recovery is low, split into species-selective campaigns.
+5. If cross-reactive recovery is low, split into species-selective campaigns.
 
 ## 7) Manual fill-in checklist
 
@@ -122,6 +123,7 @@ Before serious runs, edit the spec files and complete:
 - [ ] hotspot residue numbers (label_seq_id)
 - [ ] conserved residue mapping (human↔mouse)
 - [ ] desired binder length range (default 50..90 aa for miniproteins)
+- [ ] desired binder length range (default 50..90 aa)
 - [ ] number of designs / budget
 - [ ] GPU/devices and SLURM resources
 - [ ] (optional) whether cysteine is allowed
