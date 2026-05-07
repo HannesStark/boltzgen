@@ -147,3 +147,22 @@ Example developability triage command:
 python analysis/developability_rank.py --input results/candidate_vhvl.csv --out results/antibody_developability_ranked.csv
 ```
 Input CSV columns: `clone_id,vh,vl`.
+
+## 9) Hotspot discovery for MARCO/Marco SRCR domains
+
+If you already have antibodies but no solved complex, you can run a two-stage hotspot workflow:
+
+1. Generate 20-100 predicted complexes per species (BoltzGen/AF3/etc.).
+2. Aggregate recurrent interface contacts with:
+
+```bash
+python scripts/find_marco_srcr_hotspots.py \
+  --human-structure targets/human_marco_srcr.cif --human-chain A \
+  --mouse-structure targets/mouse_marco_srcr.cif --mouse-chain A \
+  --human-complexes runs/human_complexes/*.cif \
+  --mouse-complexes runs/mouse_complexes/*.cif \
+  --human-binder-chains H,L --mouse-binder-chains H,L \
+  --out results/marco_hotspots.csv
+```
+
+If no complexes are provided, the script falls back to an apo-only ranking based on a Cα-neighborhood exposure proxy plus human/mouse sequence conservation, useful for selecting initial residues for `hotspot_residues` in BoltzGen specs.
