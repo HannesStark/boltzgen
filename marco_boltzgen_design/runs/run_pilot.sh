@@ -13,4 +13,5 @@ boltzgen run "$SPEC" \
   --protocol "$PROTOCOL" \
   --num_designs "$NUM_DESIGNS" \
   --budget "$BUDGET" \
-  --devices "$DEVICES"
+  --devices "$DEVICES" \
+  --reuse

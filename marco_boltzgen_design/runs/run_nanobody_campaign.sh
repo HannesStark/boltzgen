@@ -17,4 +17,5 @@ boltzgen run "$SPEC" \
   --num_designs "$NUM_DESIGNS" \
   --budget "$BUDGET" \
   --devices "$DEVICES" \
+  --reuse \
   $EXTRA_ARGS

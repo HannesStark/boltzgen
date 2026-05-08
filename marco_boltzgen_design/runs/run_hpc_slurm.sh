@@ -17,9 +17,21 @@ BUDGET="${BUDGET:-100}"
 mkdir -p logs
 nvidia-smi || true
 
+CONDA_ENV_NAME="${CONDA_ENV_NAME:-}"
+if [[ -n "$CONDA_ENV_NAME" ]]; then
+  if command -v conda >/dev/null 2>&1; then
+    eval "$(conda shell.bash hook)"
+    conda activate "$CONDA_ENV_NAME"
+  else
+    echo "CONDA_ENV_NAME was set but 'conda' is not available on PATH" >&2
+    exit 1
+  fi
+fi
+
 boltzgen run "$SPEC" \
   --output "$OUTDIR" \
   --protocol "$PROTOCOL" \
   --num_designs "$NUM_DESIGNS" \
   --budget "$BUDGET" \
-  --devices 1
+  --devices 1 \
+  --reuse
