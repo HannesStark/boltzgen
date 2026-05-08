@@ -1,5 +1,23 @@
 # Protocol: nanobody-anything
 # Strategy: bias nanobody designs toward conserved/exposed MARCO residues across species.
+#
+# --- Diffusion parameters (tune via EXTRA_ARGS in run_nanobody_campaign.sh) ---
+# Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1–0.3, TEMPERATURE=0.9–1.1
+#   export EXTRA_ARGS='--diffusion.num_steps 200 --diffusion.guidance_scale 0.2'
+#
+# --- Scaffold chain notes ---
+# Each scaffold YAML already specifies its VHH chain via `include: - chain: id: B|A`.
+# All four scaffolds contain only a single VHH heavy chain (no light chain).
+#
+# --- Cys in CDRs ---
+# By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
+#   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
+#
+# --- Hotspot residues ---
+# Human conserved residues (SRCR domain):  340, 344, 350, 352, 356, 390..394
+# Mouse mapped residues (SRCR domain):     337, 341, 347, 349, 353, 388..392
+# Verify these against your target structures' label_seq_id numbering before running.
+
 entities:
   - file:
       path: ../targets/human_MARCO_input.cif

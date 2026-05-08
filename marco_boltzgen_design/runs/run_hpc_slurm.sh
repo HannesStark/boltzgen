@@ -14,6 +14,12 @@ OUTDIR="${3:-runs/slurm_${SLURM_JOB_ID:-manual}}"
 NUM_DESIGNS="${NUM_DESIGNS:-1000}"
 BUDGET="${BUDGET:-100}"
 
+if [[ ! -f "$SPEC" ]]; then
+  echo "ERROR: spec file not found: $SPEC" >&2
+  echo "Usage: sbatch $0 [SPEC.yaml] [protocol] [output_dir]" >&2
+  exit 1
+fi
+
 mkdir -p logs
 nvidia-smi || true
 

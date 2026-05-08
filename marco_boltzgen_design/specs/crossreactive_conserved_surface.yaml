@@ -1,5 +1,15 @@
 # Protocol: protein-anything
 # Strategy: enforce binding to conserved, exposed residues for likely cross-reactivity.
+#
+# --- Diffusion parameters (tune via EXTRA_ARGS in run_production.sh) ---
+# Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1–0.3, TEMPERATURE=0.9–1.1
+#   export EXTRA_ARGS='--diffusion.num_steps 200 --diffusion.guidance_scale 0.2'
+#
+# --- Hotspot residues ---
+# Human conserved residues (SRCR domain):  340, 344, 350, 352, 356, 390..394
+# Mouse mapped residues (SRCR domain):     337, 341, 347, 349, 353, 388..392
+# Verify these against your target structures' label_seq_id numbering before running.
+
 entities:
   - protein:
       id: B

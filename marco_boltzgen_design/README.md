@@ -89,6 +89,18 @@ BoltzGen already computes analysis/filtering metrics. Use `rank_designs.py` to a
 ```bash
 python scripts/rank_designs.py \
   --metrics runs/cross_prod/final_ranked_designs/all_designs_metrics.csv \
+  --human-conserved "A:340,A:344,A:350,A:352" \
+  --mouse-conserved "A:337,A:341,A:347,A:349" \
+  --out results/ranked_candidates.csv
+```
+
+The `--contacts` flag is **optional** — the script will auto-detect contact-residue columns if
+they are already present in the metrics CSV. If no contact data is available, the
+cross-reactivity score will be 0 and designs are ranked by developability + confidence only.
+To provide explicit contact data (e.g. from a separate analysis), use:
+```bash
+python scripts/rank_designs.py \
+  --metrics runs/cross_prod/final_ranked_designs/all_designs_metrics.csv \
   --contacts results/interface_contacts.csv \
   --human-conserved "A:340,A:344,A:350,A:352" \
   --mouse-conserved "A:337,A:341,A:347,A:349" \

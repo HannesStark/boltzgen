@@ -17,6 +17,41 @@ def infer_sequence(row):
     return ""
 
 
+def infer_contacted_residues(row, human_col, mouse_col):
+    """Try to extract contacted residue info from the metrics CSV directly.
+
+    Some BoltzGen outputs include per-design interface residue lists.
+    Fall back to empty strings if not present.
+    """
+    human_res = str(row.get(human_col, "") or "")
+    mouse_res = str(row.get(mouse_col, "") or "")
+    return human_res, mouse_res
+
+
+def parse_contacts_from_metrics(df):
+    """Detect whether the metrics CSV already contains contacted_residues columns.
+
+    Returns the df with contacted_residues_human/mouse columns added (as comma-
+    separated strings) if found, otherwise as empty columns.
+    """
+    human_col_candidates = ["contacted_residues_human", "contacted_human", "interface_residues_human"]
+    mouse_col_candidates = ["contacted_residues_mouse", "contacted_mouse", "interface_residues_mouse"]
+
+    h_col = next((c for c in human_col_candidates if c in df.columns), None)
+    m_col = next((c for c in mouse_col_candidates if c in df.columns), None)
+
+    df["contacted_residues_human"] = df[h_col].astype(str) if h_col else ""
+    df["contacted_residues_mouse"] = df[m_col].astype(str) if m_col else ""
+
+    has_contacts = bool(h_col and m_col)
+    if has_contacts:
+        print(f"  Detected contact columns in metrics: {h_col}, {m_col}")
+    else:
+        print("  No contact columns in metrics CSV — cross-reactivity scoring will be 0.")
+        print("  To enable it, either (a) pass --contacts CSV or (b) add contacted_residues_human/mouse columns to your metrics CSV.")
+    return df, has_contacts
+
+
 def has_nglyc(seq: str) -> bool:
     return bool(re.search(r"N[^P][ST]", seq))
 
@@ -54,12 +89,18 @@ def main():
     human_cons = parse_set(args.human_conserved)
     mouse_cons = parse_set(args.mouse_conserved)
 
+    # Try to load external contacts file (optional).
+    # If absent, try to detect contact columns directly in the metrics CSV.
     if args.contacts:
-      cdf = pd.read_csv(args.contacts)
-      df = df.merge(cdf, on="design_id", how="left")
+        cdf = pd.read_csv(args.contacts)
+        df = df.merge(cdf, on="design_id", how="left")
+        print(f"  Loaded {len(cdf)} contact records from --contacts file.")
+    else:
+        df, has_contacts = parse_contacts_from_metrics(df)
+
     for col in ["contacted_residues_human", "contacted_residues_mouse"]:
-      if col not in df:
-        df[col] = ""
+        if col not in df.columns:
+            df[col] = ""
 
     df["crossreactivity_score"] = df.apply(
       lambda r: (

@@ -7,6 +7,12 @@ NUM_DESIGNS="${NUM_DESIGNS:-200}"
 BUDGET="${BUDGET:-40}"
 DEVICES="${DEVICES:-1}"
 
+if [[ ! -f "$SPEC" ]]; then
+  echo "ERROR: spec file not found: $SPEC" >&2
+  echo "Usage: $0 [SPEC.yaml] [output_dir]" >&2
+  exit 1
+fi
+
 # By default nanobody-anything avoids Cys in inverse folding.
 # To permit Cys explicitly, pass e.g. EXTRA_ARGS='--inverse_fold_avoid ""'
 EXTRA_ARGS="${EXTRA_ARGS:-}"

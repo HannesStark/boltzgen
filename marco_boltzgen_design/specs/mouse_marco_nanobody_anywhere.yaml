@@ -1,5 +1,21 @@
 # Protocol: nanobody-anything
 # Designs VHH CDRs on provided nanobody scaffolds against mouse Marco.
+#
+# --- Diffusion parameters ---
+# Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1–0.3, TEMPERATURE=0.9–1.1
+#   export EXTRA_ARGS='--diffusion.num_steps 200 --diffusion.guidance_scale 0.2'
+#
+# --- Scaffold chain notes ---
+# Each scaffold YAML already specifies its VHH chain via `include: - chain: id: B|A`.
+# All four scaffolds contain only a single VHH heavy chain (no light chain).
+#
+# --- Cys in CDRs ---
+# By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
+#   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
+#
+# --- Optional: restrict to SRCR domain ---
+# Uncomment res_index to focus design on the SRCR domain (residue range 300..420).
+
 entities:
   - file:
       path: ../targets/mouse_Marco_input.cif
