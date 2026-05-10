@@ -6,9 +6,17 @@
 #   export EXTRA_ARGS='--diffusion.num_steps 200 --diffusion.guidance_scale 0.2'
 #
 # --- Hotspot residues ---
-# Human conserved residues (SRCR domain):  340, 344, 350, 352, 356, 390..394
-# Mouse mapped residues (SRCR domain):     337, 341, 347, 349, 353, 388..392
-# Verify these against your target structures' label_seq_id numbering before running.
+# Cross-reactive design targets conserved SRCR surface in BOTH human and mouse.
+#
+# Mouse MARCO SRCR (2OYA, 102 aa): label_seq 6,8,15,44,50,52,72,83
+#   Source: PDB 2OYA — verified from SO4 binding sites AC1/AC3.
+#
+# Human MARCO SRCR: full-sequence positions 425,432,461,467,469,489,500
+#   Source: Q9UEW3 alignment vs 2OYA, identity 70/102 = 68.6%.
+#   If your human structure uses mmCIF label_seq, subtract 415.
+#
+# Run find_marco_srcr_hotspots_v2.py with --human-structure to validate
+# the exact label_seq values for YOUR specific human MARCO structure.
 
 entities:
   - protein:
@@ -19,20 +27,18 @@ entities:
       path: ../targets/human_MARCO_input.cif
       include:
         - chain:
-            id: A
-            # res_index: 300..420
+            id: A # TODO: replace with actual chain ID from your human structure
       binding_types:
         - chain:
-            id: A
-            binding: 340,344,350,352,356,390..394 # TODO: conserved exposed human residues
+            id: A # TODO: replace with actual chain ID from your human structure
+            binding: 425,432,461,467,469,489,500
 
   - file:
-      path: ../targets/mouse_Marco_input.cif
+      path: ../targets/mouse_marco_srcr.cif
       include:
         - chain:
             id: A
-            # res_index: 300..420
       binding_types:
         - chain:
             id: A
-            binding: 337,341,347,349,353,388..392 # TODO: mapped conserved mouse residues
+            binding: 6,8,15,44,50,52,72,83

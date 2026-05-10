@@ -13,20 +13,25 @@
 # By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
 #   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
 #
-# --- Hotspot residues (mouse) ---
-# Replace with actual conserved residues from find_marco_srcr_hotspots.py output.
-# e.g. 347,349,353,388..392 for the SRCR binding surface.
+# --- Hotspot residues (mouse MARCO SRCR, 2OYA crystal structure) ---
+# Source: PDB 2OYA — cysteine-rich domain of mouse MARCO (dimeric SRCR, 102 aa).
+# Hotspots identified from SO4 (sulfate) binding sites AC1/AC2/AC3 in the crystal:
+#   AC3 site: label_seq 15, 44, 52 (ARG — core basic patch)
+#   AC1 site: label_seq 72 (ARG)
+#   Surface/conserved: label_seq 6, 8 (ARG), 50 (ARG), 83 (LYS)
+# Combined union: 6,8,15,44,50,52,72,83
+# These are verified ligand-binding residues, NOT just surface-exposure heuristics.
 
 entities:
   - file:
-      path: ../targets/mouse_Marco_input.cif
+      path: ../targets/mouse_marco_srcr.cif
       include:
         - chain:
-            id: A # TODO
+            id: A
       binding_types:
         - chain:
-            id: A # TODO
-            binding: 347,349,353,388..392 # TODO replace mouse hotspot residues
+            id: A
+            binding: 6,8,15,44,50,52,72,83
 
   - file:
       path:

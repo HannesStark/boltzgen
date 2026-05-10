@@ -1,17 +1,23 @@
-# Protocol: protein-anything
-# NOTE: Use label_seq_id residue numbering from mmCIF.
+# --- Hotspot residues (mouse MARCO SRCR, 2OYA crystal structure) ---
+# Source: PDB 2OYA — cysteine-rich domain of mouse MARCO (dimeric SRCR, 102 aa).
+# Hotspots identified from SO4 (sulfate) binding sites AC1/AC2/AC3 in the crystal:
+#   AC3 site: label_seq 15, 44, 52 (ARG — core basic patch)
+#   AC1 site: label_seq 72 (ARG)
+#   Surface/conserved: label_seq 6, 8 (ARG), 50 (ARG), 83 (LYS)
+# Combined union: 6,8,15,44,50,52,72,83
+# These are verified ligand-binding residues, NOT just surface-exposure heuristics.
+
 entities:
   - protein:
       id: B
       sequence: 50..90
 
   - file:
-      path: ../targets/mouse_Marco_input.cif
+      path: ../targets/mouse_marco_srcr.cif
       include:
         - chain:
-            id: A # TODO: replace
-            # res_index: 300..420
+            id: A
       binding_types:
         - chain:
-            id: A # TODO: replace
-            binding: 347,349,353,388..392 # TODO: replace hotspot residues
+            id: A
+            binding: 6,8,15,44,50,52,72,83
