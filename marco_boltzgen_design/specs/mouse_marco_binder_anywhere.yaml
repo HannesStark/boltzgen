@@ -5,8 +5,8 @@ entities:
       sequence: 50..90
 
   - file:
-      path: ../targets/mouse_Marco_input.cif
+      path: ../targets/mouse_marco_srcr.cif
       include:
         - chain:
             id: A # TODO: replace with target chain
-            # res_index: 300..420   # TODO optional: restrict to extracellular SRCR domain
+            # res_index: 1..102     # optional: restrict to SRCR residues (2OYA numbering)

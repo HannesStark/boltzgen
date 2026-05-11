@@ -5,7 +5,7 @@ entities:
       sequence: 12..20
 
   - file:
-      path: ../targets/mouse_Marco_input.cif
+      path: ../targets/mouse_marco_srcr.cif
       include:
         - chain:
             id: A
