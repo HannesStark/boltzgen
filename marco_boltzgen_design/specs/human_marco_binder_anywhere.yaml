@@ -9,4 +9,4 @@ entities:
       include:
         - chain:
             id: A # TODO: replace with target chain
-            # res_index: 300..420   # TODO optional: restrict to extracellular SRCR domain
+            # res_index: 418..520   # optional: restrict to human SRCR domain

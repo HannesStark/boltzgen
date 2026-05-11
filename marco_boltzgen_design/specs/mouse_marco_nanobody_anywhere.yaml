@@ -14,15 +14,15 @@
 #   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
 #
 # --- Optional: restrict to SRCR domain ---
-# Uncomment res_index to focus design on the SRCR domain (residue range 300..420).
+# Uncomment res_index to focus design on the SRCR domain (residue range 1..102).
 
 entities:
   - file:
-      path: ../targets/mouse_Marco_input.cif
+      path: ../targets/mouse_marco_srcr.cif
       include:
         - chain:
             id: A # TODO replace target chain
-            # res_index: 300..420  # optional SRCR-focused residue range
+            # res_index: 1..102    # optional SRCR-focused residue range
 
   - file:
       path:
