@@ -11,12 +11,13 @@
 # Mouse MARCO SRCR (2OYA, 102 aa): label_seq 6,8,15,44,50,52,72,83
 #   Source: PDB 2OYA — verified from SO4 binding sites AC1/AC3.
 #
-# Human MARCO SRCR: full-sequence positions 425,432,461,467,469,489,500
-#   Source: Q9UEW3 alignment vs 2OYA, identity 70/102 = 68.6%.
-#   If your human structure uses mmCIF label_seq, subtract 415.
+# Human MARCO SRCR (Q9UEW3 positions 418-520): label_seq 423,425,432,461,467,469,489,500
+#   Mapping confirmed: human SRCR = positions 418-520.
+#   Mouse 2OYA label_seq N -> human Q9UEW3 = N + 417.
+#   These form the same conserved ARG-rich basic patch as mouse.
 #
-# Run find_marco_srcr_hotspots_v2.py with --human-structure to validate
-# the exact label_seq values for YOUR specific human MARCO structure.
+# NOTE: In human_MARCO_input.cif, residues are numbered sequentially 1-520,
+# so label_seq_id equals Q9UEW3 full-sequence positions listed above.
 
 entities:
   - protein:
@@ -31,7 +32,7 @@ entities:
       binding_types:
         - chain:
             id: A # TODO: replace with actual chain ID from your human structure
-            binding: 425,432,461,467,469,489,500
+            binding: 423,425,432,461,467,469,489,500
 
   - file:
       path: ../targets/mouse_marco_srcr.cif
