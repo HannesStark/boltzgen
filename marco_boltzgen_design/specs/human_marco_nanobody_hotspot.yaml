@@ -13,31 +13,32 @@
 # By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
 #   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
 #
-# --- Hotspot residues (human MARCO) ---
-# Source: aligned from human MARCO (Q9UEW3, 520 aa full sequence)
-# against mouse 2OYA SRCR (PDB 2OYA, label_seq 1-102).
-# Human SRCR domain starts at position ~416 in the full sequence.
+# Verified hotspot residues (human MARCO SRCR, Q9UEW3 positions 418-520):
+# Source: Q9UEW3 alignment vs mouse 2OYA SRCR (68.6% identity = 70/102).
+# Mapping confirmed by user: human SRCR = positions 418-520.
+# Mouse 2OYA label_seq N -> human Q9UEW3 = N + 417 (offset confirmed).
 #
-# Verified ARG residues (from alignment, full-sequence positions in Q9UEW3):
-#   425=R, 432=R, 461=R, 467=K, 469=R, 489=R, 500=K
-# These map to mouse 2OYA label_seq 8, 15, 44, 50, 52, 72, 83 respectively.
-# Identity: 70/102 = 68.6%.
+# Human SRCR residues (Q9UEW3 full-sequence positions):
+#   423=R (← mouse 6), 425=R (← mouse 8), 432=R (← mouse 15),
+#   461=E (← mouse 44), 467=K (← mouse 50), 469=R (← mouse 52),
+#   489=R (← mouse 72), 500=K (← mouse 83)
+# These form the ARG-rich conserved basic patch — the functional ligand-binding surface.
 #
-# IMPORTANT: The values below are in Q9UEW3 full-sequence numbering (416-520).
-# If your human MARCO mmCIF uses mmCIF label_seq_id, convert by subtracting 415
-# (e.g., 425 full-seq → label_seq 10 within the SRCR domain).
-# Validate against YOUR structure using find_marco_srcr_hotspots_v2.py.
+# NOTE: The values below are Q9UEW3 full-sequence positions (1-520).
+# boltzgen uses mmCIF label_seq_id — since human_MARCO_input.cif uses
+# sequential 1-520 numbering, these values are label_seq_id = Q9UEW3 position.
+# Verify with: boltzgen check specs/human_marco_nanobody_hotspot.yaml
 
 entities:
   - file:
       path: ../targets/human_MARCO_input.cif
       include:
         - chain:
-            id: A # TODO: replace with actual chain ID from your structure
+            id: A
       binding_types:
         - chain:
-            id: A # TODO: replace with actual chain ID from your structure
-            binding: 425,432,461,467,469,489,500
+            id: A
+            binding: 423,425,432,461,467,469,489,500
 
   - file:
       path:

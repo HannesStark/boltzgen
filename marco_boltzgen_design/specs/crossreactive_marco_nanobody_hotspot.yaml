@@ -21,25 +21,24 @@
 #   These are the ARG-rich basic patch: the functional ligand-binding surface.
 #   NOTE: 2OYA uses 2OYA label_seq numbering (1-102), not full-receptor numbering.
 #
-# Human MARCO SRCR: full-sequence positions 425,432,461,467,469,489,500
-#   Source: Q9UEW3 alignment vs 2OYA, identity 70/102 = 68.6%.
-#   These correspond to human SRCR ARG residues that align with mouse hotspots.
-#   NOTE: These are Q9UEW3 full-sequence positions (416-520 = SRCR domain).
-#   If your human structure uses mmCIF label_seq, subtract 415.
-#
-# Run find_marco_srcr_hotspots_v2.py with --human-structure to validate
-# the exact label_seq values for YOUR specific human MARCO structure.
+# Human MARCO SRCR (Q9UEW3 positions 418-520):
+#   Mapping confirmed by user: human SRCR = positions 418-520.
+#   Mouse 2OYA label_seq N -> human Q9UEW3 = N + 417 (offset confirmed).
+#   Hotspots: 423=R (← mouse 6), 425=R (← mouse 8), 432=R (← mouse 15),
+#   461=E (← mouse 44), 467=K (← mouse 50), 469=R (← mouse 52),
+#   489=R (← mouse 72), 500=K (← mouse 83)
+# These form the conserved ARG-rich basic patch.
 
 entities:
   - file:
       path: ../targets/human_MARCO_input.cif
       include:
         - chain:
-            id: A # TODO: replace with actual chain ID from your human structure
+            id: A
       binding_types:
         - chain:
-            id: A # TODO: replace with actual chain ID from your human structure
-            binding: 425,432,461,467,469,489,500
+            id: A
+            binding: 423,425,432,461,467,469,489,500
 
   - file:
       path: ../targets/mouse_marco_srcr.cif
