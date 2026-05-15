@@ -5,14 +5,18 @@ set -euo pipefail
 # Usage:
 #   ./runs/test_human_marco_nanobody.sh
 # Optional overrides:
-#   NUM_DESIGNS=20 BUDGET=5 DEVICES=1 EXTRA_ARGS='--diffusion.num_steps 200 --diffusion.guidance_scale 0.2' ./runs/test_human_marco_nanobody.sh
+#   NUM_DESIGNS=20 BUDGET=5 DEVICES=1 ./runs/test_human_marco_nanobody.sh
 
 cd "$(dirname "$0")/.."
 
 export NUM_DESIGNS="${NUM_DESIGNS:-10}"
 export BUDGET="${BUDGET:-3}"
 export DEVICES="${DEVICES:-1}"
-export EXTRA_ARGS="${EXTRA_ARGS:---diffusion.num_steps 120 --diffusion.guidance_scale 0.2}"
+# NOTE: diffusion params (num_steps, guidance_scale) are SPEC-ONLY settings.
+# They CANNOT be passed as boltzgen CLI args. To override them, edit the
+# spec YAML directly or set diffusion values in the spec before running.
+# Any CLI EXTRA_ARGS must be valid boltzgen run flags (see: boltzgen run --help).
+export EXTRA_ARGS="${EXTRA_ARGS:-}"
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
 

@@ -3,7 +3,6 @@
 #
 # --- Diffusion parameters ---
 # Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1–0.3, TEMPERATURE=0.9–1.1
-#   export EXTRA_ARGS='--diffusion.num_steps 200 --diffusion.guidance_scale 0.2'
 #
 # --- Scaffold chain notes ---
 # Each scaffold YAML already specifies its VHH chain via `include: - chain: id: B|A`.

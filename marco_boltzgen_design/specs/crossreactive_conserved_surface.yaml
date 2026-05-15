@@ -3,7 +3,6 @@
 #
 # --- Diffusion parameters (tune via EXTRA_ARGS in run_production.sh) ---
 # Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1–0.3, TEMPERATURE=0.9–1.1
-#   export EXTRA_ARGS='--diffusion.num_steps 200 --diffusion.guidance_scale 0.2'
 #
 # --- Hotspot residues ---
 # Cross-reactive design targets conserved SRCR surface in BOTH human and mouse.
