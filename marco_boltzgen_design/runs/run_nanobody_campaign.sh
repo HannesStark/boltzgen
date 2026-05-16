@@ -13,13 +13,21 @@ if [[ ! -f "$SPEC" ]]; then
   exit 1
 fi
 
+# Determine protocol from spec comment (first match), defaulting to nanobody-anything.
+# The spec YAML file may contain a comment like "# Protocol: nanobody-hotspot"
+# which is more appropriate for hotspot-constrained designs than forcing
+# nanobody-anything, which ignores binding-type constraints.
+PROTOCOL_FROM_SPEC="$(grep -m1 -oP '(?<=Protocol:\s)\w+(?:-\w+)*' "$SPEC" 2>/dev/null || true)"
+PROTOCOL="${PROTOCOL:-$PROTOCOL_FROM_SPEC}"
+PROTOCOL="${PROTOCOL:-nanobody-anything}"
+
 # By default nanobody-anything avoids Cys in inverse folding.
 # To permit Cys explicitly, pass e.g. EXTRA_ARGS='--inverse_fold_avoid ""'
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 
 boltzgen run "$SPEC" \
   --output "$OUTDIR" \
-  --protocol nanobody-anything \
+  --protocol "$PROTOCOL" \
   --num_designs "$NUM_DESIGNS" \
   --budget "$BUDGET" \
   --devices "$DEVICES" \
