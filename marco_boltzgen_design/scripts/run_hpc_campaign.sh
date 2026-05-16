@@ -23,7 +23,7 @@
 #SBATCH --job-name=marco_vhh_design
 #SBATCH --gres=gpu:2               # 2x RTX 5000 on same node
 #SBATCH --cpus-per-task=16         # 8 CPU threads per GPU
-#SBATCH --mem=96G                  # shared memory pool for 2 GPUs (48G each)
+#SBATCH --mem=96G                  # node system RAM (GPU VRAM is 16 GB per card)
 #SBATCH --time=96:00:00            # RTX 5000 is slower than A100; give more time
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err

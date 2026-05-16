@@ -14,7 +14,7 @@
 | Architecture | Ada Lovelace (RTX 40-series) |
 | Memory | 16 GB GDDR6 per card |
 | SLURM gres | `gpu:2` (both cards on same node) |
-| Memory allocation | 96 GB total (shared, ~48 GB/GPU) |
+| Memory allocation | 96 GB total node system RAM; **16 GB per GPU (GDDR6)** — the actual VRAM constraint |
 | CPU threads | 16 (8 per GPU) |
 | Time limit recommended | 96 hours (RTX 5000 is slower than A100/H100) |
 
