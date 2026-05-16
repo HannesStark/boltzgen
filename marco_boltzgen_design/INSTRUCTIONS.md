@@ -1,8 +1,25 @@
 # MARCO Nanobody Design — Step-by-Step Instruction
 ## Goal: Design 10,000+ nanobodies against MARCO (mouse + human + cross-reactive)
 
-**Time estimate:** 2–4 weeks total (depending on HPC GPU queue time)
-**Hardware requirement:** HPC with ≥1 GPU (A100/H100) and ≥128 GB CPU memory per job
+**Hardware:** HPC with **2 × NVIDIA RTX 5000** (16 GB GDDR6 each, Ada Lovelace)
+**Throughput:** ~2,000–4,000 designs per 72-hour job (depending on BUDGET)
+**Time estimate:** 2–3 weeks total
+
+---
+
+## Hardware Notes — RTX 5000
+
+| Spec | Value |
+|------|-------|
+| Architecture | Ada Lovelace (RTX 40-series) |
+| Memory | 16 GB GDDR6 per card |
+| SLURM gres | `gpu:2` (both cards on same node) |
+| Memory allocation | 96 GB total (shared, ~48 GB/GPU) |
+| CPU threads | 16 (8 per GPU) |
+| Time limit recommended | 96 hours (RTX 5000 is slower than A100/H100) |
+
+> 💡 **Tip:** Run **2 specs in parallel** — each uses 1 GPU within the same 96h job,
+> doubling throughput per submitted job. Examples below show this pattern.
 
 ---
 
@@ -60,142 +77,49 @@ Configuration check PASSED
 
 ---
 
-## Stage 1 — HPC Design (Multiple SLURM Batches)
+## Stage 1 — HPC Design (SLURM, Dual RTX 5000)
 
-> ⚠️ **A single SLURM job cannot handle 10,000 designs at once.**
-> A 72-hour SLURM job can finish ~1,000–2,000 designs (depending on BUDGET).
-> **You must split into batches.** This is normal and expected.
+### Strategy: Run 2 specs in parallel, one per GPU
 
-### Strategy for 10,000+ nanobodies
-
-| Spec | Batch 1 | Batch 2 | Batch 3 | Total |
-|------|---------|---------|---------|-------|
-| Mouse | 2,000 | 2,000 | 1,000 | 5,000 |
-| Human | 2,000 | 2,000 | 1,000 | 5,000 |
-| Cross-reactive | 2,000 | 2,000 | 1,000 | 5,000 |
-| **Total** | 6,000 | 6,000 | 3,000 | **15,000** |
-
-**Each batch** = 1 SLURM submission = ~3–5 days on A100.
-
----
-
-### Batch 1 — Submit first round (all 3 specs simultaneously)
+With 2 RTX 5000s, submit **one SLURM job that runs 2 specs simultaneously** — each on its own GPU. This gives the best throughput: ~4,000 designs per job run.
 
 ```bash
 cd ~/boltzgen/marco_boltzgen_design
 
-# Mouse — Batch 1 (2,000 designs, BUDGET=150)
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
+# GPU 0 + GPU 1 — Mouse + Human in parallel
+(NUM_DESIGNS=2000 BUDGET=150 boltzgen run specs/mouse_marco_nanobody_hotspot.yaml \
+  --output runs/mouse_vhh_batch1 --protocol nanobody-anything \
+  --num_designs 2000 --budget 150 --devices 1 --reuse &
+
+ NUM_DESIGNS=2000 BUDGET=150 boltzgen run specs/human_marco_nanobody_hotspot.yaml \
+  --output runs/human_vhh_batch1 --protocol nanobody-anything \
+  --num_designs 2000 --budget 150 --devices 1 --reuse &
+
+ wait) 2>&1 | tee logs/batch1_mouse_human.log
+```
+
+But a cleaner approach is to use **two independent SLURM submissions in parallel**, so each GPU job is tracked separately and can be restarted independently:
+
+```bash
+# Submit TWO jobs simultaneously — each gets 1 GPU automatically
+# Job 1: Mouse on GPU 0
+NUM_DESIGNS=2000 BUDGET=150 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh \
   specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_vhh_batch1
 
-# Human — Batch 1 (2,000 designs, BUDGET=150)
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
+# Job 2: Human on GPU 1
+NUM_DESIGNS=2000 BUDGET=150 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh \
   specs/human_marco_nanobody_hotspot.yaml runs/human_vhh_batch1
 
-# Cross-reactive — Batch 1 (2,000 designs, BUDGET=150)
+# Job 3: Cross-reactive (will queue until a GPU slot frees up)
 NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
   specs/crossreactive_marco_nanobody_hotspot.yaml runs/cross_vhh_batch1
 ```
 
-You will see 3 SLURM job IDs:
-```
-Submitted batch job 12345
-Submitted batch job 12346
-Submitted batch job 12347
-```
-
-**Save these job IDs** — you'll need them to monitor and potentially cancel.
-
----
-
-### Monitoring SLURM jobs
-
-```bash
-# Check status of all your jobs
-squeue -u $USER
-
-# Example output:
-# JOBID   PARTITION  NAME              USER  STATUS  TIME
-# 12345   gpu        marco_vhh_design  jxshi RUNNING  2-13:45:32
-# 12346   gpu        marco_vhh_design  jxshi RUNNING  1-08:12:01
-# 12347   gpu        marco_vhh_design  jxshi RUNNING  0-15:03:44
-```
-
-**Watch a log in real time:**
-```bash
-tail -f logs/mouse_marco_nanobody_hotspot_12345.out
-```
-
-**What to look for — good signs:**
-```
-[1] design
-[2] inverse_folding
-[3] folding
-[4] analysis
-[5] filtering
-Configuration complete. Configs written to runs/mouse_vhh_batch1/config
-```
-
-**What to look for — problems:**
-```
-subprocess.CalledProcessError ... died with <Signals.SIGKILL: 9>
-```
-→ Job ran out of memory or time. Note the last completed design number, then resubmit with `--reuse`.
-
----
-
-### Batch 2 — Submit after Batch 1 finishes (~3–5 days later)
-
-After all 3 Batch 1 jobs finish (check with `squeue`), submit Batch 2:
-
-```bash
-cd ~/boltzgen/marco_boltzgen_design
-
-# Mouse — Batch 2 (2,000 more, resumes from where Batch 1 left off)
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_vhh_batch2
-
-# Human — Batch 2
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_hotspot.yaml runs/human_vhh_batch2
-
-# Cross-reactive — Batch 2
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_hotspot.yaml runs/cross_vhh_batch2
-```
-
-The `--reuse` flag ensures already-designed structures are skipped — no duplication.
-
----
-
-### Batch 3 — Final push (1,000 each, if you want 15,000 total)
-
-```bash
-# Mouse — Batch 3
-NUM_DESIGNS=1000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_vhh_batch3
-
-# Human — Batch 3
-NUM_DESIGNS=1000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_hotspot.yaml runs/human_vhh_batch3
-
-# Cross-reactive — Batch 3
-NUM_DESIGNS=1000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_hotspot.yaml runs/cross_vhh_batch3
-```
-
----
-
-### If a job hits SLURM time limit before finishing
-
-```bash
-# Check how far it got
-ls runs/mouse_vhh_batch1/intermediate_designs/ | wc -l
-
-# Resubmit the SAME command — --reuse skips completed designs
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_vhh_batch1
-```
+> **Note:** The main `run_hpc_campaign.sh` now requests `gpu:2` by default. To force 1-GPU mode
+> (when you want to run multiple jobs in parallel on the 2-node RTX 5000 system), use:
+> ```bash
+> GPUS=1 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh ...
+> ```
 
 ---
 
@@ -368,13 +292,14 @@ print(passing[['design_id','source_spec','plddt','crossreactivity_score','final_
 
 ---
 
-## Summary — Complete Command List
+## Summary — Complete Command List (Dual RTX 5000)
 
-Copy this checklist for your records:
+Copy this checklist. The strategy uses **waves** — each wave runs 2 specs in parallel
+(one per GPU), then cross-reactive fills the third slot when a GPU frees up.
 
 ```bash
 # ═══════════════════════════════════════════════════════════════
-# STAGE 0 — Validate
+# STAGE 0 — Validate (on HPC login node)
 # ═══════════════════════════════════════════════════════════════
 cd ~/boltzgen/marco_boltzgen_design
 boltzgen check specs/mouse_marco_nanobody_hotspot.yaml
@@ -382,32 +307,52 @@ boltzgen check specs/human_marco_nanobody_hotspot.yaml
 boltzgen check specs/crossreactive_marco_nanobody_hotspot.yaml
 
 # ═══════════════════════════════════════════════════════════════
-# STAGE 1 — HPC Batch 1 (submit all 3 at once, then wait)
+# STAGE 1 — Wave 1 (Mouse + Human first, in parallel on 2 GPUs)
+# Cross-reactive waits for a free GPU slot
 # ═══════════════════════════════════════════════════════════════
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh specs/mouse_marco_nanobody_hotspot.yaml      runs/mouse_vhh_batch1
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh specs/human_marco_nanobody_hotspot.yaml     runs/human_vhh_batch1
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh specs/crossreactive_marco_nanobody_hotspot.yaml runs/cross_vhh_batch1
+# GPU 0 + GPU 1 — Mouse + Human (2,000 each, simultaneously)
+NUM_DESIGNS=2000 BUDGET=150 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh \
+  specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_vhh_wave1
+NUM_DESIGNS=2000 BUDGET=150 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh \
+  specs/human_marco_nanobody_hotspot.yaml runs/human_vhh_wave1
 
-# Wait for all 3 to finish, then:
-# STAGE 1 — HPC Batch 2
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh specs/mouse_marco_nanobody_hotspot.yaml      runs/mouse_vhh_batch2
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh specs/human_marco_nanobody_hotspot.yaml     runs/human_vhh_batch2
-NUM_DESIGNS=2000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh specs/crossreactive_marco_nanobody_hotspot.yaml runs/cross_vhh_batch2
+# Cross-reactive (1 GPU, starts when a slot frees up)
+NUM_DESIGNS=2000 BUDGET=150 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_hotspot.yaml runs/cross_vhh_wave1
 
-# Wait, then:
-# STAGE 1 — HPC Batch 3
-NUM_DESIGNS=1000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh specs/mouse_marco_nanobody_hotspot.yaml      runs/mouse_vhh_batch3
-NUM_DESIGNS=1000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh specs/human_marco_nanobody_hotspot.yaml     runs/human_vhh_batch3
-NUM_DESIGNS=1000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh specs/crossreactive_marco_nanobody_hotspot.yaml runs/cross_vhh_batch3
+# Monitor:
+squeue -u $USER
+# When all 3 show CG (completing), Wave 1 is nearly done
 
 # ═══════════════════════════════════════════════════════════════
-# STAGE 2 — Collect (run locally after HPC jobs finish)
+# STAGE 1 — Wave 2 (after Wave 1 finishes)
+# ═══════════════════════════════════════════════════════════════
+NUM_DESIGNS=2000 BUDGET=150 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh \
+  specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_vhh_wave2
+NUM_DESIGNS=2000 BUDGET=150 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh \
+  specs/human_marco_nanobody_hotspot.yaml runs/human_vhh_wave2
+NUM_DESIGNS=2000 BUDGET=150 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_hotspot.yaml runs/cross_vhh_wave2
+
+# ═══════════════════════════════════════════════════════════════
+# STAGE 1 — Wave 3 (final push — 1,000 each for ~12,000 total)
+# ═══════════════════════════════════════════════════════════════
+NUM_DESIGNS=1000 BUDGET=150 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh \
+  specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_vhh_wave3
+NUM_DESIGNS=1000 BUDGET=150 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh \
+  specs/human_marco_nanobody_hotspot.yaml runs/human_vhh_wave3
+NUM_DESIGNS=1000 BUDGET=150 sbatch --gres=gpu:1 scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_hotspot.yaml runs/cross_vhh_wave3
+
+# ═══════════════════════════════════════════════════════════════
+# STAGE 2 — Collect (run locally after all HPC jobs finish)
 # ═══════════════════════════════════════════════════════════════
 rsync -avz hpc:boltzgen/marco_boltzgen_design/runs/ runs/
+
 ./scripts/collect_campaign.sh \
-  --runs runs/mouse_vhh_batch1 runs/mouse_vhh_batch2 runs/mouse_vhh_batch3 \
-          runs/human_vhh_batch1 runs/human_vhh_batch2 runs/human_vhh_batch3 \
-          runs/cross_vhh_batch1 runs/cross_vhh_batch2 runs/cross_vhh_batch3 \
+  --runs runs/mouse_vhh_wave1 runs/mouse_vhh_wave2 runs/mouse_vhh_wave3 \
+          runs/human_vhh_wave1 runs/human_vhh_wave2 runs/human_vhh_wave3 \
+          runs/cross_vhh_wave1 runs/cross_vhh_wave2 runs/cross_vhh_wave3 \
   --out results/all_metrics.csv
 
 # ═══════════════════════════════════════════════════════════════
@@ -433,28 +378,50 @@ python scripts/validate_designs.py \
 
 ---
 
-## Expected Timeline
+## Monitoring SLURM Jobs
 
-| Phase | Duration | What happens |
-|-------|----------|--------------|
-| Batch 1 (3 specs × 2,000) | 3–5 days | All 3 run simultaneously on 3 GPUs |
-| Batch 2 (3 specs × 2,000) | 3–5 days | After Batch 1 finishes |
-| Batch 3 (3 specs × 1,000) | 1–2 days | Final push |
-| Stages 2–4 (collect/rank/AF2) | 1–2 days | Local processing |
-| **Total** | **8–14 days** | **~15,000 designs** |
+```bash
+# Check all your jobs
+squeue -u $USER
+
+# Watch a log in real time
+tail -f logs/mouse_marco_nanobody_hotspot_<JOB_ID>.out
+
+# Check how many designs are done so far
+ls runs/mouse_vhh_wave1/intermediate_designs/*.cif 2>/dev/null | wc -l
+
+# If job timed out, check last completed design and resume
+ls runs/mouse_vhh_wave1/intermediate_designs/ | sort -V | tail -5
+
+# Cancel a job
+scancel <JOB_ID>
+```
 
 ---
 
-## Key Parameters Explained
+## Expected Timeline
 
-| Parameter | Default | Meaning | Higher = |
-|-----------|---------|---------|---------|
-| `NUM_DESIGNS` | 1000 | How many binder structures to generate per batch | More candidates |
-| `BUDGET` | 150 | Inference steps per design | Better quality, longer runtime |
+| Wave | Jobs | Designs | Duration (RTX 5000) |
+|------|------|---------|---------------------|
+| Wave 1 | Mouse + Human (parallel) + Cross (sequential) | 6,000 | 4–6 days |
+| Wave 2 | Same 3 specs | 6,000 | 4–6 days |
+| Wave 3 | Same 3 specs | 3,000 | 2–3 days |
+| Stages 2–4 (collect/rank/AF2) | — | — | 1–2 days |
+| **Total** | **9 SLURM jobs** | **~15,000** | **11–16 days** |
 
-**Recommended BUDGET values:**
-- `BUDGET=50` — Fast pilot (1–2 days for 2,000 designs)
-- `BUDGET=100` — Standard production
-- `BUDGET=200` — High quality (use if you have time)
+---
+
+## Key Parameters
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `NUM_DESIGNS` | 2000 | Designs per job per spec |
+| `BUDGET` | 150 | Inference steps per design (higher = better quality, slower) |
+| `GPUS` | 2 | GPUs per job (default 2 for RTX 5000 x2) |
+
+**Recommended BUDGET on RTX 5000:**
+- `BUDGET=100` — Fast production (~2,000 designs in ~60h)
+- `BUDGET=150` — Standard (recommended, ~2,000 designs in ~90h)
+- `BUDGET=200` — High quality (may exceed 96h time limit for 2,000 designs)
 
 **Trade-off:** BUDGET=200 takes ~2× longer than BUDGET=100 but yields marginally better designs. For hotspot-constrained designs with good scaffolds, BUDGET=100–150 is the sweet spot.
