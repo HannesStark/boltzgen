@@ -34,7 +34,10 @@ entities:
 
   - file:
       path:
+        # MARCO SRCR has a deep, narrow ligand-binding crevice.
+        # Best scaffolds for deep-pocket penetration:
+        #   7EOW (21aa CDR3) — vWF A1 binding, maximum reach. RECOMMENDED.
+        #   8COH (19aa CDR3) — high shape complementarity vs C4.
+        # Dropped: 7XL0 (14aa, moderate) and 8Z8V (11aa, too shallow for MARCO crevice).
         - ../../example/nanobody_scaffolds/7eow.yaml
-        - ../../example/nanobody_scaffolds/7xl0.yaml
         - ../../example/nanobody_scaffolds/8coh.yaml
-        - ../../example/nanobody_scaffolds/8z8v.yaml
