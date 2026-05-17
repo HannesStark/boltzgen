@@ -1,0 +1,54 @@
+# Protocol: nanobody-anything
+#
+# ==============================================================================
+# SET A: SO4 / LIGAND-BLOCKING POCKET  (human MARCO SRCR)
+# ==============================================================================
+#
+# --- Scientific rationale ---
+# The SO4²⁻ binding pocket in mouse 2OYA defines the canonical ligand-binding
+# crevice of the MARCO SRCR domain. Human MARCO (Q9UEW3) is 68.6% identical to
+# mouse 2OYA SRCR. The SO4 pocket residues are conserved between species.
+# Nanobodies targeting this site can block receptor-ligand interactions.
+#
+# Hotspot residues (Q9UEW3 full-sequence positions → subtract 417 for label_seq):
+#   Q429 (label_seq 12), Y431 (14), K438 (21),
+#   Q467 (50), K473 (56), Q475 (58),
+#   W495 (78), H506 (89)
+#
+# Q9UEW3 offset: human SRCR domain spans positions 418-520; offset = 417.
+# Verify with: boltzgen check specs/human_marco_nanobody_setA_so4_pocket.yaml
+#
+# --- Diffusion parameters ---
+# Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
+#
+# --- Scaffold chain notes ---
+# Each scaffold YAML already specifies its VHH chain via `include: - chain: id: B|A`.
+# All scaffolds contain only a single VHH heavy chain (no light chain).
+#
+# --- Cys in CDRs ---
+# By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
+#   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
+
+# NOTE: BoltzGen does not support `name` as a top-level key. Name is for human reference only.
+
+entities:
+  - file:
+      path: ../targets/human_MARCO_input.cif
+      include:
+        - chain:
+            id: A
+      binding_types:
+        - chain:
+            id: A
+            # SO4/ligand-binding pocket (Q9UEW3 positions → label_seq in human_MARCO_input.cif)
+            # Q429→12, Y431→14, K438→21, Q467→50, K473→56, Q475→58, W495→78, H506→89
+            binding: 12,14,21,50,56,58,78,89
+
+  - file:
+      path:
+        # MARCO SRCR has a deep, narrow ligand-binding crevice.
+        # Best scaffolds for deep-pocket penetration:
+        #   7EOW (21aa CDR3) — vWF A1 binding, maximum reach. RECOMMENDED.
+        #   8COH (19aa CDR3) — high shape complementarity vs C4.
+        - ../../example/nanobody_scaffolds/7eow.yaml
+        - ../../example/nanobody_scaffolds/8coh.yaml

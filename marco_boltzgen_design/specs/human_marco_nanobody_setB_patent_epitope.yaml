@@ -1,0 +1,67 @@
+# Protocol: nanobody-anything
+#
+# ==============================================================================
+# SET B: PATENT ANTIBODY EPITOPE  (human MARCO SRCR)
+# ==============================================================================
+#
+# --- Scientific rationale ---
+# US20240084000A1 / US12378311B2 discloses antibody binding epitopes in the
+# MARCO SRCR domain. Mutagenesis studies (PI-3010, PI-3035) identified residues
+# critical for antibody binding — these define a distinct functional epitope
+# SEPARATE from the SO4/ligand-binding pocket.
+#
+# Two overlapping epitope clusters from patent embodiments:
+#   hVar3 epitope:  Q450, Y452, K473  (PI-3010 loss-of-binding mutants)
+#   hVar5/6 epitope: E450, Q452, Q487, T499, H505, D507, S509, E511  (PI-3035)
+#   Overlap: Q452
+#
+# Union of patent epitope residues:
+#   Q450, Y452, K473, Q487, T499, H505, D507, S509, E511
+#
+# Priority subset (excluding lower-confidence):
+#   Y452, K473, Q487, T499, H505, D507, S509, E511
+#
+# Human/mouse cross-species note: antibody-sensitive overlap is at Q452/D452.
+# Q452 = mouse D452 in equivalent position. Cross-reactive designs should
+# include residue 452 but validate both human and mouse structures.
+#
+# --- Numbering note ---
+# Q9UEW3 full-sequence positions; subtract 417 to get label_seq.
+# Human SRCR = Q9UEW3 positions 418-520; offset = 417.
+# Verify with: boltzgen check specs/human_marco_nanobody_setB_patent_epitope.yaml
+#
+# --- Diffusion parameters ---
+# Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
+#
+# --- Scaffold chain notes ---
+# Each scaffold YAML already specifies its VHH chain via `include: - chain: id: B|A`.
+# All scaffolds contain only a single VHH heavy chain (no light chain).
+#
+# --- Cys in CDRs ---
+# By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
+#   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
+
+# NOTE: BoltzGen does not support `name` as a top-level key. Name is for human reference only.
+
+entities:
+  - file:
+      path: ../targets/human_MARCO_input.cif
+      include:
+        - chain:
+            id: A
+      binding_types:
+        - chain:
+            id: A
+            # Patent antibody epitope (Q9UEW3 positions → label_seq):
+            # Q450→33, Y452→35, K473→56, Q487→70,
+            # T499→82, H505→88, D507→90, S509→92, E511→94
+            # Priority subset (high-confidence): 35,56,70,82,88,90,92,94
+            # Full union (including Q450):        33,35,56,70,82,88,90,92,94
+            binding: 33,35,56,70,82,88,90,92,94
+
+  - file:
+      path:
+        # Patent epitope is on the SRCR surface, moderately exposed.
+        # Good CDR reach needed; 7EOW (21aa) and 8COH (19aa) are suitable.
+        - ../../example/nanobody_scaffolds/7eow.yaml
+        - ../../example/nanobody_scaffolds/8coh.yaml
