@@ -1,180 +1,217 @@
-# MARCO/Marco BoltzGen Binder Design Workflow
+# MARCO / Marco BoltzGen Nanobody Design
 
-This folder provides a practical workflow for **de novo binder design** against:
-- human MARCO
-- mouse Marco
-- conserved epitope cross-reactive designs
-- optional peptide binder designs
-- optional VHH nanobody binder designs
+De novo VHH nanobody design against the SRCR (Scavenger Receptor Cysteine-Rich) domain of human MARCO and mouse Marco.
+
+---
+
+## Project Structure
+
+```
+marco_boltzgen_design/
+├── targets/
+│   ├── human_MARCO_input.cif     # Human MARCO full sequence (Q9UEW3, 1-520)
+│   └── mouse_marco_srcr.cif     # Mouse Marco SRCR domain (2OYA, 102 aa)
+├── specs/
+│   ├── mouse_marco_nanobody_hotspot.yaml          # Original DSSP hotspots (SO4 site)
+│   ├── human_marco_nanobody_hotspot.yaml
+│   ├── crossreactive_marco_nanobody_hotspot.yaml
+│   ├── mouse_marco_nanobody_setA_so4_pocket.yaml  # ← SET A
+│   ├── human_marco_nanobody_setA_so4_pocket.yaml  # ← SET A
+│   ├── human_marco_nanobody_setB_patent_epitope.yaml  # ← SET B
+│   └── crossreactive_marco_nanobody_setC_hybrid.yaml # ← SET C
+├── scripts/
+│   ├── run_hpc_campaign.sh      # HPC SLURM launcher (primary production script)
+│   ├── collect_campaign.sh      # Merge metrics from multiple runs
+│   └── rank_and_validate.sh     # Rank + AF2 backfold validation
+├── runs/                        # Design output goes here
+├── results/                     # Ranked/validated results
+└── README.md
+```
+
+---
 
 ## 1) Setup
 
 ```bash
-cd /workspace/boltzgen/marco_boltzgen_design
-./scripts/setup_env.sh bg-marco
-conda activate bg-marco
+# Clone on HPC
+git clone https://github.com/jxshi/boltzgen.git
+cd boltzgen/marco_boltzgen_design
+
+# Activate environment
+conda activate boltzgen   # or: source ~/miniconda3/etc/profile.d/conda.sh && conda activate boltzgen
 ```
 
-## 2) Prepare target structures
+---
 
-Use your own PDB/mmCIF models (experimental or AlphaFold) and copy them into `targets/`:
+## 2) Choose an Interface Set
+
+Three distinct interface sets have been designed based on structural and patent data:
+
+### Set A — SO4 / Ligand-Blocking Pocket
+**Purpose:** Block MARCO ligand binding (LDL, oxLDL, bacteria, apoptotic cells).
+**Residues:** `Q429, Y431, K438, Q467, K473, Q475, W495, H506`
+
+| Spec | label_seq | Notes |
+|------|-----------|-------|
+| `specs/mouse_marco_nanobody_setA_so4_pocket.yaml` | 12,14,21,50,56,58,78,89 | Mouse SRCR (2OYA) |
+| `specs/human_marco_nanobody_setA_so4_pocket.yaml` | 12,14,21,50,56,58,78,89 | Human MARCO (Q9UEW3) |
+
+### Set B — Patent Antibody Epitope
+**Purpose:** Mimic functional antibodies PI-3010/PI-3035 (agonist, crosslinking, immune reprogramming).
+**Residues:** `Q450, Y452, K473, Q487, T499, H505, D507, S509, E511`
+
+| Spec | label_seq | Notes |
+|------|-----------|-------|
+| `specs/human_marco_nanobody_setB_patent_epitope.yaml` | 33,35,56,70,82,88,90,92,94 | Human only |
+
+> ⚠️ Human Q452 = mouse D452 (species差异). Set B is human-only.
+
+### Set C — Hybrid Interface (Cross-Reactive)
+**Purpose:** Maximize paratope size and stability — combines SO4 pocket + patent epitope.
+**Residues:** Union of Sets A and B.
+
+| Spec | Human label_seq | Mouse label_seq | Notes |
+|------|----------------|-----------------|-------|
+| `specs/crossreactive_marco_nanobody_setC_hybrid.yaml` | 35,50,56,58,70,78,82,88,89,90,92,94 | 12,14,21,50,56,58,78,89 | Cross-reactive |
+
+**Key conserved residue: 473** (K in both human and mouse) — appears in ALL three sets.
+
+---
+
+## 3) Validate Specs
+
+Always validate before submitting jobs:
 
 ```bash
-cd scripts
-./prepare_targets.sh /abs/path/human.cif A /abs/path/mouse.cif A
+boltzgen check specs/mouse_marco_nanobody_setA_so4_pocket.yaml
+boltzgen check specs/human_marco_nanobody_setA_so4_pocket.yaml
+boltzgen check specs/human_marco_nanobody_setB_patent_epitope.yaml
+boltzgen check specs/crossreactive_marco_nanobody_setC_hybrid.yaml
 ```
 
-Then validate YAML parsing and residue indexing (label_seq_id):
+All four should output `Total designed residues: 29–35` and write a `.cif` visualization file.
+
+---
+
+## 4) Run Nanobody Design
+
+### Local pilot (quick test, 10–50 designs)
+```bash
+NUM_DESIGNS=50 BUDGET=10 \
+  ./runs/run_nanobody_campaign.sh specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/setA_mouse_pilot
+```
+
+### HPC production (1000–3000 designs)
+
+**Single-GPU job:**
+```bash
+# Set A — mouse
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/setA_mouse &
+
+# Set A — human
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/human_marco_nanobody_setA_so4_pocket.yaml runs/setA_human &
+
+# Set B — patent epitope (human-only)
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/human_marco_nanobody_setB_patent_epitope.yaml runs/setB &
+
+# Set C — hybrid cross-reactive
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC &
+
+wait
+```
+
+**Dual-GPU (both RTX 5000s, parallel jobs):**
+```bash
+# Submit two single-GPU jobs simultaneously to fill both cards
+GPUS=1 NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/human_marco_nanobody_setA_so4_pocket.yaml runs/setA_human_gpu1 &
+
+GPUS=1 NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/setA_mouse_gpu2 &
+
+wait
+```
+
+> **RTX 5000 notes:** Each card has 16 GB VRAM. `GPUS=1` uses one card with `--devices 1`. Default `DEVICES=2` uses both cards in a single job. Recommended BUDGET: 150–200 for 2000 designs in 96h.
+
+---
+
+## 5) Collect Results
+
+After jobs complete:
 
 ```bash
-cd ..
-boltzgen check specs/human_marco_binder_anywhere.yaml
-boltzgen check specs/crossreactive_conserved_surface.yaml
-boltzgen check specs/human_marco_nanobody_anywhere.yaml
+# Merge metrics from all runs
+./scripts/collect_campaign.sh \
+  --runs runs/setA_mouse runs/setA_human runs/setB runs/setC \
+  --out results/all_metrics.csv
 ```
 
-## 3) YAML templates provided
+---
 
-Protein-anything templates:
-- `specs/human_marco_binder_anywhere.yaml`
-- `specs/mouse_marco_binder_anywhere.yaml`
-- `specs/human_marco_binder_hotspot.yaml`
-- `specs/mouse_marco_binder_hotspot.yaml`
-- `specs/crossreactive_conserved_surface.yaml`
-
-Peptide-anything templates:
-- `specs/human_marco_peptide_anywhere.yaml`
-- `specs/mouse_marco_peptide_anywhere.yaml`
-
-Nanobody-anything templates (VHH):
-- `specs/human_marco_nanobody_anywhere.yaml`
-- `specs/mouse_marco_nanobody_anywhere.yaml`
-- `specs/human_marco_nanobody_hotspot.yaml`
-- `specs/mouse_marco_nanobody_hotspot.yaml`
-- `specs/crossreactive_marco_nanobody_hotspot.yaml`
-
-> If you need explicit cyclic constraints, extend using `constraints: - bond:` in the same syntax as BoltzGen examples.
-
-## 4) Run strategy
-
-### Pilot (10–50 designs)
-```bash
-./runs/run_pilot.sh specs/human_marco_binder_anywhere.yaml protein-anything runs/human_pilot
-NUM_DESIGNS=20 BUDGET=5 ./runs/run_pilot.sh specs/crossreactive_conserved_surface.yaml protein-anything runs/cross_pilot
-```
-
-### Production (500–2000 designs)
-```bash
-NUM_DESIGNS=1500 BUDGET=200 ./runs/run_production.sh specs/crossreactive_conserved_surface.yaml protein-anything runs/cross_prod
-NUM_DESIGNS=1000 BUDGET=120 ./runs/run_production.sh specs/human_marco_binder_hotspot.yaml protein-anything runs/human_hotspot_prod
-```
-
-### Nanobody VHH campaign
-```bash
-NUM_DESIGNS=200 BUDGET=40 ./runs/run_nanobody_campaign.sh specs/human_marco_nanobody_anywhere.yaml runs/human_vhh_pilot
-NUM_DESIGNS=1200 BUDGET=180 ./runs/run_nanobody_campaign.sh specs/crossreactive_marco_nanobody_hotspot.yaml runs/cross_vhh_prod
-# If you intentionally want Cys in generated CDRs:
-# EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
-```
-
-### SLURM/HPC
-```bash
-sbatch runs/run_hpc_slurm.sh specs/crossreactive_conserved_surface.yaml protein-anything runs/slurm_cross
-```
-
-## 5) Post-processing and ranking
-
-BoltzGen already computes analysis/filtering metrics. Use `rank_designs.py` to apply MARCO-specific developability and cross-reactivity scoring:
+## 6) Rank and AF2 Validate
 
 ```bash
-python scripts/rank_designs.py \
-  --metrics runs/cross_prod/final_ranked_designs/all_designs_metrics.csv \
-  --human-conserved "A:340,A:344,A:350,A:352" \
-  --mouse-conserved "A:337,A:341,A:347,A:349" \
-  --out results/ranked_candidates.csv
+./scripts/rank_and_validate.sh \
+  --metrics results/all_metrics.csv \
+  --human-conserved "A:35,A:50,A:56,A:58,A:70,A:78,A:82,A:88,A:89,A:90,A:92,A:94" \
+  --mouse-conserved "A:12,A:14,A:21,A:50,A:56,A:58,A:78,A:89" \
+  --top_n 50
 ```
 
-The `--contacts` flag is **optional** — the script will auto-detect contact-residue columns if
-they are already present in the metrics CSV. If no contact data is available, the
-cross-reactivity score will be 0 and designs are ranked by developability + confidence only.
-To provide explicit contact data (e.g. from a separate analysis), use:
+For Set B (human-only), use:
 ```bash
-python scripts/rank_designs.py \
-  --metrics runs/cross_prod/final_ranked_designs/all_designs_metrics.csv \
-  --contacts results/interface_contacts.csv \
-  --human-conserved "A:340,A:344,A:350,A:352" \
-  --mouse-conserved "A:337,A:341,A:347,A:349" \
-  --out results/ranked_candidates.csv
+./scripts/rank_and_validate.sh \
+  --metrics results/all_metrics.csv \
+  --human-conserved "A:33,A:35,A:56,A:70,A:82,A:88,A:90,A:92,A:94" \
+  --top_n 50
 ```
 
-Expected outputs tracked per design (when present in metrics/contacts):
-- predicted complex structure path (BoltzGen refold CIF)
-- binder sequence, binder length
-- interface contacts
-- buried surface area (if provided by your contacts script)
-- confidence metrics (e.g., pLDDT/ipTM/ranking score if present)
-- contacted target residues
-- species cross-reactivity score
-- developability flags (Cys, charge, hydrophobicity, NXS/T motif, length)
+---
 
-## 6) Practical MARCO design logic
+## 7) Reference: Numbering
 
-1. Start with SRCR domain-focused designs (accessible extracellular surface).
-2. First round: unconstrained binder-anywhere on human and mouse separately.
-3. Second round: hotspot-constrained templates on exposed residues.
-4. Third round: cross-reactive conserved-surface template.
-5. For VHH, run the analogous nanobody-anything templates with scaffold inputs.
-6. If cross-reactive recovery is low, split into species-selective campaigns.
+| System | Offset | Notes |
+|--------|--------|-------|
+| Q9UEW3 (human) | −417 → label_seq | Full sequence positions 1-520 |
+| Mouse 2OYA | Direct label_seq 1-102 | Isolated SRCR domain |
 
-## 7) Manual fill-in checklist
+**Example:** Q9UEW3 position 452 → label_seq = 452 − 417 = **35**
 
-Before serious runs, edit the spec files and complete:
-- [ ] target PDB/mmCIF paths in `targets/`
-- [ ] chain IDs (all spec files currently placeholder `A`)
-- [ ] hotspot residue numbers (label_seq_id)
-- [ ] conserved residue mapping (human↔mouse)
-- [ ] desired binder length range (default 50..90 aa for miniproteins)
-- [ ] number of designs / budget
-- [ ] GPU/devices and SLURM resources
-- [ ] (optional) whether cysteine is allowed
+---
 
-## Notes from repository inspection
+## Appendix A: Original Specs (pre-June 2026)
 
-- CLI flow: `boltzgen run/check/configure/execute` supports staged workflows.
-- Use `--reuse` to resume interrupted runs.
-- `protein-anything` includes design-folding; `peptide-anything` has peptide-specific filtering behavior.
-- `nanobody-anything` supports VHH CDR design with nanobody scaffolds.
-- Binding-site residue indexing must use **mmCIF label_seq_id** indexing.
+The original DSSP-derived hotspot specs remain available:
+- `specs/mouse_marco_nanobody_hotspot.yaml` — label_seq 6,8,15,44,50,52,72,83
+- `specs/human_marco_nanobody_hotspot.yaml` — label_seq 6,8,15,44,50,52,72,83 (offset-applied)
+- `specs/crossreactive_marco_nanobody_hotspot.yaml` — cross-reactive union
 
-## 8) Blocking-antibody strategy package (new)
+---
 
-A full execution-oriented strategy document and data templates are included:
-- `MARCO_Marco_blocking_antibody_strategy.md`
-- `assays/*_template.csv`
-- `in_vivo/*_template.csv`
-- `analysis/developability_rank.py`
+## Appendix B: Allow Cysteine in CDRs
 
-Example developability triage command:
+By default, nanobody-anything avoids Cys. To permit Cys:
 ```bash
-python analysis/developability_rank.py --input results/candidate_vhvl.csv --out results/antibody_developability_ranked.csv
+EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh specs/... runs/...
 ```
-Input CSV columns: `clone_id,vh,vl`.
 
-## 9) Hotspot discovery for MARCO/Marco SRCR domains
+---
 
-If you already have antibodies but no solved complex, you can run a two-stage hotspot workflow:
+## Appendix C: Hotspot Discovery
 
-1. Generate 20-100 predicted complexes per species (BoltzGen/AF3/etc.).
-2. Aggregate recurrent interface contacts with:
+If you have antibody complex structures and want to discover new interfaces:
 
 ```bash
 python scripts/find_marco_srcr_hotspots.py \
-  --human-structure targets/human_marco_srcr.cif --human-chain A \
+  --human-structure targets/human_MARCO_input.cif --human-chain A \
   --mouse-structure targets/mouse_marco_srcr.cif --mouse-chain A \
   --human-complexes runs/human_complexes/*.cif \
   --mouse-complexes runs/mouse_complexes/*.cif \
   --human-binder-chains H,L --mouse-binder-chains H,L \
   --out results/marco_hotspots.csv
 ```
-
-If no complexes are provided, the script falls back to an apo-only ranking based on a Cα-neighborhood exposure proxy plus human/mouse sequence conservation, useful for selecting initial residues for `hotspot_residues` in BoltzGen specs.
