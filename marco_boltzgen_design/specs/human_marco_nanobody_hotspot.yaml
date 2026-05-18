@@ -2,7 +2,7 @@
 # NOTE: residue IDs must use mmCIF label_seq_id numbering.
 #
 # --- Diffusion parameters ---
-# Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1–0.3, TEMPERATURE=0.9–1.1
+# Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
 #
 # --- Scaffold chain notes ---
 # Each scaffold YAML already specifies its VHH chain via `include: - chain: id: B|A`.
@@ -12,20 +12,27 @@
 # By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
 #   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
 #
-# Verified hotspot residues (human MARCO SRCR, Q9UEW3 positions 418-520):
+# --- Hotspot residues (human MARCO SRCR, Q9UEW3 positions 418-520) ---
 # Source: Q9UEW3 alignment vs mouse 2OYA SRCR (68.6% identity = 70/102).
-# Mapping confirmed by user: human SRCR = positions 418-520.
-# Mouse 2OYA label_seq N -> human Q9UEW3 = N + 417 (offset confirmed).
+# Mapping: human Q9UEW3 = 2OYA label_seq + 417 (offset confirmed).
+# Human SRCR domain = Q9UEW3 positions 418-520.
 #
-# Human SRCR residues (Q9UEW3 full-sequence positions):
-#   423=R (← mouse 6), 425=R (← mouse 8), 432=R (← mouse 15),
-#   461=E (← mouse 44), 467=K (← mouse 50), 469=R (← mouse 52),
-#   489=R (← mouse 72), 500=K (← mouse 83)
-# These form the ARG-rich conserved basic patch — the functional ligand-binding surface.
+# The mmCIF file human_MARCO_input.cif uses sequential 1-520 numbering where
+# seqid = Q9UEW3 position. So label_seq = Q9UEW3 position for this file.
 #
-# NOTE: The values below are Q9UEW3 full-sequence positions (1-520).
-# boltzgen uses mmCIF label_seq_id — since human_MARCO_input.cif uses
-# sequential 1-520 numbering, these values are label_seq_id = Q9UEW3 position.
+# Verified positions (Q9UEW3 numbering, aligned from 2OYA DSSP analysis):
+#   Q9UEW3 423 = ILE  (← mouse 2OYA  6 = VAL, species-diff)
+#   Q9UEW3 425 = LEU  (← mouse 2OYA  8 = ILE, species-diff)
+#   Q9UEW3 432 = GLU  (← mouse 2OYA 15 = GLY, species-diff)
+#   Q9UEW3 461 = PHE  (← mouse 2OYA 44 = MET, species-diff)
+#   Q9UEW3 467 = VAL  (← mouse 2OYA 50 = GLY, species-diff)
+#   Q9UEW3 469 = TYR  (← mouse 2OYA 52 = ALA, species-diff)
+#   Q9UEW3 489 = ALA  (← mouse 2OYA 72 = GLY, species-diff)
+#   Q9UEW3 500 = ASN  (← mouse 2OYA 83 = LYS, species-diff)
+#
+# These form the conserved basic/polar patch — the functional ligand-binding surface.
+# Species differences from mouse are noted above.
+#
 # Verify with: boltzgen check specs/human_marco_nanobody_hotspot.yaml
 
 entities:
@@ -37,6 +44,9 @@ entities:
       binding_types:
         - chain:
             id: A
+            # Q9UEW3 positions (seqid in human_MARCO_input.cif):
+            # 423(ILE), 425(LEU), 432(GLU), 461(PHE),
+            # 467(VAL), 469(TYR), 489(ALA), 500(ASN)
             binding: 423,425,432,461,467,469,489,500
 
   - file:

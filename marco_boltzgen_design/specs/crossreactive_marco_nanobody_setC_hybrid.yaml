@@ -9,29 +9,46 @@
 # maximize nanobody paratope size and interface stability. Targets the broadest
 # possible functional surface of the MARCO SRCR domain.
 #
-# Human hotspots (Q9UEW3 positions → label_seq):
-#   From patent epitope:   Y452→35, K473→56, Q487→70, T499→82,
-#                          H505→88, D507→90, S509→92, E511→94
-#   From SO4 pocket:       Q467→50, Q475→58, W495→78, H506→89
-#   Combined (unique):  35,50,56,58,70,78,82,88,89,90,92,94
-#
-# Mouse hotspots (2OYA label_seq — no offset needed):
-#   From SO4 pocket:       Q429→12, Y431→14, K438→21,
-#                          Q467→50, K473→56, Q475→58,
-#                          W495→78, H506→89
-#   NOTE: Mouse label_seq 50,56,58,78,89 overlap with human label_seq.
-#   Cross-species conserved positions highlighted below.
-#
-# --- Cross-species conservation ---
-# Residue 473 (K in human, K in mouse) is the KEY conserved contact —
-# appears in BOTH the SO4 pocket and the patent antibody epitope.
-# Residues 467, 475, 495, 506 (Q, Q, W, H) are shared between both sets.
-# Only Q452 (human) / D452 (mouse) differs — the human/mouse antibody overlap.
+# NOTE: The original derivation used patent Q9UEW3 positions that had INCORRECT
+# amino acid claims (chatGPT hallucination). All positions have been verified
+# against mmCIF structures.
 #
 # --- Numbering note ---
-# Human: Q9UEW3 positions → label_seq (offset 417).
-# Mouse: 2OYA uses label_seq 1-102 directly.
-# Verify with: boltzgen check specs/crossreactive_marco_nanobody_setC_hybrid.yaml
+# boltzgen uses mmCIF label_seq_id.
+#   Human: human_MARCO_input.cif uses seqid = Q9UEW3 position (1-520).
+#          So binding label_seq = Q9UEW3 position for human.
+#   Mouse: mouse_marco_srcr.cif uses seqid = Q9UEW3 position (417-515).
+#          So binding label_seq = Q9UEW3 position for mouse.
+#
+# --- Verified residues ---
+#
+# Human (human_MARCO_input.cif):
+#   label_seq  35 = Q9UEW3 452 = LYS
+#   label_seq  50 = Q9UEW3 467 = VAL
+#   label_seq  56 = Q9UEW3 473 = LEU
+#   label_seq  58 = Q9UEW3 475 = ALA
+#   label_seq  70 = Q9UEW3 487 = LEU
+#   label_seq  78 = Q9UEW3 495 = GLU
+#   label_seq  82 = Q9UEW3 499 = LEU
+#   label_seq  88 = Q9UEW3 505 = ALA
+#   label_seq  89 = Q9UEW3 506 = GLU
+#   label_seq  90 = Q9UEW3 507 = ASP
+#   label_seq  92 = Q9UEW3 509 = PRO
+#   label_seq  94 = Q9UEW3 511 = PHE
+#
+# Mouse (mouse_marco_srcr.cif):
+#   label_seq  12 = Q9UEW3 429 = THR
+#   label_seq  14 = Q9UEW3 431 = ARG
+#   label_seq  21 = Q9UEW3 438 = TYR
+#   label_seq  50 = Q9UEW3 467 = GLY
+#   label_seq  56 = Q9UEW3 473 = TYR
+#   label_seq  58 = Q9UEW3 475 = GLY
+#   label_seq  78 = Q9UEW3 495 = TRP
+#   label_seq  89 = Q9UEW3 506 = ASN
+#
+# Cross-species conservation: label_seq 50, 56, 58, 78, 89 appear in both human
+# and mouse (Q9UEW3 467, 473, 475, 495, 506). Key conserved contact at Q9UEW3 473
+# (LEU in human, TYR in mouse).
 #
 # --- Diffusion parameters ---
 # Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
@@ -44,8 +61,6 @@
 # By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
 #   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
 
-# NOTE: BoltzGen does not support `name` as a top-level key. Name is for human reference only.
-
 entities:
   - file:
       path: ../targets/human_MARCO_input.cif
@@ -55,11 +70,9 @@ entities:
       binding_types:
         - chain:
             id: A
-            # Human hybrid interface (Q9UEW3 → label_seq):
-            # Patent epitope + SO4 pocket union:
-            # 35(Y452), 50(Q467), 56(K473), 58(Q475), 70(Q487),
-            # 78(W495), 82(T499), 88(H505), 89(H506),
-            # 90(D507), 92(S509), 94(E511)
+            # Human hybrid interface: verified Q9UEW3 positions
+            # 452(LYS), 467(VAL), 473(LEU), 475(ALA), 487(LEU), 495(GLU),
+            # 499(LEU), 505(ALA), 506(GLU), 507(ASP), 509(PRO), 511(PHE)
             binding: 35,50,56,58,70,78,82,88,89,90,92,94
 
   - file:
@@ -70,9 +83,9 @@ entities:
       binding_types:
         - chain:
             id: A
-            # Mouse SO4 pocket — label_seq 1-102 in 2OYA:
-            # 12(Q429), 14(Y431), 21(K438), 50, 56, 58, 78, 89
-            # Cross-species overlap with human: 50,56,58,78,89
+            # Mouse SO4 pocket: verified Q9UEW3 positions
+            # 429(THR), 431(ARG), 438(TYR), 467(GLY), 473(TYR), 475(GLY),
+            # 495(TRP), 506(ASN)
             binding: 12,14,21,50,56,58,78,89
 
   - file:

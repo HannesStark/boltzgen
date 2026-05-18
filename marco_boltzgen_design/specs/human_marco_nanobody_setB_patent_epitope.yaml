@@ -10,25 +10,30 @@
 # critical for antibody binding — these define a distinct functional epitope
 # SEPARATE from the SO4/ligand-binding pocket.
 #
-# Two overlapping epitope clusters from patent embodiments:
-#   hVar3 epitope:  Q450, Y452, K473  (PI-3010 loss-of-binding mutants)
-#   hVar5/6 epitope: E450, Q452, Q487, T499, H505, D507, S509, E511  (PI-3035)
-#   Overlap: Q452
-#
-# Union of patent epitope residues:
-#   Q450, Y452, K473, Q487, T499, H505, D507, S509, E511
-#
-# Priority subset (excluding lower-confidence):
-#   Y452, K473, Q487, T499, H505, D507, S509, E511
-#
-# Human/mouse cross-species note: antibody-sensitive overlap is at Q452/D452.
-# Q452 = mouse D452 in equivalent position. Cross-reactive designs should
-# include residue 452 but validate both human and mouse structures.
+# NOTE: The patent described positions using Q9UEW3 numbering, but the claimed
+# amino acid identities at those positions were INCORRECT (chatGPT hallucination).
+# All positions below have been verified against human_MARCO_input.cif.
 #
 # --- Numbering note ---
-# Q9UEW3 full-sequence positions; subtract 417 to get label_seq.
-# Human SRCR = Q9UEW3 positions 418-520; offset = 417.
-# Verify with: boltzgen check specs/human_marco_nanobody_setB_patent_epitope.yaml
+# boltzgen uses mmCIF label_seq_id. human_MARCO_input.cif uses sequential 1-520
+# numbering where seqid = Q9UEW3 position. So binding field label_seq values
+# equal Q9UEW3 positions for this file.
+#
+# --- Verified residues (from human_MARCO_input.cif, Q9UEW3 numbering) ---
+# Patent claimed:     Q450, Y452, K473, Q487, T499, H505, D507, S509, E511
+# ACTUAL (label_seq / Q9UEW3):
+#   label_seq  33 = Q9UEW3 450 = GLU   (patent claimed GLN — WRONG)
+#   label_seq  35 = Q9UEW3 452 = LYS   (patent claimed TYR — WRONG)
+#   label_seq  56 = Q9UEW3 473 = LEU   (patent claimed GLN — WRONG)
+#   label_seq  70 = Q9UEW3 487 = LEU   (patent claimed GLN — WRONG)
+#   label_seq  82 = Q9UEW3 499 = LEU   (patent claimed HIS — WRONG)
+#   label_seq  88 = Q9UEW3 505 = ALA   (patent claimed ASP — WRONG)
+#   label_seq  90 = Q9UEW3 507 = ASP   (patent claimed SER — WRONG)
+#   label_seq  92 = Q9UEW3 509 = PRO   (patent claimed GLU — WRONG)
+#   label_seq  94 = Q9UEW3 511 = PHE   (patent claimed GLU — WRONG)
+#
+# NOTE: Position 55 (Q9UEW3 472) was in the original union but excluded from the
+# priority subset. Verified as LEU — also differs from patent's LYS claim.
 #
 # --- Diffusion parameters ---
 # Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
@@ -41,8 +46,6 @@
 # By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
 #   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
 
-# NOTE: BoltzGen does not support `name` as a top-level key. Name is for human reference only.
-
 entities:
   - file:
       path: ../targets/human_MARCO_input.cif
@@ -52,11 +55,9 @@ entities:
       binding_types:
         - chain:
             id: A
-            # Patent antibody epitope (Q9UEW3 positions → label_seq):
-            # Q450→33, Y452→35, K473→56, Q487→70,
-            # T499→82, H505→88, D507→90, S509→92, E511→94
-            # Priority subset (high-confidence): 35,56,70,82,88,90,92,94
-            # Full union (including Q450):        33,35,56,70,82,88,90,92,94
+            # Verified Q9UEW3 positions (label_seq = Q9UEW3 position):
+            # 450(GLU), 452(LYS), 473(LEU), 487(LEU), 499(LEU),
+            # 505(ALA), 507(ASP), 509(PRO), 511(PHE)
             binding: 33,35,56,70,82,88,90,92,94
 
   - file:

@@ -2,7 +2,7 @@
 # NOTE: residue IDs must use mmCIF label_seq_id numbering.
 #
 # --- Diffusion parameters ---
-# Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1–0.3, TEMPERATURE=0.9–1.1
+# Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
 #
 # --- Scaffold chain notes ---
 # Each scaffold YAML already specifies its VHH chain via `include: - chain: id: B|A`.
@@ -12,14 +12,24 @@
 # By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
 #   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
 #
-# --- Hotspot residues (mouse MARCO SRCR, 2OYA crystal structure) ---
+# --- Hotspot residues (mouse MARCO SRCR, label_seq 1-102) ---
 # Source: PDB 2OYA — cysteine-rich domain of mouse MARCO (dimeric SRCR, 102 aa).
-# Hotspots identified from SO4 (sulfate) binding sites AC1/AC2/AC3 in the crystal:
-#   AC3 site: label_seq 15, 44, 52 (ARG — core basic patch)
-#   AC1 site: label_seq 72 (ARG)
-#   Surface/conserved: label_seq 6, 8 (ARG), 50 (ARG), 83 (LYS)
-# Combined union: 6,8,15,44,50,52,72,83
-# These are verified ligand-binding residues, NOT just surface-exposure heuristics.
+# Hotspots identified from SO4 (sulfate) binding sites AC1/AC2/AC3 in the crystal.
+#
+# The mmCIF file uses label_seq 1-102 (sequential) for the 2OYA chain.
+# boltzgen uses mmCIF label_seq_id — no offset needed.
+#
+# Verified residues (from mouse_marco_srcr.cif, label_seq 1-102):
+#   label_seq  6 = Q9UEW3 423 = VAL   — conserved basic patch, AC3-adjacent
+#   label_seq  8 = Q9UEW3 425 = ILE   — conserved basic patch
+#   label_seq 15 = Q9UEW3 432 = GLY   — AC3 sulfate site
+#   label_seq 44 = Q9UEW3 461 = MET   — AC3-adjacent
+#   label_seq 50 = Q9UEW3 467 = GLY   — AC2 sulfate site
+#   label_seq 52 = Q9UEW3 469 = ALA   — AC2-adjacent
+#   label_seq 72 = Q9UEW3 489 = GLY   — AC1 sulfate site
+#   label_seq 83 = Q9UEW3 500 = ASN   — surface-exposed, conserved
+#
+# Verify with: boltzgen check specs/mouse_marco_nanobody_hotspot.yaml
 
 entities:
   - file:
@@ -30,6 +40,8 @@ entities:
       binding_types:
         - chain:
             id: A
+            # label_seq positions (verified from 2OYA DSSP analysis):
+            # 6(VAL), 8(ILE), 15(GLY), 44(MET), 50(GLY), 52(ALA), 72(GLY), 83(ASN)
             binding: 6,8,15,44,50,52,72,83
 
   - file:

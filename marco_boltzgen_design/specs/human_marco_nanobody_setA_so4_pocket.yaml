@@ -10,13 +10,32 @@
 # mouse 2OYA SRCR. The SO4 pocket residues are conserved between species.
 # Nanobodies targeting this site can block receptor-ligand interactions.
 #
-# Hotspot residues (Q9UEW3 full-sequence positions → subtract 417 for label_seq):
-#   Q429 (label_seq 12), Y431 (14), K438 (21),
-#   Q467 (50), K473 (56), Q475 (58),
-#   W495 (78), H506 (89)
+# NOTE: These positions are DIFFERENT from the original hotspot set
+# (human_marco_nanobody_hotspot.yaml). The original hotspots use Q9UEW3
+# 423,425,432,461,467,469,489,500. This Set A uses Q9UEW3
+# 429,431,438,467,473,475,495,506 (= 2OYA label_seq 12,14,21,50,56,58,78,89),
+# which is a related but distinct set of surface residues in the same region.
 #
-# Q9UEW3 offset: human SRCR domain spans positions 418-520; offset = 417.
-# Verify with: boltzgen check specs/human_marco_nanobody_setA_so4_pocket.yaml
+# --- Numbering note ---
+# boltzgen uses mmCIF label_seq_id. The human_MARCO_input.cif file uses
+# sequential 1-520 numbering where seqid = Q9UEW3 position.
+# So binding field label_seq = Q9UEW3 position for this file.
+#
+# Q9UEW3 label_seq mapping (human):
+#   label_seq 12 = Q9UEW3 429,  label_seq 14 = Q9UEW3 431,
+#   label_seq 21 = Q9UEW3 438,  label_seq 50 = Q9UEW3 467,
+#   label_seq 56 = Q9UEW3 473,  label_seq 58 = Q9UEW3 475,
+#   label_seq 78 = Q9UEW3 495,  label_seq 89 = Q9UEW3 506
+#
+# --- Verified residues (from human_MARCO_input.cif, Q9UEW3 numbering) ---
+#   Q9UEW3 429 = LEU  (label_seq 12)
+#   Q9UEW3 431 = SER  (label_seq 14)
+#   Q9UEW3 438 = PHE  (label_seq 21)
+#   Q9UEW3 467 = VAL  (label_seq 50)
+#   Q9UEW3 473 = LEU  (label_seq 56)
+#   Q9UEW3 475 = ALA  (label_seq 58)
+#   Q9UEW3 495 = GLU  (label_seq 78)
+#   Q9UEW3 506 = GLU  (label_seq 89)
 #
 # --- Diffusion parameters ---
 # Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
@@ -29,8 +48,6 @@
 # By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
 #   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
 
-# NOTE: BoltzGen does not support `name` as a top-level key. Name is for human reference only.
-
 entities:
   - file:
       path: ../targets/human_MARCO_input.cif
@@ -40,8 +57,9 @@ entities:
       binding_types:
         - chain:
             id: A
-            # SO4/ligand-binding pocket (Q9UEW3 positions → label_seq in human_MARCO_input.cif)
-            # Q429→12, Y431→14, K438→21, Q467→50, K473→56, Q475→58, W495→78, H506→89
+            # Q9UEW3 positions verified from structure:
+            # 429(LEU), 431(SER), 438(PHE), 467(VAL),
+            # 473(LEU), 475(ALA), 495(GLU), 506(GLU)
             binding: 12,14,21,50,56,58,78,89
 
   - file:

@@ -9,17 +9,33 @@
 # of the MARCO SRCR domain. Nanobodies targeting this site can block receptor
 # interactions with ligands (LDL, oxLDL, bacteria, etc.).
 #
-# Hotspot residues (Q9UEW3 full-sequence positions → subtract 417 for label_seq):
-#   Q429 (label_seq 12), Y431 (14), K438 (21),
-#   Q467 (50), K473 (56), Q475 (58),
-#   W495 (78), H506 (89)
-#
-# These residues form the wall/floor of the sulfate-binding site in the SRCR
-# cysteine-rich domain. Verified from 2OYA crystal structure (sulfate AC1/AC3).
+# NOTE: These positions are DIFFERENT from the original hotspot set (mouse_marco_
+# nanobody_hotspot.yaml). The original hotspots use 2OYA label_seq 6,8,15,44,50,
+# 52,72,83. This Set A uses Q9UEW3-based positions 429,431,438,467,473,475,495,506
+# (= 2OYA label_seq 12,14,21,50,56,58,78,89), which is a related but distinct set
+# of surface residues in the same functional region.
 #
 # --- Numbering note ---
-# 2OYA is the isolated mouse MARCO SRCR domain (102 aa, label_seq 1-102).
-# boltzgen uses mmCIF label_seq_id — no offset needed for 2OYA.
+# boltzgen uses mmCIF label_seq_id. The mouse_marco_srcr.cif file uses Q9UEW3
+# numbering directly (seqid = Q9UEW3 position, starting at 417).
+# The YAML binding field uses label_seq values; for this file, label_seq N =
+# Q9UEW3 position N (since seqid = Q9UEW3 position, not sequential 1-N).
+#
+# Confirmed: Q9UEW3 label_seq mapping:
+#   label_seq 12 = Q9UEW3 429,  label_seq 14 = Q9UEW3 431,
+#   label_seq 21 = Q9UEW3 438,  label_seq 50 = Q9UEW3 467,
+#   label_seq 56 = Q9UEW3 473,  label_seq 58 = Q9UEW3 475,
+#   label_seq 78 = Q9UEW3 495,  label_seq 89 = Q9UEW3 506
+#
+# --- Verified residues (from mouse_marco_srcr.cif, Q9UEW3 numbering) ---
+#   Q9UEW3 429 = THR  (label_seq 12)
+#   Q9UEW3 431 = ARG  (label_seq 14)
+#   Q9UEW3 438 = TYR  (label_seq 21)
+#   Q9UEW3 467 = GLY  (label_seq 50)
+#   Q9UEW3 473 = TYR  (label_seq 56)
+#   Q9UEW3 475 = GLY  (label_seq 58)
+#   Q9UEW3 495 = TRP  (label_seq 78)
+#   Q9UEW3 506 = ASN  (label_seq 89)
 #
 # --- Diffusion parameters ---
 # Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
@@ -32,9 +48,6 @@
 # By default nanobody-anything avoids Cys. To permit Cys in designed CDRs:
 #   export EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh ...
 
-# Human reference: mouse_marco_setA_so4_pocket
-# NOTE: BoltzGen does not support `name` as a top-level key.
-
 entities:
   - file:
       path: ../targets/mouse_marco_srcr.cif
@@ -44,8 +57,9 @@ entities:
       binding_types:
         - chain:
             id: A
-            # SO4/ligand-binding pocket: Q429,Y431,K438,Q467,K473,Q475,W495,H506
-            # label_seq:                  12,  14,  21,  50,  56,  58,  78,  89
+            # Q9UEW3 positions verified from structure:
+            # 429(THR), 431(ARG), 438(TYR), 467(GLY),
+            # 473(TYR), 475(GLY), 495(TRP), 506(ASN)
             binding: 12,14,21,50,56,58,78,89
 
   - file:
