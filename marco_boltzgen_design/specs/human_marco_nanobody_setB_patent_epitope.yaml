@@ -19,20 +19,23 @@
 # numbering where seqid = Q9UEW3 position. So binding field label_seq values
 # equal Q9UEW3 positions for this file.
 #
-# --- Verified residues (from human_MARCO_input.cif, Q9UEW3 numbering) ---
-# Patent claimed:     Q450, Y452, K473, Q487, T499, H505, D507, S509, E511
-# ACTUAL (label_seq / Q9UEW3):
-#   label_seq  33 = Q9UEW3 450 = GLU   (patent claimed GLN — WRONG)
-#   label_seq  35 = Q9UEW3 452 = LYS   (patent claimed TYR — WRONG)
-#   label_seq  56 = Q9UEW3 473 = LEU   (patent claimed GLN — WRONG)
-#   label_seq  70 = Q9UEW3 487 = LEU   (patent claimed GLN — WRONG)
-#   label_seq  82 = Q9UEW3 499 = LEU   (patent claimed HIS — WRONG)
-#   label_seq  88 = Q9UEW3 505 = ALA   (patent claimed ASP — WRONG)
-#   label_seq  90 = Q9UEW3 507 = ASP   (patent claimed SER — WRONG)
-#   label_seq  92 = Q9UEW3 509 = PRO   (patent claimed GLU — WRONG)
-#   label_seq  94 = Q9UEW3 511 = PHE   (patent claimed GLU — WRONG)
+# --- Verified residues (from human_MARCO_input.cif, label_seq = Q9UEW3 position) ---
+# NOTE: In human_MARCO_input.cif, seqid = label_seq = Q9UEW3 position (1-520).
+# So binding: 33 = Q9UEW3 position 33 (not 450).
+# Patent claimed different positions entirely — all were wrong.
 #
-# NOTE: Position 55 (Q9UEW3 472) was in the original union but excluded from the
+# ACTUAL (label_seq = Q9UEW3 position):
+#   label_seq  33 = Q9UEW3  33 = VAL   (patent claimed Q9UEW3 450 = GLN — WRONG)
+#   label_seq  35 = Q9UEW3  35 = LYS   (patent claimed Q9UEW3 452 = TYR — WRONG)
+#   label_seq  56 = Q9UEW3  56 = LEU   (patent claimed Q9UEW3 473 = GLN — WRONG)
+#   label_seq  70 = Q9UEW3  70 = LEU   (patent claimed Q9UEW3 487 = GLN — WRONG)
+#   label_seq  82 = Q9UEW3  82 = LEU   (patent claimed Q9UEW3 499 = HIS — WRONG)
+#   label_seq  88 = Q9UEW3  88 = ALA   (patent claimed Q9UEW3 505 = ASP — WRONG)
+#   label_seq  90 = Q9UEW3  90 = ASP   (patent claimed Q9UEW3 507 = SER — WRONG)
+#   label_seq  92 = Q9UEW3  92 = PRO   (patent claimed Q9UEW3 509 = GLU — WRONG)
+#   label_seq  94 = Q9UEW3  94 = PHE   (patent claimed Q9UEW3 511 = GLU — WRONG)
+#
+# NOTE: Position 55 (Q9UEW3 55) was in the original union but excluded from the
 # priority subset. Verified as LEU — also differs from patent's LYS claim.
 #
 # --- Diffusion parameters ---
@@ -55,9 +58,9 @@ entities:
       binding_types:
         - chain:
             id: A
-            # Verified Q9UEW3 positions (label_seq = Q9UEW3 position):
-            # 450(GLU), 452(LYS), 473(LEU), 487(LEU), 499(LEU),
-            # 505(ALA), 507(ASP), 509(PRO), 511(PHE)
+            # Verified Q9UEW3 positions (label_seq in human_MARCO_input.cif):
+            # 33(VAL), 35(LYS), 56(LEU), 70(LEU), 82(LEU),
+            # 88(ALA), 90(ASP), 92(PRO), 94(PHE)
             binding: 33,35,56,70,82,88,90,92,94
 
   - file:

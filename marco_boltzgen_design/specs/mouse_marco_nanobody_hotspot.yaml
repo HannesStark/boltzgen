@@ -19,15 +19,15 @@
 # The mmCIF file uses label_seq 1-102 (sequential) for the 2OYA chain.
 # boltzgen uses mmCIF label_seq_id — no offset needed.
 #
-# Verified residues (from mouse_marco_srcr.cif, label_seq 1-102):
-#   label_seq  6 = Q9UEW3 423 = VAL   — conserved basic patch, AC3-adjacent
-#   label_seq  8 = Q9UEW3 425 = ILE   — conserved basic patch
-#   label_seq 15 = Q9UEW3 432 = GLY   — AC3 sulfate site
-#   label_seq 44 = Q9UEW3 461 = MET   — AC3-adjacent
-#   label_seq 50 = Q9UEW3 467 = GLY   — AC2 sulfate site
-#   label_seq 52 = Q9UEW3 469 = ALA   — AC2-adjacent
-#   label_seq 72 = Q9UEW3 489 = GLY   — AC1 sulfate site
-#   label_seq 83 = Q9UEW3 500 = ASN   — surface-exposed, conserved
+# Verified residues (from original 2OYA structure, label_seq 1-102):
+#   label_seq  6 = Q9UEW3 422 = ARG   — conserved basic patch, AC3-adjacent
+#   label_seq  8 = Q9UEW3 424 = ARG   — conserved basic patch
+#   label_seq 15 = Q9UEW3 431 = ARG   — AC3 sulfate site
+#   label_seq 44 = Q9UEW3 460 = ARG   — AC3-adjacent
+#   label_seq 50 = Q9UEW3 466 = ARG   — AC2 sulfate site
+#   label_seq 52 = Q9UEW3 468 = ARG   — AC2-adjacent
+#   label_seq 72 = Q9UEW3 488 = ARG   — AC1 sulfate site
+#   label_seq 83 = Q9UEW3 499 = LYS   — surface-exposed, conserved
 #
 # Verify with: boltzgen check specs/mouse_marco_nanobody_hotspot.yaml
 
@@ -41,7 +41,7 @@ entities:
         - chain:
             id: A
             # label_seq positions (verified from 2OYA DSSP analysis):
-            # 6(VAL), 8(ILE), 15(GLY), 44(MET), 50(GLY), 52(ALA), 72(GLY), 83(ASN)
+            # 6(ARG), 8(ARG), 15(ARG), 44(ARG), 50(ARG), 52(ARG), 72(ARG), 83(LYS)
             binding: 6,8,15,44,50,52,72,83
 
   - file:

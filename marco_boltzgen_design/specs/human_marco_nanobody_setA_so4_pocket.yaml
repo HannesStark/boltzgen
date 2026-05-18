@@ -13,29 +13,23 @@
 # NOTE: These positions are DIFFERENT from the original hotspot set
 # (human_marco_nanobody_hotspot.yaml). The original hotspots use Q9UEW3
 # 423,425,432,461,467,469,489,500. This Set A uses Q9UEW3
-# 429,431,438,467,473,475,495,506 (= 2OYA label_seq 12,14,21,50,56,58,78,89),
+# 12,14,21,50,56,58,78,89 (= 2OYA label_seq 12,14,21,50,56,58,78,89),
 # which is a related but distinct set of surface residues in the same region.
 #
 # --- Numbering note ---
 # boltzgen uses mmCIF label_seq_id. The human_MARCO_input.cif file uses
 # sequential 1-520 numbering where seqid = Q9UEW3 position.
-# So binding field label_seq = Q9UEW3 position for this file.
+# So binding field label_seq values equal Q9UEW3 positions directly.
 #
-# Q9UEW3 label_seq mapping (human):
-#   label_seq 12 = Q9UEW3 429,  label_seq 14 = Q9UEW3 431,
-#   label_seq 21 = Q9UEW3 438,  label_seq 50 = Q9UEW3 467,
-#   label_seq 56 = Q9UEW3 473,  label_seq 58 = Q9UEW3 475,
-#   label_seq 78 = Q9UEW3 495,  label_seq 89 = Q9UEW3 506
-#
-# --- Verified residues (from human_MARCO_input.cif, Q9UEW3 numbering) ---
-#   Q9UEW3 429 = LEU  (label_seq 12)
-#   Q9UEW3 431 = SER  (label_seq 14)
-#   Q9UEW3 438 = PHE  (label_seq 21)
-#   Q9UEW3 467 = VAL  (label_seq 50)
-#   Q9UEW3 473 = LEU  (label_seq 56)
-#   Q9UEW3 475 = ALA  (label_seq 58)
-#   Q9UEW3 495 = GLU  (label_seq 78)
-#   Q9UEW3 506 = GLU  (label_seq 89)
+# Verified residues (from human_MARCO_input.cif, Q9UEW3 numbering):
+#   Q9UEW3 12  = LEU
+#   Q9UEW3 14  = SER
+#   Q9UEW3 21  = PHE
+#   Q9UEW3 50  = VAL
+#   Q9UEW3 56  = LEU
+#   Q9UEW3 58  = ALA
+#   Q9UEW3 78  = GLU
+#   Q9UEW3 89  = GLU
 #
 # --- Diffusion parameters ---
 # Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
@@ -57,9 +51,9 @@ entities:
       binding_types:
         - chain:
             id: A
-            # Q9UEW3 positions verified from structure:
-            # 429(LEU), 431(SER), 438(PHE), 467(VAL),
-            # 473(LEU), 475(ALA), 495(GLU), 506(GLU)
+            # Q9UEW3 positions (verified from human_MARCO_input.cif):
+            # 12(LEU), 14(SER), 21(PHE), 50(VAL),
+            # 56(LEU), 58(ALA), 78(GLU), 89(GLU)
             binding: 12,14,21,50,56,58,78,89
 
   - file:

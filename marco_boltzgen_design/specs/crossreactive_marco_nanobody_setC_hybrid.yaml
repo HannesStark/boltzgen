@@ -15,40 +15,34 @@
 #
 # --- Numbering note ---
 # boltzgen uses mmCIF label_seq_id.
-#   Human: human_MARCO_input.cif uses seqid = Q9UEW3 position (1-520).
-#          So binding label_seq = Q9UEW3 position for human.
-#   Mouse: mouse_marco_srcr.cif uses seqid = Q9UEW3 position (417-515).
-#          So binding label_seq = Q9UEW3 position for mouse.
+#   Human: human_MARCO_input.cif uses seqid = label_seq = Q9UEW3 position (1-520).
+#          So binding label_seq values equal Q9UEW3 positions for human.
+#   Mouse: mouse_marco_srcr.cif uses 2OYA label_seq 1-102 (sequential).
+#          So binding label_seq values = 2OYA label_seq for mouse.
+#          IMPORTANT: mouse label_seq N ≠ human Q9UEW3 N — these are different
+#          coordinate systems (2OYA SRCR vs full MARCO).
 #
 # --- Verified residues ---
 #
-# Human (human_MARCO_input.cif):
-#   label_seq  35 = Q9UEW3 452 = LYS
-#   label_seq  50 = Q9UEW3 467 = VAL
-#   label_seq  56 = Q9UEW3 473 = LEU
-#   label_seq  58 = Q9UEW3 475 = ALA
-#   label_seq  70 = Q9UEW3 487 = LEU
-#   label_seq  78 = Q9UEW3 495 = GLU
-#   label_seq  82 = Q9UEW3 499 = LEU
-#   label_seq  88 = Q9UEW3 505 = ALA
-#   label_seq  89 = Q9UEW3 506 = GLU
-#   label_seq  90 = Q9UEW3 507 = ASP
-#   label_seq  92 = Q9UEW3 509 = PRO
-#   label_seq  94 = Q9UEW3 511 = PHE
+# Human (human_MARCO_input.cif, label_seq = Q9UEW3 position):
+#   Q9UEW3 35 = LYS    Q9UEW3 50 = VAL    Q9UEW3 56 = LEU
+#   Q9UEW3 58 = ALA    Q9UEW3 70 = LEU    Q9UEW3 78 = GLU
+#   Q9UEW3 82 = LEU    Q9UEW3 88 = ALA    Q9UEW3 89 = GLU
+#   Q9UEW3 90 = ASP    Q9UEW3 92 = PRO    Q9UEW3 94 = PHE
 #
-# Mouse (mouse_marco_srcr.cif):
-#   label_seq  12 = Q9UEW3 429 = THR
-#   label_seq  14 = Q9UEW3 431 = ARG
-#   label_seq  21 = Q9UEW3 438 = TYR
-#   label_seq  50 = Q9UEW3 467 = GLY
-#   label_seq  56 = Q9UEW3 473 = TYR
-#   label_seq  58 = Q9UEW3 475 = GLY
-#   label_seq  78 = Q9UEW3 495 = TRP
-#   label_seq  89 = Q9UEW3 506 = ASN
+# Mouse (mouse_marco_srcr.cif, 2OYA label_seq 1-102):
+#   2OYA label_seq 12 = Q9UEW3 428 = GLY
+#   2OYA label_seq 14 = Q9UEW3 430 = ASN
+#   2OYA label_seq 21 = Q9UEW3 437 = TYR
+#   2OYA label_seq 50 = Q9UEW3 466 = ARG
+#   2OYA label_seq 56 = Q9UEW3 472 = SER
+#   2OYA label_seq 58 = Q9UEW3 474 = GLY
+#   2OYA label_seq 78 = Q9UEW3 494 = LEU
+#   2OYA label_seq 89 = Q9UEW3 505 = HIS
 #
-# Cross-species conservation: label_seq 50, 56, 58, 78, 89 appear in both human
-# and mouse (Q9UEW3 467, 473, 475, 495, 506). Key conserved contact at Q9UEW3 473
-# (LEU in human, TYR in mouse).
+# Cross-species conservation: positions 50, 56, 58, 78, 89 appear in both human
+# and mouse (Q9UEW3 466,472,474,494,505). Key conserved contact at Q9UEW3 472
+# (LEU in human, SER in mouse).
 #
 # --- Diffusion parameters ---
 # Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
@@ -70,9 +64,9 @@ entities:
       binding_types:
         - chain:
             id: A
-            # Human hybrid interface: verified Q9UEW3 positions
-            # 452(LYS), 467(VAL), 473(LEU), 475(ALA), 487(LEU), 495(GLU),
-            # 499(LEU), 505(ALA), 506(GLU), 507(ASP), 509(PRO), 511(PHE)
+            # Human (label_seq = Q9UEW3 position):
+            # 35(LYS), 50(VAL), 56(LEU), 58(ALA), 70(LEU), 78(GLU),
+            # 82(LEU), 88(ALA), 89(GLU), 90(ASP), 92(PRO), 94(PHE)
             binding: 35,50,56,58,70,78,82,88,89,90,92,94
 
   - file:
@@ -83,9 +77,9 @@ entities:
       binding_types:
         - chain:
             id: A
-            # Mouse SO4 pocket: verified Q9UEW3 positions
-            # 429(THR), 431(ARG), 438(TYR), 467(GLY), 473(TYR), 475(GLY),
-            # 495(TRP), 506(ASN)
+            # Mouse: 2OYA label_seq values (= 2OYA domain position)
+            # 12(GLY), 14(ASN), 21(TYR), 50(ARG),
+            # 56(SER), 58(GLY), 78(LEU), 89(HIS)
             binding: 12,14,21,50,56,58,78,89
 
   - file:
