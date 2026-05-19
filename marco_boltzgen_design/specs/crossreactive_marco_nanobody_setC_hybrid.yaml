@@ -1,4 +1,12 @@
 # Protocol: nanobody-anything
+# MARCO runtime defaults (CLI, not parsed from YAML):
+#   --protocol nanobody-anything
+#   --diffusion_batch_size 2        # use 1-2 to preserve length diversity
+#   --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5
+#   --refolding_rmsd_threshold 3.0
+# Rationale: MARCO SRCR is polar/beta-rich, so prioritize buried H-bonds/SASA
+# and allow VHH loop flexibility during refolding.
+#
 #
 # ==============================================================================
 # SET C: HYBRID INTERFACE  (cross-reactive: human + mouse MARCO SRCR)
