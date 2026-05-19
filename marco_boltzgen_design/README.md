@@ -18,7 +18,10 @@ marco_boltzgen_design/
 │   ├── mouse_marco_nanobody_setA_so4_pocket.yaml  # ← SET A
 │   ├── human_marco_nanobody_setA_so4_pocket.yaml  # ← SET A
 │   ├── human_marco_nanobody_setB_patent_epitope.yaml  # ← SET B
-│   └── crossreactive_marco_nanobody_setC_hybrid.yaml # ← SET C
+│   ├── crossreactive_marco_nanobody_setC_hybrid.yaml # ← SET C
+│   ├── mouse_marco_nanobody_setD_beta_pairing.yaml   # ← SET D
+│   ├── human_marco_nanobody_setD_beta_pairing.yaml  # ← SET D
+│   └── crossreactive_marco_nanobody_setD_beta_pairing.yaml # ← SET D
 ├── scripts/
 │   ├── run_hpc_campaign.sh      # HPC SLURM launcher (primary production script)
 │   ├── collect_campaign.sh      # Merge metrics from multiple runs
@@ -45,7 +48,7 @@ conda activate boltzgen   # or: source ~/miniconda3/etc/profile.d/conda.sh && co
 
 ## 2) Choose an Interface Set
 
-Three distinct interface sets have been designed based on structural and patent data:
+Four distinct interface sets have been designed based on structural, patent, and beta-pairing design logic. All are intended to be run with `--protocol nanobody-anything` and MARCO-specific filtering flags.
 
 ### Set A — SO4 / Ligand-Blocking Pocket
 **Purpose:** Block MARCO ligand binding (LDL, oxLDL, bacteria, apoptotic cells).
@@ -74,7 +77,17 @@ Three distinct interface sets have been designed based on structural and patent 
 |------|----------------|-----------------|-------|
 | `specs/crossreactive_marco_nanobody_setC_hybrid.yaml` | 35,50,56,58,70,78,82,88,89,90,92,94 | 12,14,21,50,56,58,78,89 | Cross-reactive |
 
-**Key conserved residue: 473** (K in both human and mouse) — appears in ALL three sets.
+**Key conserved residue: 473** (K in both human and mouse) — appears in Sets A–C.
+
+### Set D — Beta-Pairing SRCR Edge-Strand Targeting
+**Purpose:** Exploit exposed beta-strand edges on the SRCR fold to favor backbone-like, hydrogen-bond-rich VHH contacts on a polar beta-sheet surface.
+**Use case:** Highest-priority exploratory set for hydrophilic SRCR surfaces where generic hydrophobic binder filtering may underperform.
+
+| Spec | Human label_seq | Mouse label_seq | Notes |
+|------|----------------|-----------------|-------|
+| `specs/human_marco_nanobody_setD_beta_pairing.yaml` | 423,424,426,428,430,431,433,436,437,438,466,468,470,514,517,518 | — | Human beta-edge |
+| `specs/mouse_marco_nanobody_setD_beta_pairing.yaml` | — | 7,8,10,12,14,15,17,20,21,22,50,52,54,98,101,102 | Mouse 2OYA beta-edge |
+| `specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml` | 423,424,426,428,430,431,433,436,437,438,466,468,470,514,517,518 | 7,8,10,12,14,15,17,20,21,22,50,52,54,98,101,102 | Cross-reactive beta-pairing |
 
 ---
 
@@ -87,18 +100,50 @@ boltzgen check specs/mouse_marco_nanobody_setA_so4_pocket.yaml
 boltzgen check specs/human_marco_nanobody_setA_so4_pocket.yaml
 boltzgen check specs/human_marco_nanobody_setB_patent_epitope.yaml
 boltzgen check specs/crossreactive_marco_nanobody_setC_hybrid.yaml
+boltzgen check specs/mouse_marco_nanobody_setD_beta_pairing.yaml
+boltzgen check specs/human_marco_nanobody_setD_beta_pairing.yaml
+boltzgen check specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml
 ```
 
-All four should output `Total designed residues: 29–35` and write a `.cif` visualization file.
+All specs should write a `.cif` visualization file. Exact designed-residue counts vary by scaffold and targeted residue set.
 
 ---
 
 ## 4) Run Nanobody Design
 
 ### Local pilot (quick test, 10–50 designs)
+
+The wrapper now applies the recommended MARCO defaults automatically: `--protocol nanobody-anything`, `--diffusion_batch_size 2`, `plip_hbonds_refolded=0.2`, `delta_sasa_refolded=0.5`, and `--refolding_rmsd_threshold 3.0`.
+
 ```bash
 NUM_DESIGNS=50 BUDGET=10 \
-  ./runs/run_nanobody_campaign.sh specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/setA_mouse_pilot
+  ./runs/run_nanobody_campaign.sh specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC_pilot
+```
+
+Equivalent explicit command:
+
+```bash
+boltzgen run specs/crossreactive_marco_nanobody_setC_hybrid.yaml \
+  --protocol nanobody-anything \
+  --output runs/setC_pilot \
+  --num_designs 50 \
+  --diffusion_batch_size 2 \
+  --budget 10 \
+  --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 \
+  --refolding_rmsd_threshold 3.0
+```
+
+Set D beta-pairing pilot:
+
+```bash
+boltzgen run specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml \
+  --protocol nanobody-anything \
+  --output runs/setD_beta_pairing_pilot \
+  --num_designs 50 \
+  --diffusion_batch_size 2 \
+  --budget 10 \
+  --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 \
+  --refolding_rmsd_threshold 3.0
 ```
 
 ### HPC production (1000–3000 designs)
@@ -120,6 +165,10 @@ NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
 # Set C — hybrid cross-reactive
 NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
   specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC &
+
+# Set D — beta-pairing cross-reactive
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_beta_pairing &
 
 wait
 ```
@@ -147,7 +196,7 @@ After jobs complete:
 ```bash
 # Merge metrics from all runs
 ./scripts/collect_campaign.sh \
-  --runs runs/setA_mouse runs/setA_human runs/setB runs/setC \
+  --runs runs/setA_mouse runs/setA_human runs/setB runs/setC runs/setD_beta_pairing \
   --out results/all_metrics.csv
 ```
 
@@ -185,6 +234,8 @@ For Set B (human-only), use:
 ---
 
 ## Appendix A: Original Specs (pre-June 2026)
+
+Legacy `binder` and `peptide` filenames in `specs/` have been converted to VHH scaffold specs and should also be run with `--protocol nanobody-anything`.
 
 The original DSSP-derived hotspot specs remain available:
 - `specs/mouse_marco_nanobody_hotspot.yaml` — label_seq 6,8,15,44,50,52,72,83

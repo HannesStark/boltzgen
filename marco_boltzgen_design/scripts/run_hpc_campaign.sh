@@ -45,6 +45,8 @@ NUM_DESIGNS="${NUM_DESIGNS:-2000}"
 BUDGET="${BUDGET:-150}"
 CONDA_ENV="${CONDA_ENV:-boltzgen}"
 GPUS="${GPUS:-2}"                  # RTX 5000 x2 → use 2 GPUs
+MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size 2 --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0}"
+EXTRA_ARGS="${EXTRA_ARGS:-}"
 
 # ── Validate ─────────────────────────────────────────────────────────────────
 if [[ ! -f "$SPEC" ]]; then
@@ -66,6 +68,8 @@ mkdir -p logs "$OUTDIR"
   echo "Num designs:  $NUM_DESIGNS"
   echo "Budget:       $BUDGET"
   echo "GPUs:         $GPUS × RTX 5000"
+  echo "MARCO args:   $MARCO_EXTRA_ARGS"
+  echo "Extra args:   ${EXTRA_ARGS:-<none>}"
   echo "Conda env:    $CONDA_ENV"
   echo "Job ID:       ${SLURM_JOB_ID:-local}"
   nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv 2>/dev/null || echo "(nvidia-smi not available)"
@@ -99,6 +103,8 @@ boltzgen run "$SPEC" \
   --budget "$BUDGET" \
   --devices "$GPUS" \
   --reuse \
+  $MARCO_EXTRA_ARGS \
+  $EXTRA_ARGS \
   2>&1 | tee -a "${LOG_PREFIX}_run.log"
 
 RUN_EXIT=${PIPESTATUS[0]}

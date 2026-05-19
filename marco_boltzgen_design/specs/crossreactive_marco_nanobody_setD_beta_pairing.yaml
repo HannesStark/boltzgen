@@ -1,0 +1,56 @@
+# Protocol: nanobody-anything
+# MARCO runtime defaults (CLI, not parsed from YAML):
+#   --protocol nanobody-anything
+#   --diffusion_batch_size 2        # use 1-2 to preserve length diversity
+#   --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5
+#   --refolding_rmsd_threshold 3.0
+# Rationale: MARCO SRCR is polar/beta-rich, so prioritize buried H-bonds/SASA
+# and allow VHH loop flexibility during refolding.
+#
+# ==============================================================================
+# SET D: BETA-PAIRING SRCR EDGE-STRAND TARGETING  (cross-reactive human + mouse)
+# ==============================================================================
+#
+# --- Scientific rationale ---
+# Cross-species Set D biases BoltzGen toward conserved SRCR beta-edge geometry.
+# The goal is a VHH paratope that can make beta-pairing-like backbone H-bonds to
+# the exposed SRCR sheet while retaining compatibility with both human and mouse.
+#
+# --- Numbering note ---
+# boltzgen uses mmCIF label_seq_id.
+#   Human: human_MARCO_input.cif uses Q9UEW3 full-sequence numbering (1-520).
+#   Mouse: mouse_marco_srcr.cif uses direct 2OYA label_seq numbering (1-102).
+#
+# --- Targeted beta-edge residues ---
+# Mouse 2OYA beta-edge label_seq: 7,8,10,12,14,15,17,20,21,22,50,52,54,98,101,102
+# Human mapped Q9UEW3 positions: 423,424,426,428,430,431,433,436,437,438,
+#                                466,468,470,514,517,518
+
+entities:
+  - file:
+      path: ../targets/human_MARCO_input.cif
+      include:
+        - chain:
+            id: A
+      binding_types:
+        - chain:
+            id: A
+            # Q9UEW3 beta-edge positions mapped from mouse 2OYA strands.
+            binding: 423,424,426,428,430,431,433,436,437,438,466,468,470,514,517,518
+
+  - file:
+      path: ../targets/mouse_marco_srcr.cif
+      include:
+        - chain:
+            id: A
+      binding_types:
+        - chain:
+            id: A
+            # 2OYA beta-edge label_seq positions.
+            binding: 7,8,10,12,14,15,17,20,21,22,50,52,54,98,101,102
+
+  - file:
+      path:
+        # Beta-pairing benefits from long, flexible CDR3 reach.
+        - ../../example/nanobody_scaffolds/7eow.yaml
+        - ../../example/nanobody_scaffolds/8coh.yaml
