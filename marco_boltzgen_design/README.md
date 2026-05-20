@@ -180,6 +180,9 @@ boltzgen check specs/mouse_marco_nanobody_setA_so4_pocket.yaml
 boltzgen check specs/human_marco_nanobody_setA_so4_pocket.yaml
 boltzgen check specs/human_marco_nanobody_setB_patent_epitope.yaml
 boltzgen check specs/crossreactive_marco_nanobody_setC_hybrid.yaml
+boltzgen check specs/mouse_marco_nanobody_setD_beta_pairing.yaml
+boltzgen check specs/human_marco_nanobody_setD_beta_pairing.yaml
+boltzgen check specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml
 ```
 
 **Expected output:** `Total designed residues: 26–46` and a `.cif` visualization file. If you see errors about missing residue IDs, the `binding:` positions in the YAML do not match the mmCIF.

@@ -32,11 +32,9 @@
 #
 # --- Verified residues ---
 #
-# Human (human_MARCO_input.cif, label_seq = Q9UEW3 position):
-#   Q9UEW3 35 = LYS    Q9UEW3 50 = VAL    Q9UEW3 56 = LEU
-#   Q9UEW3 58 = ALA    Q9UEW3 70 = LEU    Q9UEW3 78 = GLU
-#   Q9UEW3 82 = LEU    Q9UEW3 88 = ALA    Q9UEW3 89 = GLU
-#   Q9UEW3 90 = ASP    Q9UEW3 92 = PRO    Q9UEW3 94 = PHE
+# Human (human_MARCO_input.cif, label_seq = Q9UEW3 full-length position):
+#   Set C human = union(Set A, Set B)
+#   429,431,438,450,452,467,472,473,475,487,495,499,505,506,507,509,511
 #
 # Mouse (mouse_marco_srcr.cif, 2OYA label_seq 1-102):
 #   2OYA label_seq 12 = Q9UEW3 428 = GLY
@@ -72,10 +70,10 @@ entities:
       binding_types:
         - chain:
             id: A
-            # Human (label_seq = Q9UEW3 position):
-            # 35(LYS), 50(VAL), 56(LEU), 58(ALA), 70(LEU), 78(GLU),
-            # 82(LEU), 88(ALA), 89(GLU), 90(ASP), 92(PRO), 94(PHE)
-            binding: 35,50,56,58,70,78,82,88,89,90,92,94
+            # Human (label_seq = full-length Q9UEW3 position):
+            # Set C = union(Set A, Set B) =>
+            # 429,431,438,450,452,467,472,473,475,487,495,499,505,506,507,509,511
+            binding: 429,431,438,450,452,467,472,473,475,487,495,499,505,506,507,509,511
 
   - file:
       path: ../targets/mouse_marco_srcr.cif
