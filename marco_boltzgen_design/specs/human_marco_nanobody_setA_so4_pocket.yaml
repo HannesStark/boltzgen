@@ -1,4 +1,12 @@
 # Protocol: nanobody-anything
+# MARCO runtime defaults (CLI, not parsed from YAML):
+#   --protocol nanobody-anything
+#   --diffusion_batch_size 2        # use 1-2 to preserve length diversity
+#   --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5
+#   --refolding_rmsd_threshold 3.0
+# Rationale: MARCO SRCR is polar/beta-rich, so prioritize buried H-bonds/SASA
+# and allow VHH loop flexibility during refolding.
+#
 #
 # ==============================================================================
 # SET A: SO4 / LIGAND-BLOCKING POCKET  (human MARCO SRCR)
@@ -13,7 +21,7 @@
 # NOTE: These positions are DIFFERENT from the original hotspot set
 # (human_marco_nanobody_hotspot.yaml). The original hotspots use Q9UEW3
 # 423,425,432,461,467,469,489,500. This Set A uses Q9UEW3
-# 12,14,21,50,56,58,78,89 (= 2OYA label_seq 12,14,21,50,56,58,78,89),
+# 429,431,438,467,473,475,495,506 (full-length Q9UEW3 numbering),
 # which is a related but distinct set of surface residues in the same region.
 #
 # --- Numbering note ---
@@ -22,14 +30,14 @@
 # So binding field label_seq values equal Q9UEW3 positions directly.
 #
 # Verified residues (from human_MARCO_input.cif, Q9UEW3 numbering):
-#   Q9UEW3 12  = LEU
-#   Q9UEW3 14  = SER
-#   Q9UEW3 21  = PHE
-#   Q9UEW3 50  = VAL
-#   Q9UEW3 56  = LEU
-#   Q9UEW3 58  = ALA
-#   Q9UEW3 78  = GLU
-#   Q9UEW3 89  = GLU
+#   Q9UEW3 429 = GLY
+#   Q9UEW3 431 = TYR
+#   Q9UEW3 438 = TYR
+#   Q9UEW3 467 = ARG
+#   Q9UEW3 473 = LEU
+#   Q9UEW3 475 = GLY
+#   Q9UEW3 495 = LEU
+#   Q9UEW3 506 = HIS
 #
 # --- Diffusion parameters ---
 # Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
@@ -51,10 +59,10 @@ entities:
       binding_types:
         - chain:
             id: A
-            # Q9UEW3 positions (verified from human_MARCO_input.cif):
-            # 12(LEU), 14(SER), 21(PHE), 50(VAL),
-            # 56(LEU), 58(ALA), 78(GLU), 89(GLU)
-            binding: 12,14,21,50,56,58,78,89
+            # Q9UEW3 full-length SRCR positions (verified from human_MARCO_input.cif):
+            # 429(GLY), 431(TYR), 438(TYR), 467(ARG),
+            # 473(LEU), 475(GLY), 495(LEU), 506(HIS)
+            binding: 429,431,438,467,473,475,495,506
 
   - file:
       path:

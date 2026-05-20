@@ -1,3 +1,15 @@
+# Protocol: nanobody-anything
+# MARCO runtime defaults (CLI, not parsed from YAML):
+#   --protocol nanobody-anything
+#   --diffusion_batch_size 2        # use 1-2 to preserve length diversity
+#   --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5
+#   --refolding_rmsd_threshold 3.0
+# Rationale: MARCO SRCR is polar/beta-rich, so prioritize buried H-bonds/SASA
+# and allow VHH loop flexibility during refolding.
+#
+# Legacy filename note: this spec now uses VHH scaffold files and should be
+# run with nanobody-anything, even if the filename says binder/peptide.
+#
 # --- Hotspot residues (mouse MARCO SRCR, 2OYA crystal structure) ---
 # Source: PDB 2OYA — cysteine-rich domain of mouse MARCO (dimeric SRCR, 102 aa).
 # Hotspots identified from SO4 (sulfate) binding sites AC1/AC2/AC3 in the crystal:
@@ -8,10 +20,6 @@
 # These are verified ligand-binding residues, NOT just surface-exposure heuristics.
 
 entities:
-  - protein:
-      id: B
-      sequence: 50..90
-
   - file:
       path: ../targets/mouse_marco_srcr.cif
       include:
@@ -21,3 +29,10 @@ entities:
         - chain:
             id: A
             binding: 6,8,15,44,50,52,72,83
+
+  - file:
+      path:
+        # VHH scaffolds for MARCO nanobody design.
+        # 7EOW (21aa CDR3) maximizes reach; 8COH (19aa CDR3) adds shape diversity.
+        - ../../example/nanobody_scaffolds/7eow.yaml
+        - ../../example/nanobody_scaffolds/8coh.yaml
