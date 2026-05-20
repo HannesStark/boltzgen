@@ -1,4 +1,12 @@
 # Protocol: nanobody-anything
+# MARCO runtime defaults (CLI, not parsed from YAML):
+#   --protocol nanobody-anything
+#   --diffusion_batch_size 2        # use 1-2 to preserve length diversity
+#   --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5
+#   --refolding_rmsd_threshold 3.0
+# Rationale: MARCO SRCR is polar/beta-rich, so prioritize buried H-bonds/SASA
+# and allow VHH loop flexibility during refolding.
+#
 #
 # ==============================================================================
 # SET B: PATENT ANTIBODY EPITOPE  (human MARCO SRCR)
@@ -8,7 +16,7 @@
 # US20240084000A1 / US12378311B2 discloses antibody binding epitopes in the
 # MARCO SRCR domain. Mutagenesis studies (PI-3010, PI-3035) identified residues
 # critical for antibody binding — these define a distinct functional epitope
-# SEPARATE from the SO4/ligand-binding pocket.
+# SEPARATE from the SO4/ligand-binding pocket (full-length Q9UEW3 numbering).
 #
 # NOTE: The patent described positions using Q9UEW3 numbering, but the claimed
 # amino acid identities at those positions were INCORRECT (chatGPT hallucination).
@@ -20,23 +28,19 @@
 # equal Q9UEW3 positions for this file.
 #
 # --- Verified residues (from human_MARCO_input.cif, label_seq = Q9UEW3 position) ---
-# NOTE: In human_MARCO_input.cif, seqid = label_seq = Q9UEW3 position (1-520).
-# So binding: 33 = Q9UEW3 position 33 (not 450).
-# Patent claimed different positions entirely — all were wrong.
+# NOTE: In human_MARCO_input.cif, seqid = label_seq = full-length Q9UEW3 (1-520).
+# This Set B uses full-length SRCR coordinates from the patent-style epitope region:
 #
-# ACTUAL (label_seq = Q9UEW3 position):
-#   label_seq  33 = Q9UEW3  33 = VAL   (patent claimed Q9UEW3 450 = GLN — WRONG)
-#   label_seq  35 = Q9UEW3  35 = LYS   (patent claimed Q9UEW3 452 = TYR — WRONG)
-#   label_seq  56 = Q9UEW3  56 = LEU   (patent claimed Q9UEW3 473 = GLN — WRONG)
-#   label_seq  70 = Q9UEW3  70 = LEU   (patent claimed Q9UEW3 487 = GLN — WRONG)
-#   label_seq  82 = Q9UEW3  82 = LEU   (patent claimed Q9UEW3 499 = HIS — WRONG)
-#   label_seq  88 = Q9UEW3  88 = ALA   (patent claimed Q9UEW3 505 = ASP — WRONG)
-#   label_seq  90 = Q9UEW3  90 = ASP   (patent claimed Q9UEW3 507 = SER — WRONG)
-#   label_seq  92 = Q9UEW3  92 = PRO   (patent claimed Q9UEW3 509 = GLU — WRONG)
-#   label_seq  94 = Q9UEW3  94 = PHE   (patent claimed Q9UEW3 511 = GLU — WRONG)
-#
-# NOTE: Position 55 (Q9UEW3 55) was in the original union but excluded from the
-# priority subset. Verified as LEU — also differs from patent's LYS claim.
+#   Q9UEW3 450 = GLN
+#   Q9UEW3 452 = TYR
+#   Q9UEW3 472 = SER
+#   Q9UEW3 473 = LEU
+#   Q9UEW3 487 = GLN
+#   Q9UEW3 499 = THR
+#   Q9UEW3 505 = HIS
+#   Q9UEW3 507 = ASP
+#   Q9UEW3 509 = SER
+#   Q9UEW3 511 = GLU
 #
 # --- Diffusion parameters ---
 # Recommended: NUM_STEPS=200, GUIDANCE_SCALE=0.1-0.3, TEMPERATURE=0.9-1.1
@@ -58,10 +62,10 @@ entities:
       binding_types:
         - chain:
             id: A
-            # Verified Q9UEW3 positions (label_seq in human_MARCO_input.cif):
-            # 33(VAL), 35(LYS), 56(LEU), 70(LEU), 82(LEU),
-            # 88(ALA), 90(ASP), 92(PRO), 94(PHE)
-            binding: 33,35,56,70,82,88,90,92,94
+            # Verified Q9UEW3 full-length SRCR positions (label_seq in human_MARCO_input.cif):
+            # 450(GLN), 452(TYR), 472(SER), 473(LEU), 487(GLN),
+            # 499(THR), 505(HIS), 507(D), 509(S), 511(E)
+            binding: 450,452,472,473,487,499,505,507,509,511
 
   - file:
       path:

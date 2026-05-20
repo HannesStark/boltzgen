@@ -21,8 +21,12 @@ PROTOCOL_FROM_SPEC="$(grep -m1 -oP '(?<=Protocol:\s)\w+(?:-\w+)*' "$SPEC" 2>/dev
 PROTOCOL="${PROTOCOL:-$PROTOCOL_FROM_SPEC}"
 PROTOCOL="${PROTOCOL:-nanobody-anything}"
 
+# MARCO SRCR is polar/beta-rich. Keep batches small for length diversity,
+# up-weight buried H-bonds/SASA in filtering, and relax VHH-loop refolding RMSD.
+MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size 2 --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0}"
+
 # By default nanobody-anything avoids Cys in inverse folding.
-# To permit Cys explicitly, pass e.g. EXTRA_ARGS='--inverse_fold_avoid ""'
+# To permit Cys explicitly, append e.g. EXTRA_ARGS='--inverse_fold_avoid ""'
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 
 boltzgen run "$SPEC" \
@@ -32,4 +36,5 @@ boltzgen run "$SPEC" \
   --budget "$BUDGET" \
   --devices "$DEVICES" \
   --reuse \
+  $MARCO_EXTRA_ARGS \
   $EXTRA_ARGS

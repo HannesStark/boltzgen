@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SPEC="${1:-specs/crossreactive_conserved_surface.yaml}"
-PROTOCOL="${2:-protein-anything}"
+SPEC="${1:-specs/crossreactive_marco_nanobody_setC_hybrid.yaml}"
+PROTOCOL="${2:-nanobody-anything}"
 OUTDIR="${3:-runs/production_$(date +%Y%m%d_%H%M%S)}"
 NUM_DESIGNS="${NUM_DESIGNS:-1500}"
 BUDGET="${BUDGET:-200}"
 DEVICES="${DEVICES:-1}"
 DIFFUSION_ARGS="${DIFFUSION_ARGS:-}"
+MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size 2 --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0}"
+EXTRA_ARGS="${EXTRA_ARGS:-}"
 
 if [[ ! -f "$SPEC" ]]; then
   echo "ERROR: spec file not found: $SPEC" >&2
@@ -22,4 +24,6 @@ boltzgen run "$SPEC" \
   --budget "$BUDGET" \
   --devices "$DEVICES" \
   --reuse \
-  $DIFFUSION_ARGS
+  $MARCO_EXTRA_ARGS \
+  $DIFFUSION_ARGS \
+  $EXTRA_ARGS
