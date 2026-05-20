@@ -1,0 +1,47 @@
+# Protocol: nanobody-anything
+# MARCO runtime defaults (CLI, not parsed from YAML):
+#   --protocol nanobody-anything
+#   --diffusion_batch_size 2        # use 1-2 to preserve length diversity
+#   --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5
+#   --refolding_rmsd_threshold 3.0
+# Rationale: MARCO SRCR is polar/beta-rich, so prioritize buried H-bonds/SASA
+# and allow VHH loop flexibility during refolding.
+#
+# ==============================================================================
+# SET D: BETA-PAIRING SRCR EDGE-STRAND TARGETING  (human MARCO SRCR)
+# ==============================================================================
+#
+# --- Scientific rationale ---
+# Targets exposed SRCR beta-strand edges where a VHH CDR can form backbone-like
+# beta-pairing contacts. This is intended to complement Set A/B/C pocket/epitope
+# designs by favoring polar, hydrogen-bond-rich interfaces on the beta-sheet face.
+#
+# --- Numbering note ---
+# boltzgen uses mmCIF label_seq_id. human_MARCO_input.cif is numbered as the
+# full Q9UEW3 sequence (1-520), so binding values below are Q9UEW3 positions.
+# These positions correspond to beta-strand segments observed in mouse 2OYA:
+# 7-22, 50-54, and 98-102 mapped to Q9UEW3 full-sequence positions.
+#
+# --- Targeted beta-edge residues ---
+# Human Q9UEW3 positions: 423,424,426,428,430,431,433,436,437,438,
+#                         466,468,470,514,517,518
+# Priority contacts: polar/charged or beta-edge residues that can support buried
+# H-bonds and cross-species-compatible strand pairing.
+
+entities:
+  - file:
+      path: ../targets/human_MARCO_input.cif
+      include:
+        - chain:
+            id: A
+      binding_types:
+        - chain:
+            id: A
+            # Q9UEW3 beta-edge positions mapped from mouse 2OYA strands.
+            binding: 423,424,426,428,430,431,433,436,437,438,466,468,470,514,517,518
+
+  - file:
+      path:
+        # Beta-pairing benefits from long, flexible CDR3 reach.
+        - ../../example/nanobody_scaffolds/7eow.yaml
+        - ../../example/nanobody_scaffolds/8coh.yaml

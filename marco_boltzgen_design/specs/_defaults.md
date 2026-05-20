@@ -1,24 +1,33 @@
-# ==============================================================================
+# ============================================================================== 
 # Common defaults for BoltzGen design specs in this directory.
 # BoltzGen does NOT read this file — it is documentation only.
 #
-# Recommended CLI flags for `boltzgen run` (override per spec via EXTRA_ARGS env var):
+# MARCO SRCR is highly polar and beta-rich. Prefer nanobody-specific generation,
+# small diffusion batches for length diversity, H-bond/SASA-biased filtering, and
+# a relaxed refolding RMSD threshold for VHH loop flexibility.
 #
-#   boltzgen run spec.yaml --num_designs N --budget B --devices G \
-#     --diffusion.num_steps 200 \
-#     --diffusion.guidance_scale 0.0 \
-#     --diffusion.temperature 1.0
+# Recommended CLI flags for `boltzgen run`:
 #
-# diffusion:
-#   num_steps      — diffusion steps (200 = default, 300+ for harder targets)
-#   guidance_scale — classifier-free guidance weight (0 = no guidance; 0.1–0.5 for
-#                     stricter hotspot adherence; too high can distort geometry)
-#   temperature    — sampling temperature (0.8 = sharper/more compact; 1.2 = diverse)
+#   boltzgen run spec.yaml \
+#     --protocol nanobody-anything \
+#     --output runs/<name> \
+#     --num_designs N \
+#     --diffusion_batch_size 2 \
+#     --budget B \
+#     --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 \
+#     --refolding_rmsd_threshold 3.0
 #
-# convergence:
-#   patience       — early stopping patience (default 10)
-#   min_steps      — minimum diffusion steps before convergence check (default 50)
-# ==============================================================================
-
-# YAML anchor alias (use in specs via: *defaults)
-# Not supported by BoltzGen — use as documentation only.
+# Notes:
+#   diffusion_batch_size   — keep at 1-2 during exploration because designs in the
+#                            same diffusion batch share length.
+#   plip_hbonds_refolded   — lower override value makes buried/interface H-bonds
+#                            more important during filtering.
+#   delta_sasa_refolded    — emphasizes buried interface area; useful for MARCO's
+#                            polar SRCR surface.
+#   refolding_rmsd_threshold — 3.0 is deliberately relaxed for flexible CDR loops.
+#
+# Optional diffusion tuning:
+#   --diffusion.num_steps 200
+#   --diffusion.guidance_scale 0.1
+#   --diffusion.temperature 1.0
+# ============================================================================== 

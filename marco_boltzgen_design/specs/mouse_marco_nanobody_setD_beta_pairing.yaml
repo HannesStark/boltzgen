@@ -1,0 +1,46 @@
+# Protocol: nanobody-anything
+# MARCO runtime defaults (CLI, not parsed from YAML):
+#   --protocol nanobody-anything
+#   --diffusion_batch_size 2        # use 1-2 to preserve length diversity
+#   --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5
+#   --refolding_rmsd_threshold 3.0
+# Rationale: MARCO SRCR is polar/beta-rich, so prioritize buried H-bonds/SASA
+# and allow VHH loop flexibility during refolding.
+#
+# ==============================================================================
+# SET D: BETA-PAIRING SRCR EDGE-STRAND TARGETING  (mouse MARCO SRCR)
+# ==============================================================================
+#
+# --- Scientific rationale ---
+# Targets exposed SRCR beta-strand edges where a VHH CDR can form backbone-like
+# beta-pairing contacts. This is intended to complement Set A/B/C pocket/epitope
+# designs by favoring polar, hydrogen-bond-rich interfaces on the beta-sheet face.
+#
+# --- Numbering note ---
+# boltzgen uses mmCIF label_seq_id. mouse_marco_srcr.cif uses 2OYA label_seq
+# numbering (1-102). Binding values below are direct 2OYA label_seq positions.
+#
+# --- Targeted beta-edge residues ---
+# 2OYA beta-strand segments from _struct_sheet_range: 7-22, 50-54, 98-102.
+# Selected exposed/edge-biased positions: 7,8,10,12,14,15,17,20,21,22,
+#                                       50,52,54,98,101,102
+# Priority contacts: polar/charged or beta-edge residues that can support buried
+# H-bonds and cross-species-compatible strand pairing.
+
+entities:
+  - file:
+      path: ../targets/mouse_marco_srcr.cif
+      include:
+        - chain:
+            id: A
+      binding_types:
+        - chain:
+            id: A
+            # 2OYA beta-edge label_seq positions.
+            binding: 7,8,10,12,14,15,17,20,21,22,50,52,54,98,101,102
+
+  - file:
+      path:
+        # Beta-pairing benefits from long, flexible CDR3 reach.
+        - ../../example/nanobody_scaffolds/7eow.yaml
+        - ../../example/nanobody_scaffolds/8coh.yaml
