@@ -23,8 +23,3 @@ tasks:
 
 > Note: BoltzGen `run` manual states `--devices` defaults to all available GPUs.
 > `marco-copilot` passes `--devices` explicitly (default `2`) to ensure both GPUs are used on dual-GPU nodes.
-
-## Regression checks
-- `bash -n marco_boltzgen_design/runs/run_nanobody_campaign.sh`
-- `PYTHONPATH=src pytest -q tests/marco_copilot`
-
