@@ -1,0 +1,1 @@
+"""marco-copilot MVP package."""
