@@ -39,6 +39,9 @@ dependencies = [
     "cuequivariance_torch>=0.5.0",
     "huggingface_hub",
     "biopython", 
+    "typer",
+    "pyyaml",
+    "openpyxl",
 ]
 
 # Enables the usage of setuptools_scm
@@ -56,6 +59,7 @@ boltzgen = ["resources/config/**/*"]
 
 [project.scripts]
 boltzgen = "boltzgen.cli.boltzgen:main"
+marco-copilot = "marco_copilot.cli:app"
 
 [project.optional-dependencies]
 lint = ["ruff"]
