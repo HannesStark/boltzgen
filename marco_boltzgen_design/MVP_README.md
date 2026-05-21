@@ -1,17 +1,25 @@
-# marco-copilot MVP
+# marco-copilot MVP (Design Campaign Manager)
 
 ## Commands
-- `marco-copilot plan`: read `campaign.yaml` and generate BoltzGen spec YAMLs.
-- `marco-copilot design`: create run folders and `run.sh` scripts.
-- `marco-copilot score`: parse structures + compute simple contact/developability metrics.
-- `marco-copilot report`: export CSV and Excel.
-- `marco-copilot next`: summarize top candidates and next-round suggestions.
+- `marco-copilot plan --campaign campaign.yaml --out campaign_setD`
+- `marco-copilot design --campaign-dir campaign_setD --num-designs 100 --budget 20 --devices 2`
+- `marco-copilot score --input-csv designs.csv --out-csv scores.csv`
+- `marco-copilot report --scores-csv scores.csv --out-prefix reports/summary`
+- `marco-copilot next --scores-csv scores.csv --top-n 20`
 
-## Minimal campaign.yaml
+## campaign.yaml (minimal)
 ```yaml
-specs:
-  - name: mouse_round1
-    spec:
-      version: 1
-      target: mouse_marco
+mode: cross-reactive
+targets:
+  human: targets/human_marco_af.pdb
+  mouse: targets/mouse_marco_srcr.cif
+tasks:
+  - name: setD_patch2_scaffold_8coh
+    target: targets/human_marco_af.pdb
+    scaffold: scaffolds/8coh.cif
+    epitope: [423, 425, 432, 461, 467]
 ```
+
+
+> Note: BoltzGen `run` manual states `--devices` defaults to all available GPUs.
+> `marco-copilot` passes `--devices` explicitly (default `2`) to ensure both GPUs are used on dual-GPU nodes.

@@ -17,19 +17,17 @@ def score_structure(path: str, binder_chain: str = "B", target_chain: str = "A",
 
     contacts = set()
     for b_res in binder:
-        b_atoms = [a for a in b_res.get_atoms()]
         for t_res in target:
-            for ba in b_atoms:
-                for ta in t_res.get_atoms():
-                    if ba - ta <= cutoff:
-                        contacts.add((b_res.id[1], t_res.id[1]))
-                        break
-                else:
-                    continue
-                break
+            for ba in b_res.get_atoms():
+                if any((ba - ta) <= cutoff for ta in t_res.get_atoms()):
+                    contacts.add((b_res.id[1], t_res.id[1]))
+                    break
 
+    bset = {c[0] for c in contacts}
+    tset = {c[1] for c in contacts}
     return {
         "num_contacts": len(contacts),
-        "binder_contact_residues": len({c[0] for c in contacts}),
-        "target_contact_residues": len({c[1] for c in contacts}),
+        "binder_contact_residues": len(bset),
+        "target_contact_residues": len(tset),
+        "contact_pairs": sorted(contacts),
     }
