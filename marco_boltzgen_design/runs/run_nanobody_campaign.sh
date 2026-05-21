@@ -5,7 +5,9 @@ SPEC="${1:-specs/human_marco_nanobody_anywhere.yaml}"
 OUTDIR="${2:-runs/nanobody_$(date +%Y%m%d_%H%M%S)}"
 NUM_DESIGNS="${NUM_DESIGNS:-200}"
 BUDGET="${BUDGET:-40}"
-DEVICES="${DEVICES:-1}"
+# BoltzGen manual: --devices defaults to all visible GPUs.
+# For dual-GPU MARCO nodes, default to 2 explicitly for reproducibility.
+DEVICES="${DEVICES:-2}"
 
 if [[ ! -f "$SPEC" ]]; then
   echo "ERROR: spec file not found: $SPEC" >&2
@@ -13,28 +15,39 @@ if [[ ! -f "$SPEC" ]]; then
   exit 1
 fi
 
-# Determine protocol from spec comment (first match), defaulting to nanobody-anything.
-# The spec YAML file may contain a comment like "# Protocol: nanobody-hotspot"
-# which is more appropriate for hotspot-constrained designs than forcing
-# nanobody-anything, which ignores binding-type constraints.
-PROTOCOL_FROM_SPEC="$(grep -m1 -oP '(?<=Protocol:\s)\w+(?:-\w+)*' "$SPEC" 2>/dev/null || true)"
+# Determine protocol from a metadata comment in spec, e.g.:
+#   # Protocol: nanobody-hotspot
+# If absent, fallback to nanobody-anything.
+PROTOCOL_FROM_SPEC="$(awk 'match($0, /Protocol:[[:space:]]*([A-Za-z0-9-]+)/, m) {print m[1]; exit}' "$SPEC" 2>/dev/null || true)"
 PROTOCOL="${PROTOCOL:-$PROTOCOL_FROM_SPEC}"
 PROTOCOL="${PROTOCOL:-nanobody-anything}"
 
-# MARCO SRCR is polar/beta-rich. Keep batches small for length diversity,
-# up-weight buried H-bonds/SASA in filtering, and relax VHH-loop refolding RMSD.
+# MARCO SRCR defaults tuned for interface quality on limited VRAM.
 MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size 2 --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0}"
-
-# By default nanobody-anything avoids Cys in inverse folding.
-# To permit Cys explicitly, append e.g. EXTRA_ARGS='--inverse_fold_avoid ""'
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 
-boltzgen run "$SPEC" \
-  --output "$OUTDIR" \
-  --protocol "$PROTOCOL" \
-  --num_designs "$NUM_DESIGNS" \
-  --budget "$BUDGET" \
-  --devices "$DEVICES" \
-  --reuse \
-  $MARCO_EXTRA_ARGS \
-  $EXTRA_ARGS
+mkdir -p "$OUTDIR"
+
+echo "[marco-run] spec=$SPEC"
+echo "[marco-run] outdir=$OUTDIR"
+echo "[marco-run] protocol=$PROTOCOL"
+echo "[marco-run] num_designs=$NUM_DESIGNS budget=$BUDGET devices=$DEVICES"
+
+cmd=(
+  boltzgen run "$SPEC"
+  --output "$OUTDIR"
+  --protocol "$PROTOCOL"
+  --num_designs "$NUM_DESIGNS"
+  --budget "$BUDGET"
+  --devices "$DEVICES"
+  --reuse
+)
+
+# shellcheck disable=SC2206
+marco_extra_arr=( $MARCO_EXTRA_ARGS )
+# shellcheck disable=SC2206
+extra_arr=( $EXTRA_ARGS )
+
+cmd+=("${marco_extra_arr[@]}" "${extra_arr[@]}")
+
+"${cmd[@]}"
