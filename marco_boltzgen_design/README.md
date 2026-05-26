@@ -19,9 +19,10 @@ De novo VHH (nanobody) design against the SRCR (Scavenger Receptor Cysteine-Rich
 11. [Step 6 — AF2 Validation](#step-6--af2-validation)
 12. [Full Production Workflow](#full-production-workflow)
 13. [Reference: Numbering Systems](#reference-numbering-systems)
-14. [Reference: MARCO CLI Defaults](#reference-marco-cli-defaults)
-15. [Troubleshooting](#troubleshooting)
-16. [Appendices](#appendices)
+14. [Spec Files Reference](#14-spec-files-reference)
+15. [Reference: MARCO CLI Defaults](#reference-marco-cli-defaults)
+16. [Troubleshooting](#troubleshooting)
+17. [Appendices](#appendices)
 
 ---
 
@@ -108,43 +109,39 @@ boltzgen run --force_download specs/mouse_marco_nanobody_hotspot.yaml \
 
 ## 4. Interface Sets
 
-Four distinct interface sets have been designed based on structural, patent, and beta-pairing design logic. All are intended to be run with `--protocol nanobody-anything` and MARCO-specific filtering flags.
+Four strategy groups cover distinct SRCR surfaces and species scopes. All use `--protocol nanobody-anything` with MARCO-specific filtering defaults.
 
-### Set A — SO4 / Ligand-Blocking Pocket
-**Block the ligand-binding crevice** (LDL, oxLDL, bacteria, apoptotic cells).
+| Set | Strategy | Species | Specs | Priority |
+|-----|----------|---------|-------|----------|
+| **D** | Beta-edge strand targeting — polar beta-sheet face | Both / Human / Mouse | `*_setD_beta_pairing.yaml` | 🔴 Highest |
+| **C** | Hybrid interface — Sets A + B union | Cross-reactive | `crossreactive_*_setC_hybrid.yaml` | 🔴 Highest |
+| **A** | SO₄/pocket blocking — ligand-binding crevice | Mouse / Human | `*_setA_so4_pocket.yaml` | 🟡 High |
+| **B** | Patent antibody epitope | Human only | `*_setB_patent_epitope.yaml` | 🟡 High |
+| Hotspot | ARG-rich basic patch (conserved) | Various | `*_hotspot.yaml`, `*_conserved_surface.yaml` | 🟢 Medium |
+| Anywhere | Unconstrained surface exploration | Various | `*_anywhere.yaml` | 🔵 Exploratory |
 
-| Spec | label_seq | Notes |
-|------|-----------|-------|
-| `specs/mouse_marco_nanobody_setA_so4_pocket.yaml` | 12,14,21,50,56,58,78,89 | Mouse SRCR (2OYA) |
-| `specs/human_marco_nanobody_setA_so4_pocket.yaml` | 429,431,438,467,473,475,495,506 | Human MARCO (Q9UEW3 full-length numbering) |
+> 💡 **Detailed per-spec instructions** (binding residues, validate/pilot/HPC commands) are in [Section 14 — Spec Files Reference](#14-spec-files-reference).
+
+### Set A — SO₄ / Ligand-Blocking Pocket
+Block the ligand-binding crevice (LDL, oxLDL, bacteria, apoptotic cells).
+- **Mouse:** 2OYA label_seq 12,14,21,50,56,58,78,89
+- **Human:** Q9UEW3 label_seq 429,431,438,467,473,475,495,506
 
 ### Set B — Patent Antibody Epitope
-**Target the PI-3010/PI-3035 antibody epitope** (human-only; cross-species conservation differs).
+Target the PI-3010/PI-3035 antibody epitope (human-only; Q452 differs in mouse).
+- **Human:** Q9UEW3 label_seq 450,452,472,473,487,499,505,507,509,511
 
-| Spec | label_seq | Notes |
-|------|-----------|-------|
-| `specs/human_marco_nanobody_setB_patent_epitope.yaml` | 450,452,472,473,487,499,505,507,509,511 | Human only |
-
-> ⚠️ Human Q452 = mouse D452 (species差异). Set B is human-only.
+> ⚠️ Patent-reported amino acid identities were re-verified against mmCIF — several differed.
 
 ### Set C — Hybrid Interface (Cross-Reactive)
-**Combine Sets A + B** for maximum paratope breadth and interface stability.
-
-| Spec | Human label_seq | Mouse label_seq | Notes |
-|------|----------------|-----------------|-------|
-| `specs/crossreactive_marco_nanobody_setC_hybrid.yaml` | 429,431,438,450,452,467,472,473,475,487,495,499,505,506,507,509,511 | 12,14,21,50,56,58,78,89 | Cross-reactive |
-
-**Key conserved residue: 473** (K in both human and mouse) — appears in Sets A–C.
+Combine Sets A + B for maximum paratope breadth and interface stability.
+- **Human:** 17 residues (union of Sets A + B)
+- **Mouse:** 8 residues from the crevice entrance
 
 ### Set D — Beta-Pairing SRCR Edge-Strand Targeting
-**Purpose:** Exploit exposed beta-strand edges on the SRCR fold to favor backbone-like, hydrogen-bond-rich VHH contacts on a polar beta-sheet surface.
-**Use case:** Highest-priority exploratory set for hydrophilic SRCR surfaces where generic hydrophobic binder filtering may underperform.
-
-| Spec | Human label_seq | Mouse label_seq | Notes |
-|------|----------------|-----------------|-------|
-| `specs/human_marco_nanobody_setD_beta_pairing.yaml` | 423,424,426,428,430,431,433,436,437,438,466,468,470,514,517,518 | — | Human beta-edge |
-| `specs/mouse_marco_nanobody_setD_beta_pairing.yaml` | — | 7,8,10,12,14,15,17,20,21,22,50,52,54,98,101,102 | Mouse 2OYA beta-edge |
-| `specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml` | 423,424,426,428,430,431,433,436,437,438,466,468,470,514,517,518 | 7,8,10,12,14,15,17,20,21,22,50,52,54,98,101,102 | Cross-reactive beta-pairing |
+Exploit exposed beta-strand edges for backbone-like, H-bond-rich VHH contacts on the polar beta-sheet face. Best for hydrophilic SRCR surfaces where hydrophobic filtering underperforms.
+- **Human:** Q9UEW3 label_seq 423,424,426,428,430,431,433,436,437,438,466,468,470,514,517,518
+- **Mouse:** 2OYA label_seq 7,8,10,12,14,15,17,20,21,22,50,52,54,98,101,102
 
 ---
 
@@ -416,11 +413,11 @@ The original DSSP-derived hotspot specs remain available:
 
 ## Reference: Numbering Systems
 
-|| System | Offset | Range | Used for |
+| System | Offset | Range | Used for |
 |--------|--------|-------|---------|
-|| **Q9UEW3** (human) | — | 1–520 | Full sequence positions |
-|| mmCIF `label_seq` (human) | Q9UEW3 − 417 | 1–103 | Human spec `binding:` field |
-|| 2OYA `label_seq` (mouse) | Direct (1–102) | 1–102 | Mouse spec `binding:` field |
+| **Q9UEW3** (human) | — | 1–520 | Full sequence positions |
+| mmCIF `label_seq` (human) | Q9UEW3 − 417 | 1–103 | Human spec `binding:` field |
+| 2OYA `label_seq` (mouse) | Direct (1–102) | 1–102 | Mouse spec `binding:` field |
 
 **Q9UEW3 → label_seq conversion:**
 - Human: `label_seq = Q9UEW3_position − 417`
@@ -431,644 +428,251 @@ The original DSSP-derived hotspot specs remain available:
 > ⚠️ **Common error:** Do NOT use Q9UEW3 positions directly in the YAML `binding:` field. The mmCIF uses `label_seq`, not the full-sequence Q9UEW3 position. For mouse (2OYA), the offset is **+416** (label_seq 1 = Q9UEW3 417), not +417.
 
 ---
+## 14. Spec Files Reference
 
-## Reference: Per-Spec File Instructions
-
-Each YAML file targets a distinct design strategy. All specs accept the same MARCO runtime defaults and are run with the same wrapper scripts. Pick the spec that matches your biological goal.
-
-> **TL;DR** — Most users should start with **Set D** (`crossreactive_marco_nanobody_setD_beta_pairing.yaml`) or **Set C** (`crossreactive_marco_nanobody_setC_hybrid.yaml`) for cross-reactive designs, or **Set A** (`*_setA_so4_pocket.yaml`) for ligand-blocking.
+All 19 YAML spec files target distinct design strategies. All accept the same MARCO runtime defaults (`--protocol nanobody-anything`, `--diffusion_batch_size 2`, etc.) applied automatically by the wrapper scripts. Pick the spec matching your biological goal.
 
 ### Spec naming key
-- `nanobody_*` — VHH scaffolds (7EOW 21-aa CDR3, 8COH 19-aa CDR3). Use `--protocol nanobody-anything`.
-- `binder_*` — general binder scaffolds (same CLI flags, less VHH-specific bias).
-- `peptide_*` — peptide scaffold targets.
-- `hotspot` — targets the ARG-rich conserved SO₄/basic patch (Sets A/B/C/D precursor).
-- `setA` — SO₄/pocket blocking (ligand-binding crevice).
-- `setB` — patent antibody epitope (human-only).
-- `setC` — hybrid cross-reactive (Sets A + B union).
-- `setD` — beta-edge strand targeting (exposed beta-sheet face).
-- `crossreactive_*` — designs against both human MARCO (Q9UEW3) and mouse Marco (2OYA) simultaneously; requires a cross-reactive nanobody that binds both.
-- `*_anywhere` — no hotspot constraint; designs against any accessible surface of the target.
-- `*_hotspot` — targets the conserved ARG-rich basic patch (hotspot positions only).
+
+| Pattern | Meaning |
+|---------|---------|
+| `crossreactive_*` | Targets both human MARCO (Q9UEW3) and mouse Marco (2OYA) simultaneously |
+| `*_nanobody_*` | VHH scaffold (7EOW 21-aa CDR3, 8COH 19-aa CDR3) |
+| `*_binder_*` | General binder scaffold (non-VHH-specific) |
+| `*_peptide_*` | Peptide-length scaffold |
+| `setA` | SO₄/pocket blocking — ligand-binding crevice |
+| `setB` | Patent antibody epitope — human-only |
+| `setC` | Hybrid (Sets A + B union) — cross-reactive |
+| `setD` | Beta-edge strand targeting — exposed beta-sheet face |
+| `*_hotspot` | ARG-rich conserved basic patch (verified from SO₄ sites) |
+| `*_anywhere` | No hotspot constraint — unconstrained surface exploration |
+
+### Priority recommendation
+
+**Start here:**
+- **Set D** (`crossreactive_marco_nanobody_setD_beta_pairing.yaml`) — highest-priority exploratory set for the hydrophilic SRCR surface
+- **Set C** (`crossreactive_marco_nanobody_setC_hybrid.yaml`) — maximum paratope breadth for therapeutic applications
+- **Set A** (`*_setA_so4_pocket.yaml`) — ligand-blocking for LDL/oxLDL/bacteria/apoptotic cell interference
 
 ---
 
-### crossreactive_conserved_surface.yaml
+### Cross-reactive specs (human + mouse)
 
-**Strategy:** Cross-reactive design targeting the conserved ARG-rich basic patch shared between human and mouse MARCO. This is the same functional surface as `crossreactive_marco_nanobody_hotspot.yaml` but uses a broader definition of conserved residues.
+Design against both species simultaneously. Requires nanobodies that bind both human MARCO and mouse Marco.
 
-**Binding residues:**
-- Human (Q9UEW3): 423, 425, 432, 461, 467, 469, 489, 500
-- Mouse (2OYA): 6, 8, 15, 44, 50, 52, 72, 83
+| Spec | Residues | Strategy | Priority |
+|------|----------|----------|----------|
+| `crossreactive_marco_nanobody_setD_beta_pairing.yaml` | Human: 423,424,426,428,430,431,433,436,437,438,466,468,470,514,517,518 · Mouse: 7,8,10,12,14,15,17,20,21,22,50,52,54,98,101,102 | Beta-edge targeting (16/16 residues) | 🔴 Highest |
+| `crossreactive_marco_nanobody_setC_hybrid.yaml` | Human: 429,431,438,450,452,467,472,473,475,487,495,499,505,506,507,509,511 · Mouse: 12,14,21,50,56,58,78,89 | Hybrid interface — Sets A + B union | 🔴 Highest |
+| `crossreactive_marco_nanobody_hotspot.yaml` | Human: 423,425,432,461,467,469,489,500 · Mouse: 6,8,15,44,50,52,72,83 | ARG-rich conserved basic patch | 🟢 Medium |
+| `crossreactive_conserved_surface.yaml` | Same as `_hotspot.yaml` | Broad conserved-surface targeting | 🟢 Medium |
 
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3)
+**Set D (beta-pairing):** Targets exposed beta-strand edges on the SRCR fold for backbone-like H-bond contacts on the polar beta-sheet face. Best when hydrophobic filtering may underperform on hydrophilic surfaces.
 
-**When to use:** Broad cross-reactivity screening with a focused hotspot set. Good for testing whether cross-reactive nanobodies can simultaneously engage both species.
+**Set C (hybrid):** Combines the SO₄/pocket (Set A) with the patent epitope (Set B) for maximum interface breadth. Best for therapeutic applications requiring broad MARCO interference.
 
-**Validate:**
-```bash
-boltzgen check specs/crossreactive_conserved_surface.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/crossreactive_conserved_surface.yaml runs/conserved_surface_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/crossreactive_conserved_surface.yaml runs/conserved_surface_prod
-```
+**Notes:**
+- Patent-based position claims in Set C were verified against mmCIF — several patent-reported amino acid identities were corrected.
+- Set C human Q452 = TYR (not the patent's claimed residue at that position).
 
 ---
 
-### crossreactive_marco_nanobody_hotspot.yaml
+### Human MARCO specs
 
-**Strategy:** Cross-reactive nanobody design targeting the conserved ARG-rich basic patch in both human and mouse. Uses the same hotspot set as `crossreactive_conserved_surface.yaml` with VHH-specific scaffold bias.
+| Spec | Residues (Q9UEW3 label_seq) | Strategy | Priority |
+|------|----------------------------|----------|----------|
+| `human_marco_nanobody_setD_beta_pairing.yaml` | 423,424,426,428,430,431,433,436,437,438,466,468,470,514,517,518 | Beta-edge targeting | 🟡 High |
+| `human_marco_nanobody_setA_so4_pocket.yaml` | 429,431,438,467,473,475,495,506 | SO₄/pocket blocking | 🟡 High |
+| `human_marco_nanobody_setB_patent_epitope.yaml` | 450,452,472,473,487,499,505,507,509,511 | Patent PI-3010/PI-3035 epitope | 🟡 High |
+| `human_marco_nanobody_hotspot.yaml` | 423,425,432,461,467,469,489,500 | ARG-rich conserved basic patch | 🟢 Medium |
+| `human_marco_nanobody_anywhere.yaml` | None (unconstrained) | Unconstrained surface exploration | 🔵 Exploratory |
+| `human_marco_binder_hotspot.yaml` | 423,425,432,461,467,469,489,500 | Hotspot targeting (general binder) | 🟢 Medium |
+| `human_marco_binder_anywhere.yaml` | None (unconstrained) | Unconstrained (general binder) | 🔵 Exploratory |
+| `human_marco_peptide_anywhere.yaml` | None (unconstrained) | Peptide-length unconstrained | 🔵 Exploratory |
 
-**Binding residues:**
-- Human (Q9UEW3): 423, 425, 432, 461, 467, 469, 489, 500
-- Mouse (2OYA): 6, 8, 15, 44, 50, 52, 72, 83
+**Set B (patent epitope):** Human-only. Q452 = TYR in human (mouse = D452). Do not use for cross-reactive designs. Patent text contained incorrect amino acid claims — all positions re-verified against `human_MARCO_input.cif`.
 
-**Scaffolds:** 7EOW (21-aa CDR3, recommended) + 8COH (19-aa CDR3)
-
-**When to use:** Cross-reactive screening with VHH-specific CDR constraints. Preferred over `crossreactive_conserved_surface.yaml` when using `nanobody-anything` protocol.
-
-**Validate:**
-```bash
-boltzgen check specs/crossreactive_marco_nanobody_hotspot.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/crossreactive_marco_nanobody_hotspot.yaml runs/hotspot_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_hotspot.yaml runs/hotspot_prod
-```
+**`binder_*` specs:** Use general binder scaffolds rather than VHH-specific ones. Less CDR geometry constraint; consider `*_nanobody_*` variants for tighter VHH geometry.
 
 ---
 
-### crossreactive_marco_nanobody_setC_hybrid.yaml
+### Mouse Marco specs
 
-**Strategy:** SET C — Hybrid cross-reactive interface. Combines the SO₄/pocket residues (Set A) with the patent antibody epitope (Set B) for maximum paratope breadth. The widest functional surface of any Set C spec.
+| Spec | Residues (2OYA label_seq) | Strategy | Priority |
+|------|---------------------------|----------|----------|
+| `mouse_marco_nanobody_setA_so4_pocket.yaml` | 12,14,21,50,56,58,78,89 | SO₄/pocket blocking | 🟡 High |
+| `mouse_marco_nanobody_setD_beta_pairing.yaml` | 7,8,10,12,14,15,17,20,21,22,50,52,54,98,101,102 | Beta-edge targeting | 🟡 High |
+| `mouse_marco_nanobody_hotspot.yaml` | 6,8,15,44,50,52,72,83 | ARG-rich conserved basic patch | 🟢 Medium |
+| `mouse_marco_nanobody_anywhere.yaml` | None (unconstrained) | Unconstrained surface exploration | 🔵 Exploratory |
+| `mouse_marco_binder_hotspot.yaml` | 6,8,15,44,50,52,72,83 | Hotspot targeting (general binder) | 🟢 Medium |
+| `mouse_marco_binder_anywhere.yaml` | None (unconstrained) | Unconstrained (general binder) | 🔵 Exploratory |
+| `mouse_marco_peptide_anywhere.yaml` | None (unconstrained) | Peptide-length unconstrained | 🔵 Exploratory |
 
-**Binding residues:**
-- Human (Q9UEW3): 429, 431, 438, 450, 452, 467, 472, 473, 475, 487, 495, 499, 505, 506, 507, 509, 511
-- Mouse (2OYA): 12, 14, 21, 50, 56, 58, 78, 89
+**Set A vs hotspot:** Set A uses 12,14,21,50,56,58,78,89 (crevice entrance / SO₄ pocket). The original hotspot spec uses 6,8,15,44,50,52,72,83 (deeper ARG-rich basic patch at SO₄ sites). Both are valid — choose based on whether you want deep-site or crevice-entrance targeting.
 
-**Scaffolds:** 7EOW (21-aa CDR3, recommended for large interface) + 8COH (19-aa CDR3)
-
-**When to use:** Highest-priority cross-reactive spec. Maximizes interface contacts by targeting both the ligand pocket and the patent epitope simultaneously. Best for therapeutic applications requiring broad interference with MARCO function.
-
-**Validate:**
-```bash
-boltzgen check specs/crossreactive_marco_nanobody_setC_hybrid.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC_prod
-```
-
-> **Note:** The original patent-based position claims were verified against mmCIF structures. Several patent-reported amino acid identities were corrected (e.g., Q452 = TYR, not the patent's claimed residue).
+**Hotspot residues verified:** All from PDB 2OYA SO₄ binding sites AC1/AC2/AC3. 6(R), 8(R), 15(R), 44(R), 50(R), 52(R), 72(R), 83(K).
 
 ---
 
-### crossreactive_marco_nanobody_setD_beta_pairing.yaml
+### Validate all specs
 
-**Strategy:** SET D — Beta-pairing cross-reactive. Targets exposed beta-strand edges on the SRCR fold to favor backbone-like, hydrogen-bond-rich VHH contacts on the polar beta-sheet surface. Distinct from Sets A/B/C which target the crevice/pocket.
-
-**Binding residues:**
-- Human (Q9UEW3): 423, 424, 426, 428, 430, 431, 433, 436, 437, 438, 466, 468, 470, 514, 517, 518
-- Mouse (2OYA): 7, 8, 10, 12, 14, 15, 17, 20, 21, 22, 50, 52, 54, 98, 101, 102
-
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3)
-
-**When to use:** Highest-priority exploratory set for the hydrophilic SRCR surface. Best when generic hydrophobic binder filtering may underperform. Distinct strategy from Set A/B/C — designed to complement, not compete with, crevice-targeting designs.
-
-**Validate:**
 ```bash
+conda activate boltzgen
+
+# All Set D specs
 boltzgen check specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_prod
-```
-
----
-
-### human_marco_nanobody_anywhere.yaml
-
-**Strategy:** Human MARCO only. No hotspot constraint — designs VHH CDRs against any accessible surface of the human SRCR domain (Q9UEW3 positions 418–520). Unconstrained exploration for novel epitopes.
-
-**Target:** Human MARCO SRCR (Q9UEW3, chain A), full SRCR domain
-
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3)
-
-**When to use:** Discovery-mode exploration without prior epitope assumptions. May find novel sites not covered by Sets A–D. Higher risk of off-target binding — always validate top designs with AF2 backfolding.
-
-**Validate:**
-```bash
-boltzgen check specs/human_marco_nanobody_anywhere.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/human_marco_nanobody_anywhere.yaml runs/human_anywhere_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_anywhere.yaml runs/human_anywhere_prod
-```
-
----
-
-### human_marco_nanobody_hotspot.yaml
-
-**Strategy:** Human MARCO only. Targets the conserved ARG-rich basic patch (Q9UEW3 positions 423, 425, 432, 461, 467, 469, 489, 500) — the functional ligand-binding surface identified from SO₄ binding site analysis.
-
-**Target:** Human MARCO SRCR (Q9UEW3, chain A)
-
-**Binding residues:** 423, 425, 432, 461, 467, 469, 489, 500
-
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3)
-
-**When to use:** Human-specific screening where cross-reactivity is not required. The hotspot set is the same functional surface as the mouse DSSP-derived hotspots.
-
-**Validate:**
-```bash
-boltzgen check specs/human_marco_nanobody_hotspot.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/human_marco_nanobody_hotspot.yaml runs/human_hotspot_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_hotspot.yaml runs/human_hotspot_prod
-```
-
----
-
-### human_marco_nanobody_setA_so4_pocket.yaml
-
-**Strategy:** SET A — Human MARCO SO₄/pocket blocking. Targets the ligand-binding crevice residues (Q9UEW3 positions 429, 431, 438, 467, 473, 475, 495, 506) to block LDL, oxLDL, bacteria, and apoptotic cell binding.
-
-**Target:** Human MARCO SRCR (Q9UEW3, chain A)
-
-**Binding residues:** 429, 431, 438, 467, 473, 475, 495, 506
-
-**Scaffolds:** 7EOW (21-aa CDR3, recommended for deep-pocket reach) + 8COH (19-aa CDR3)
-
-**When to use:** Ligand-blocking therapeutic applications. Specifically blocks the ligand-binding crevice rather than the patent epitope (Set B) or beta-edge (Set D).
-
-**Validate:**
-```bash
-boltzgen check specs/human_marco_nanobody_setA_so4_pocket.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/human_marco_nanobody_setA_so4_pocket.yaml runs/setA_human_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_setA_so4_pocket.yaml runs/setA_human_prod
-```
-
----
-
-### human_marco_nanobody_setB_patent_epitope.yaml
-
-**Strategy:** SET B — Human MARCO patent antibody epitope. Targets the PI-3010/PI-3035 antibody epitope (Q9UEW3 positions 450, 452, 472, 473, 487, 499, 505, 507, 509, 511) — a functional epitope distinct from the SO₄ pocket.
-
-**Target:** Human MARCO SRCR (Q9UEW3, chain A) — human-only
-
-**Binding residues:** 450, 452, 472, 473, 487, 499, 505, 507, 509, 511
-
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3)
-
-**When to use:** Targeting the same epitope space as the PI-3010/PI-3035 antibody path. Human-only due to species-specific residues (e.g., Q452 = mouse D452). Not suitable for cross-reactive designs.
-
-> ⚠️ **Patent accuracy note:** The patent text contained amino acid claims that did not match the actual mmCIF structure. All positions were re-verified against `human_MARCO_input.cif`.
-
-**Validate:**
-```bash
-boltzgen check specs/human_marco_nanobody_setB_patent_epitope.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/human_marco_nanobody_setB_patent_epitope.yaml runs/setB_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_setB_patent_epitope.yaml runs/setB_prod
-```
-
----
-
-### human_marco_nanobody_setD_beta_pairing.yaml
-
-**Strategy:** SET D — Human MARCO beta-pairing SRCR edge-strand targeting. Targets exposed beta-strand edges on the human SRCR beta-sheet face (Q9UEW3 positions 423, 424, 426, 428, 430, 431, 433, 436, 437, 438, 466, 468, 470, 514, 517, 518) to favor backbone-like H-bond contacts.
-
-**Target:** Human MARCO SRCR (Q9UEW3, chain A)
-
-**Binding residues:** 423, 424, 426, 428, 430, 431, 433, 436, 437, 438, 466, 468, 470, 514, 517, 518
-
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3)
-
-**When to use:** Human-only version of the Set D beta-pairing strategy. Use when cross-reactivity is not required and you want to specifically target the polar beta-sheet face rather than the crevice (Set A) or epitope (Set B).
-
-**Validate:**
-```bash
 boltzgen check specs/human_marco_nanobody_setD_beta_pairing.yaml
-```
+boltzgen check specs/mouse_marco_nanobody_setD_beta_pairing.yaml
 
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/human_marco_nanobody_setD_beta_pairing.yaml runs/setD_human_pilot
-```
+# All Set C / A / B specs
+boltzgen check specs/crossreactive_marco_nanobody_setC_hybrid.yaml
+boltzgen check specs/human_marco_nanobody_setA_so4_pocket.yaml
+boltzgen check specs/mouse_marco_nanobody_setA_so4_pocket.yaml
+boltzgen check specs/human_marco_nanobody_setB_patent_epitope.yaml
 
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_setD_beta_pairing.yaml runs/setD_human_prod
-```
+# Hotspot / cross-reactive
+boltzgen check specs/crossreactive_marco_nanobody_hotspot.yaml
+boltzgen check specs/crossreactive_conserved_surface.yaml
+boltzgen check specs/human_marco_nanobody_hotspot.yaml
+boltzgen check specs/mouse_marco_nanobody_hotspot.yaml
 
----
-
-### mouse_marco_nanobody_anywhere.yaml
-
-**Strategy:** Mouse Marco only. No hotspot constraint — designs VHH CDRs against any accessible surface of the mouse SRCR domain (2OYA, 102 aa). Unconstrained exploration.
-
-**Target:** Mouse Marco SRCR (PDB 2OYA, chain A)
-
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3)
-
-**When to use:** Discovery-mode exploration of the mouse Marco surface. Useful for in vivo mouse model applications where cross-reactivity is not needed.
-
-**Validate:**
-```bash
+# Anywhere (unconstrained — discovery mode)
+boltzgen check specs/human_marco_nanobody_anywhere.yaml
 boltzgen check specs/mouse_marco_nanobody_anywhere.yaml
 ```
 
-**Local pilot:**
+---
+
+### Local pilot commands
+
 ```bash
+# Set D — cross-reactive (recommended first run)
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_pilot
+
+# Set C — hybrid cross-reactive
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC_pilot
+
+# Set A — mouse SO₄/pocket
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/setA_mouse_pilot
+
+# Set A — human SO₄/pocket
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_nanobody_setA_so4_pocket.yaml runs/setA_human_pilot
+
+# Set B — patent epitope (human-only)
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_nanobody_setB_patent_epitope.yaml runs/setB_pilot
+
+# Set D — human-only
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_nanobody_setD_beta_pairing.yaml runs/setD_human_pilot
+
+# Set D — mouse-only
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/mouse_marco_nanobody_setD_beta_pairing.yaml runs/setD_mouse_pilot
+
+# Hotspot specs
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_hotspot_pilot
+
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_nanobody_hotspot.yaml runs/human_hotspot_pilot
+
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/crossreactive_marco_nanobody_hotspot.yaml runs/hotspot_pilot
+
+# Anywhere (unconstrained)
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_nanobody_anywhere.yaml runs/human_anywhere_pilot
+
 NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
   specs/mouse_marco_nanobody_anywhere.yaml runs/mouse_anywhere_pilot
 ```
 
-**HPC production:**
+**Permit Cysteine in CDRs** (disabled by default in `nanobody-anything`):
 ```bash
+EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD
+```
+
+---
+
+### HPC production commands
+
+```bash
+# ── SET D ──
+# Beta-pairing — highest priority exploratory
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_prod
+
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/human_marco_nanobody_setD_beta_pairing.yaml runs/setD_human_prod
+
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/mouse_marco_nanobody_setD_beta_pairing.yaml runs/setD_mouse_prod
+
+# ── SET C ──
+# Hybrid — maximum paratope breadth
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC_prod
+
+# ── SET A ──
+# SO₄/pocket blocking
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/setA_mouse_prod
+
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/human_marco_nanobody_setA_so4_pocket.yaml runs/setA_human_prod
+
+# ── SET B ──
+# Patent epitope — human-only
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/human_marco_nanobody_setB_patent_epitope.yaml runs/setB_prod
+
+# ── HOTSPOT / CROSS-REACTIVE ──
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_hotspot.yaml runs/hotspot_prod
+
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/crossreactive_conserved_surface.yaml runs/conserved_surface_prod
+
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/human_marco_nanobody_hotspot.yaml runs/human_hotspot_prod
+
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_hotspot_prod
+
+# ── ANYWHERE (unconstrained) ──
+NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/human_marco_nanobody_anywhere.yaml runs/human_anywhere_prod
+
 NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
   specs/mouse_marco_nanobody_anywhere.yaml runs/mouse_anywhere_prod
 ```
 
----
-
-### mouse_marco_nanobody_hotspot.yaml
-
-**Strategy:** Mouse Marco only. Targets the conserved ARG-rich basic patch (2OYA label_seq 6, 8, 15, 44, 50, 52, 72, 83) identified from SO₄ binding sites AC1/AC2/AC3. These are the verified ligand-binding residues.
-
-**Target:** Mouse Marco SRCR (PDB 2OYA, chain A)
-
-**Binding residues:** 6, 8, 15, 44, 50, 52, 72, 83 (2OYA label_seq)
-
-**Scaffolds:** 7EOW (21-aa CDR3, recommended for deep-pocket reach) + 8COH (19-aa CDR3)
-
-**When to use:** Mouse-specific screening. The original DSSP-derived hotspot spec that informed Sets A–D. Good for understanding which positions drive the strongest H-bond interface.
-
-**Validate:**
+**Run multiple specs in parallel** (dual-GPU or SLURM array):
 ```bash
-boltzgen check specs/mouse_marco_nanobody_hotspot.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_hotspot_pilot
-```
-
-**HPC production:**
-```bash
+# Parallel submission
 NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_hotspot_prod
-```
+  specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/setA_mouse &
 
----
-
-### mouse_marco_nanobody_setA_so4_pocket.yaml
-
-**Strategy:** SET A — Mouse Marco SO₄/pocket blocking. Targets the ligand-binding crevice (2OYA label_seq 12, 14, 21, 50, 56, 58, 78, 89) to block ligand (LDL, oxLDL, bacteria, apoptotic cells) binding.
-
-**Target:** Mouse Marco SRCR (PDB 2OYA, chain A)
-
-**Binding residues:** 12, 14, 21, 50, 56, 58, 78, 89 (2OYA label_seq)
-
-**Scaffolds:** 7EOW (21-aa CDR3, recommended for deep-pocket reach) + 8COH (19-aa CDR3)
-
-**When to use:** Ligand-blocking applications in mouse systems. The mouse counterpart to `human_marco_nanobody_setA_so4_pocket.yaml`.
-
-> **Note:** This uses a different residue set than `mouse_marco_nanobody_hotspot.yaml` (which uses 6,8,15,44,50,52,72,83). Set A targets the crevice entrance; hotspot targets the deep SO₄ site.
-
-**Validate:**
-```bash
-boltzgen check specs/mouse_marco_nanobody_setA_so4_pocket.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/setA_mouse_pilot
-```
-
-**HPC production:**
-```bash
 NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/setA_mouse_prod
+  specs/human_marco_nanobody_setA_so4_pocket.yaml runs/setA_human &
+
+wait  # wait for all parallel jobs
 ```
 
----
-
-### mouse_marco_nanobody_setD_beta_pairing.yaml
-
-**Strategy:** SET D — Mouse Marco beta-pairing SRCR edge-strand targeting. Targets exposed beta-strand edges (2OYA label_seq 7, 8, 10, 12, 14, 15, 17, 20, 21, 22, 50, 52, 54, 98, 101, 102) to favor backbone-like H-bond contacts on the polar beta-sheet.
-
-**Target:** Mouse Marco SRCR (PDB 2OYA, chain A)
-
-**Binding residues:** 7, 8, 10, 12, 14, 15, 17, 20, 21, 22, 50, 52, 54, 98, 101, 102 (2OYA label_seq)
-
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3)
-
-**When to use:** Mouse-only beta-edge exploration. Use when cross-reactivity is not needed and the beta-sheet face is the target.
-
-**Validate:**
+**Direct bash (no SLURM):**
 ```bash
-boltzgen check specs/mouse_marco_nanobody_setD_beta_pairing.yaml
+NUM_DESIGNS=2000 BUDGET=200 GPUS=1 bash scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_direct
 ```
 
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/mouse_marco_nanobody_setD_beta_pairing.yaml runs/setD_mouse_pilot
-```
+**Output:** `runs/<name>/final_ranked_designs/all_designs_metrics.csv`
 
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_nanobody_setD_beta_pairing.yaml runs/setD_mouse_prod
-```
-
----
-
-### human_marco_binder_anywhere.yaml
-
-**Strategy:** General binder scaffolds (not VHH-specific) against human MARCO with no hotspot constraint. Explores any accessible surface. Less CDR geometry bias than `*_nanobody_anywhere`.
-
-**Target:** Human MARCO SRCR (Q9UEW3, chain A)
-
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3) — same scaffolds as nanobody specs but without `--protocol nanobody-anything` specificity
-
-**When to use:** General binder discovery when VHH-specific constraints are not required. Consider `*_nanobody_anywhere` instead for tighter CDR geometry.
-
-> ⚠️ **Chain ID:** This spec has `# TODO: replace with target chain` comment. Verify the chain ID in `human_MARCO_input.cif` before running.
-
-**Validate:**
-```bash
-boltzgen check specs/human_marco_binder_anywhere.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/human_marco_binder_anywhere.yaml runs/human_binder_anywhere_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_binder_anywhere.yaml runs/human_binder_anywhere_prod
-```
-
----
-
-### mouse_marco_binder_anywhere.yaml
-
-**Strategy:** General binder scaffolds against mouse Marco with no hotspot constraint. Explores any accessible surface.
-
-**Target:** Mouse Marco SRCR (PDB 2OYA, chain A)
-
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3)
-
-**When to use:** General binder discovery in mouse systems. Consider `mouse_marco_nanobody_anywhere.yaml` for VHH-specific CDR constraints.
-
-> ⚠️ **Chain ID:** Verify chain ID in `mouse_marco_srcr.cif` before running (default is A).
-
-**Validate:**
-```bash
-boltzgen check specs/mouse_marco_binder_anywhere.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/mouse_marco_binder_anywhere.yaml runs/mouse_binder_anywhere_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_binder_anywhere.yaml runs/mouse_binder_anywhere_prod
-```
-
----
-
-### human_marco_binder_hotspot.yaml
-
-**Strategy:** General binder scaffolds targeting the conserved ARG-rich basic patch on human MARCO (Q9UEW3 positions 423, 425, 432, 461, 467, 469, 489, 500).
-
-**Target:** Human MARCO SRCR (Q9UEW3, chain A)
-
-**Binding residues:** 423, 425, 432, 461, 467, 469, 489, 500
-
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3)
-
-**When to use:** Human-only hotspot targeting with general binder scaffolds. Use `human_marco_nanobody_hotspot.yaml` for VHH-specific CDR constraints.
-
-**Validate:**
-```bash
-boltzgen check specs/human_marco_binder_hotspot.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/human_marco_binder_hotspot.yaml runs/human_binder_hotspot_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_binder_hotspot.yaml runs/human_binder_hotspot_prod
-```
-
----
-
-### mouse_marco_binder_hotspot.yaml
-
-**Strategy:** General binder scaffolds targeting the conserved ARG-rich basic patch on mouse Marco (2OYA label_seq 6, 8, 15, 44, 50, 52, 72, 83).
-
-**Target:** Mouse Marco SRCR (PDB 2OYA, chain A)
-
-**Binding residues:** 6, 8, 15, 44, 50, 52, 72, 83 (2OYA label_seq)
-
-**Scaffolds:** 7EOW (21-aa CDR3) + 8COH (19-aa CDR3)
-
-**When to use:** Mouse-only hotspot targeting with general binder scaffolds. Use `mouse_marco_nanobody_hotspot.yaml` for VHH-specific CDR constraints.
-
-**Validate:**
-```bash
-boltzgen check specs/mouse_marco_binder_hotspot.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/mouse_marco_binder_hotspot.yaml runs/mouse_binder_hotspot_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_binder_hotspot.yaml runs/mouse_binder_hotspot_prod
-```
-
----
-
-### human_marco_peptide_anywhere.yaml
-
-**Strategy:** Peptide scaffold design against human MARCO with no hotspot constraint. Uses peptide-length scaffolds rather than full nanobody/binder scaffolds.
-
-**Target:** Human MARCO SRCR (Q9UEW3, chain A)
-
-**Scaffolds:** 7EOW + 8COH (peptide-length configuration)
-
-**When to use:** Peptide-based blocking agents. Less common than nanobody designs; consider `human_marco_nanobody_anywhere.yaml` for VHH-format alternatives.
-
-> ⚠️ **Chain ID:** Verify chain ID in `human_MARCO_input.cif` before running.
-
-**Validate:**
-```bash
-boltzgen check specs/human_marco_peptide_anywhere.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/human_marco_peptide_anywhere.yaml runs/human_peptide_anywhere_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_peptide_anywhere.yaml runs/human_peptide_anywhere_prod
-```
-
----
-
-### mouse_marco_peptide_anywhere.yaml
-
-**Strategy:** Peptide scaffold design against mouse Marco with no hotspot constraint.
-
-**Target:** Mouse Marco SRCR (PDB 2OYA, chain A)
-
-**Scaffolds:** 7EOW + 8COH (peptide-length configuration)
-
-**When to use:** Peptide-based blocking agents in mouse systems. Consider `mouse_marco_nanobody_anywhere.yaml` for VHH-format alternatives.
-
-**Validate:**
-```bash
-boltzgen check specs/mouse_marco_peptide_anywhere.yaml
-```
-
-**Local pilot:**
-```bash
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/mouse_marco_peptide_anywhere.yaml runs/mouse_peptide_anywhere_pilot
-```
-
-**HPC production:**
-```bash
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_peptide_anywhere.yaml runs/mouse_peptide_anywhere_prod
-```
-
----
-
-### Spec quick-reference table
-
-| Spec | Species | Strategy | Hotspots | Scaffolds | Priority |
-|------|---------|----------|----------|-----------|----------|
-| `crossreactive_marco_nanobody_setD_beta_pairing.yaml` | Both | Beta-edge targeting | 16/16 | VHH | 🔴 Highest |
-| `crossreactive_marco_nanobody_setC_hybrid.yaml` | Both | Hybrid (A+B union) | 17/8 | VHH | 🔴 Highest |
-| `mouse_marco_nanobody_setA_so4_pocket.yaml` | Mouse | SO₄/pocket blocking | 8 | VHH | 🟡 High |
-| `human_marco_nanobody_setA_so4_pocket.yaml` | Human | SO₄/pocket blocking | 8 | VHH | 🟡 High |
-| `human_marco_nanobody_setB_patent_epitope.yaml` | Human | Patent epitope | 10 | VHH | 🟡 High |
-| `human_marco_nanobody_setD_beta_pairing.yaml` | Human | Beta-edge targeting | 16 | VHH | 🟡 High |
-| `mouse_marco_nanobody_setD_beta_pairing.yaml` | Mouse | Beta-edge targeting | 16 | VHH | 🟡 High |
-| `crossreactive_marco_nanobody_hotspot.yaml` | Both | ARG-rich basic patch | 8/8 | VHH | 🟢 Medium |
-| `crossreactive_conserved_surface.yaml` | Both | ARG-rich basic patch | 8/8 | VHH | 🟢 Medium |
-| `human_marco_nanobody_hotspot.yaml` | Human | ARG-rich basic patch | 8 | VHH | 🟢 Medium |
-| `mouse_marco_nanobody_hotspot.yaml` | Mouse | ARG-rich basic patch | 8 | VHH | 🟢 Medium |
-| `human_marco_nanobody_anywhere.yaml` | Human | Unconstrained | None | VHH | 🔵 Exploratory |
-| `mouse_marco_nanobody_anywhere.yaml` | Mouse | Unconstrained | None | VHH | 🔵 Exploratory |
-| `human_marco_binder_hotspot.yaml` | Human | Hotspot (general) | 8 | Binder | 🟢 Medium |
-| `mouse_marco_binder_hotspot.yaml` | Mouse | Hotspot (general) | 8 | Binder | 🟢 Medium |
-| `human_marco_binder_anywhere.yaml` | Human | Unconstrained (general) | None | Binder | 🔵 Exploratory |
-| `mouse_marco_binder_anywhere.yaml` | Mouse | Unconstrained (general) | None | Binder | 🔵 Exploratory |
-| `human_marco_peptide_anywhere.yaml` | Human | Unconstrained (peptide) | None | Peptide | 🔵 Exploratory |
-| `mouse_marco_peptide_anywhere.yaml` | Mouse | Unconstrained (peptide) | None | Peptide | 🔵 Exploratory |
-
----
-
----
 
 ## Reference: MARCO CLI Defaults
 
