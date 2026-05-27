@@ -182,33 +182,30 @@ The wrapper now applies the recommended MARCO defaults automatically: `--protoco
 ```bash
 # Set D cross-reactive pilot (recommended first run)
 NUM_DESIGNS=50 BUDGET=10 \
-  ./runs/run_nanobody_campaign.sh specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC_pilot
+  ./runs/run_nanobody_campaign.sh specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_pilot
+# → Output: runs/setD_pilot/final_ranked_designs/all_designs_metrics.csv
 ```
 
 Equivalent explicit command:
 
 ```bash
-boltzgen run specs/crossreactive_marco_nanobody_setC_hybrid.yaml \
-  --protocol nanobody-anything \
-  --output runs/setC_pilot \
-  --num_designs 50 \
-  --diffusion_batch_size 2 \
-  --budget 10 \
-  --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 \
-  --refolding_rmsd_threshold 3.0
-```
-
-Set D beta-pairing pilot:
-
-```bash
 boltzgen run specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml \
   --protocol nanobody-anything \
-  --output runs/setD_beta_pairing_pilot \
+  --output runs/setD_pilot \
   --num_designs 50 \
   --diffusion_batch_size 2 \
   --budget 10 \
   --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 \
   --refolding_rmsd_threshold 3.0
+# → Output: runs/setD_pilot/final_ranked_designs/all_designs_metrics.csv
+```
+
+Set C hybrid pilot (maximum interface breadth):
+
+```bash
+NUM_DESIGNS=50 BUDGET=10 \
+  ./runs/run_nanobody_campaign.sh specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC_pilot
+# → Output: runs/setC_pilot/final_ranked_designs/all_designs_metrics.csv
 ```
 
 **Output:** `runs/setD_pilot/final_ranked_designs/all_designs_metrics.csv`
