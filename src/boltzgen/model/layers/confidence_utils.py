@@ -1,6 +1,8 @@
 import torch
 from torch import nn
+
 from boltzgen.data import const
+from boltzgen.model.modules.utils import get_autocast_device_type
 
 
 def compute_collinear_mask(v1, v2):
@@ -22,7 +24,7 @@ def compute_frame_pred(
     resolved_mask=None,
     inference=False,
 ):
-    with torch.amp.autocast("cuda", enabled=False):
+    with torch.amp.autocast(get_autocast_device_type(), enabled=False):
         asym_id_token = feats["asym_id"]
         asym_id_atom = torch.bmm(
             feats["atom_to_token"].float(), asym_id_token.unsqueeze(-1).float()
@@ -347,7 +349,7 @@ def compute_ptms(logits, x_preds, feats, multiplicity):
         is_chain_design_token.sum() > 0
         and (1 - is_chain_design_token.int()).sum() > 0
     ):
-        atom_chain_design_mask = (torch.bmm(    feats["atom_to_token"].bfloat16(),    feats["chain_design_mask"].bfloat16().unsqueeze(-1),).squeeze(-1).bool())
+        atom_chain_design_mask = (torch.bmm(    feats["atom_to_token"].bfloat16(),    feats["chain_design_mask"].bfloat16().unsqueeze(-1)).squeeze(-1).bool())
         x_target = x_pred_half[~atom_chain_design_mask]
         x_design = x_pred_half[atom_chain_design_mask]
         dists = torch.cdist(x_target, x_design)

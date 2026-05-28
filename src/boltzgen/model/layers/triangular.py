@@ -2,6 +2,7 @@ import torch
 from torch import Tensor, nn
 
 from boltzgen.model.layers import initialize as init
+from boltzgen.model.modules.utils import get_autocast_device_type
 
 
 @torch.compiler.disable  # noqa: E402 – decorator must follow import of torch
@@ -116,7 +117,7 @@ class MiniTriangularUpdate(nn.Module):
         x = x * mask.unsqueeze(-1)
 
         # Split input and cast to float
-        with torch.autocast("cuda", enabled=False):
+        with torch.autocast(get_autocast_device_type(), enabled=False):
             a1, b1, a2, b2 = torch.chunk(x.float(), 4, dim=-1)
 
             # Triangular projection
@@ -208,7 +209,7 @@ class TriangleMultiplicationOutgoing(nn.Module):
         x = x * mask.unsqueeze(-1)
 
         # Split input and cast to float
-        with torch.autocast("cuda", enabled=False):
+        with torch.autocast(get_autocast_device_type(), enabled=False):
             a, b = torch.chunk(x.float(), 2, dim=-1)
 
             # Triangular projection
@@ -295,7 +296,7 @@ class TriangleMultiplicationIncoming(nn.Module):
         x = x * mask.unsqueeze(-1)
 
         # Split input and cast to float
-        with torch.autocast("cuda", enabled=False):
+        with torch.autocast(get_autocast_device_type(), enabled=False):
             a, b = torch.chunk(x.float(), 2, dim=-1)
 
             # Triangular projection

@@ -28,33 +28,35 @@ from boltzgen.utils.quiet import quiet_startup
 
 quiet_startup()
 
-import collections
-import huggingface_hub
 import argparse
-from dataclasses import dataclass
-import shlex
-import subprocess
-import os
-import time
+import collections
 import math
+import os
 import re
+import shlex
 import shutil
+import subprocess
 import sys
-import numpy as np
-import pandas as pd
+import time
+from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
-import yaml
+
+import huggingface_hub
 import hydra
+import numpy as np
 import omegaconf
+import pandas as pd
 import torch
+import yaml
 
 from boltzgen.data import const
 from boltzgen.data.mol import load_canonicals
 from boltzgen.data.parse.schema import YamlDesignParser
 from boltzgen.data.write.mmcif import to_mmcif
 from boltzgen.task.task import Task
-from importlib.metadata import PackageNotFoundError, version as pkg_version
 
 ### Paths and constants ####
 # Get the path to the project root (where main.py and configs/ are located)
@@ -172,6 +174,13 @@ def add_configure_arguments(
         help="Number of devices to use. Default is all devices available.",
     )
     p.add_argument(
+        "--accelerator",
+        type=str,
+        choices=["auto", "gpu", "xpu", "cpu", "cuda"],
+        default="auto",
+        help="Accelerator to use. Default: %(default)s.",
+    )
+    p.add_argument(
         "--num_workers",
         type=int,
         help="Number of DataLoader worker processes.",
@@ -180,7 +189,7 @@ def add_configure_arguments(
     p.add_argument(
         "--config_dir",
         type=Path,
-        help=f"Path to the directory of default config files. Default: %(default)s",
+        help="Path to the directory of default config files. Default: %(default)s",
         default=config_dir,
     )
     p.add_argument(
@@ -766,7 +775,7 @@ def execute_command(args: argparse.Namespace) -> None:
         )
 
     # Load steps from steps.yaml
-    with open(steps_yaml_path, "r") as f:
+    with open(steps_yaml_path) as f:
         steps_data = yaml.safe_load(f)
 
     if not isinstance(steps_data, dict) or "steps" not in steps_data:
@@ -918,17 +927,25 @@ class BinderDesignPipeline:
             )
 
         # Handle use_kernels argument
-        device_capability = torch.cuda.get_device_capability()
-        use_kernels = None
-        if args.use_kernels == "auto":
-            use_kernels = device_capability[0] >= 8
-        elif args.use_kernels == "true":
-            use_kernels = True
-        elif args.use_kernels == "false":
-            use_kernels = False
+        # Kernels are CUDA-specific (cuequivariance), disable on XPU/other devices
+        if torch.cuda.is_available():
+            device_capability = torch.cuda.get_device_capability()
+            use_kernels = None
+            if args.use_kernels == "auto":
+                use_kernels = device_capability[0] >= 8
+            elif args.use_kernels == "true":
+                use_kernels = True
+            elif args.use_kernels == "false":
+                use_kernels = False
+            else:
+                raise ValueError(f"Invalid use_kernels value: {args.use_kernels}")
+            print(
+                f"Using kernels: {use_kernels} [device capability: {device_capability}]"
+            )
         else:
-            raise ValueError(f"Invalid use_kernels value: {args.use_kernels}")
-        print(f"Using kernels: {use_kernels} [device capability: {device_capability}]")
+            # XPU or other non-CUDA device - kernels not supported
+            use_kernels = False
+            print(f"Using kernels: {use_kernels} [non-CUDA device, kernels disabled]")
 
         protocol_config = protocol_configs[protocol]
         print(f"Config overrides for protocol {protocol}: {protocol_config}")
@@ -938,10 +955,28 @@ class BinderDesignPipeline:
             protocol_config, args.config, step_names
         )
 
-        devices = (
-            args.devices if args.devices is not None else torch.cuda.device_count()
-        )
+        # Detect available devices (CUDA or XPU)
+        if args.devices is not None:
+            devices = args.devices
+        elif torch.cuda.is_available():
+            devices = torch.cuda.device_count()
+        elif hasattr(torch, "xpu") and torch.xpu.is_available():
+            devices = torch.xpu.device_count()
+        else:
+            devices = 1  # CPU fallback
         print(f"Using {devices} devices")
+
+        # Determine accelerator
+        if args.accelerator == "auto":
+            if torch.cuda.is_available():
+                accelerator = "gpu"
+            elif hasattr(torch, "xpu") and torch.xpu.is_available():
+                accelerator = "xpu"
+            else:
+                accelerator = "cpu"
+        else:
+            accelerator = args.accelerator
+        print(f"Using accelerator: {accelerator}")
 
         self.steps = []
 
@@ -966,7 +1001,7 @@ class BinderDesignPipeline:
                 f"override.checkpoints.first_checkpoint_num_samples={fraction_per_checkpoint}"
             )
             checkpoint_args.append(
-                f"override.checkpoints.checkpoint_list=["
+                "override.checkpoints.checkpoint_list=["
                 + ",".join(
                     f"{{'checkpoint': {{'num_samples': {fraction_per_checkpoint}, 'path': '{get_artifact_path(args, checkpoint)}'}}}}"
                     for checkpoint in args.design_checkpoints[1:]
@@ -980,14 +1015,14 @@ class BinderDesignPipeline:
             )
             # Also disable the schedule when applying a fixed step scale
             design_step_and_noise_scale_args.append(
-                f"override.step_scale_schedule=null"
+                "override.step_scale_schedule=null"
             )
         if args.noise_scale is not None:
             design_step_and_noise_scale_args.append(
                 f"override.diffusion_process_args.noise_scale={args.noise_scale}"
             )
             design_step_and_noise_scale_args.append(
-                f"override.noise_scale_schedule=null"
+                "override.noise_scale_schedule=null"
             )
 
         if args.only_inverse_fold:
@@ -1024,6 +1059,7 @@ class BinderDesignPipeline:
                         f"output={output_dir}",
                         f"data.cfg.yaml_path=[{', '.join(str(s) for s in args.design_spec)}]",
                         f"trainer.devices={devices}",
+                        f"trainer.accelerator={accelerator}",
                         f"data.cfg.multiplicity={getattr(args, 'inverse_fold_num_sequences', 10)}",
                         f"data.cfg.skip_existing={args.reuse}",
                         f"data.cfg.output_dir={output_dir}",
@@ -1045,6 +1081,7 @@ class BinderDesignPipeline:
                         f"output={output_dir}",
                         f"data.cfg.yaml_path=[{', '.join(str(s) for s in args.design_spec)}]",
                         f"trainer.devices={devices}",
+                        f"trainer.accelerator={accelerator}",
                         f"data.num_workers={args.num_workers}",
                         f"data.cfg.skip_existing={args.reuse}",
                         f"data.cfg.multiplicity={num_batches}",
@@ -1092,11 +1129,12 @@ class BinderDesignPipeline:
                             f"data.cfg.multiplicity={args.inverse_fold_num_sequences}",
                             f"data.cfg.num_workers={args.num_workers}",
                             f"data.skip_existing={args.reuse}",
-                            f"data.skip_existing_kind=inverse_fold",
+                            "data.skip_existing_kind=inverse_fold",
                             f"override.use_kernels={use_kernels}",
                             f"checkpoint={get_artifact_path(args, args.inverse_fold_checkpoint)}",
                             f"data.cfg.moldir={moldir}",
                             f"trainer.devices={devices}",
+                            f"trainer.accelerator={accelerator}",
                             f"override.inverse_fold_args.inverse_fold_restriction=[{', '.join(exclude_residues)}]",
                         ]
                         + config_args_by_step["inverse_folding"],
@@ -1113,9 +1151,10 @@ class BinderDesignPipeline:
                     f"output={output_dir}",
                     f"data.design_dir={input_dir}",
                     f"trainer.devices={devices}",
+                    f"trainer.accelerator={accelerator}",
                     f"data.cfg.num_workers={args.num_workers}",
                     f"data.skip_existing={args.reuse}",
-                    f"data.skip_existing_kind=folded",
+                    "data.skip_existing_kind=folded",
                     f"override.use_kernels={use_kernels}",
                     f"checkpoint={get_artifact_path(args, args.folding_checkpoint)}",
                     f"data.cfg.moldir={moldir}",
@@ -1136,14 +1175,15 @@ class BinderDesignPipeline:
                         f"output={output_dir}",
                         f"data.design_dir={input_dir}",
                         f"trainer.devices={devices}",
+                        f"trainer.accelerator={accelerator}",
                         f"data.cfg.num_workers={args.num_workers}",
                         f"data.skip_existing={args.reuse}",
-                        f"data.skip_existing_kind=design_folded",
+                        "data.skip_existing_kind=design_folded",
                         f"override.use_kernels={use_kernels}",
                         f"checkpoint={get_artifact_path(args, args.folding_checkpoint)}",
                         f"data.cfg.moldir={moldir}",
-                        f"writer.designfolding=True",
-                        f"data.cfg.return_designfolding=True",
+                        "writer.designfolding=True",
+                        "data.cfg.return_designfolding=True",
                     ]
                     + config_args_by_step["design_folding"],
                 )
@@ -1160,9 +1200,10 @@ class BinderDesignPipeline:
                         f"output={output_dir}",
                         f"data.design_dir={input_dir}",
                         f"trainer.devices={devices}",
+                        f"trainer.accelerator={accelerator}",
                         f"data.cfg.num_workers={args.num_workers}",
                         f"data.skip_existing={args.reuse}",
-                        f"data.skip_existing_kind=affinity",
+                        "data.skip_existing_kind=affinity",
                         f"override.use_kernels={use_kernels}",
                         f"checkpoint={get_artifact_path(args, args.affinity_checkpoint)}",
                         f"data.cfg.moldir={moldir}",
@@ -1179,7 +1220,7 @@ class BinderDesignPipeline:
                 args=[
                     f"design_dir={input_dir}",
                     f"data.skip_existing={args.reuse}",
-                    f"data.skip_existing_kind=analyzed",
+                    "data.skip_existing_kind=analyzed",
                     f"data.cfg.moldir={moldir}",
                     f"designfolding_metrics={do_design_folding}",
                     f"delta_sasa_original={args.skip_inverse_folding}",
@@ -1354,7 +1395,7 @@ def check_design_spec(
         output_path = design_spec.stem + ".cif"
     with open(output_path, "w") as f:
         f.write(mmcif)
-    print(f"Design specification visualization is written to {str(output_path)}")
+    print(f"Design specification visualization is written to {output_path!s}")
 
 
 def get_artifact_path(
@@ -1499,8 +1540,7 @@ def parse_size_buckets(value_list):
                         raise ValueError(
                             f"Invalid size_buckets format: '{item}'. All values must be integers. Use 'min-max:count' format."
                         )
-                    else:
-                        raise e
+                    raise e
             else:
                 raise ValueError(
                     f"Invalid size_buckets format: '{item}'. Use 'min-max:count' format."
@@ -1657,17 +1697,14 @@ def merge_command(args: argparse.Namespace) -> None:
                 required=False,
             )
 
-
     def _make_new_file_name(original_file: str, new_id: str) -> str:
         path = Path(original_file)
         suffix = "".join(path.suffixes)
         return f"{new_id}{suffix}" if suffix else new_id
 
-
     def _slugify_run_tag(path: Path, index: int) -> str:
         slug = re.sub(r"[^0-9A-Za-z]+", "-", path.name).strip("-").lower()
         return slug or f"run{index}"
-
 
     def _copy_path(src: Path, dst: Path, *, required: bool) -> None:
         if src.exists():

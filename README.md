@@ -62,6 +62,46 @@ pip install -e .
 
 <details>
   <summary style="font-size: 1.3em; font-weight: 600;">
+    Click for Intel GPU (XPU) installation instructions
+  </summary>
+
+BoltzGen supports Intel Data Center GPUs, discrete GPUs, and integrated GPUs.
+
+### 1 - Set up your Python environment
+
+First, create and activate a Python environment using Miniconda, Conda, or uv (see the "detailed installation instructions" section above for Miniconda setup). For example:
+
+```bash
+conda create -n bg python=3.12
+conda activate bg
+```
+
+### 2 - Install PyTorch with XPU support
+
+Before installing BoltzGen, install PyTorch from Intel's wheel index:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/xpu
+```
+
+### 3 - Install BoltzGen
+
+```bash
+pip install boltzgen
+```
+
+> **Note:** The CUDA-specific packages (`cuequivariance`, `nvidia-ml-py`) will be installed but are not used on XPU devices. BoltzGen automatically detects XPU and uses pure PyTorch fallbacks.
+
+### 4 - Verify XPU is detected
+
+```bash
+python -c "import torch; print(f'XPU available: {torch.xpu.is_available()}')"
+```
+
+</details>
+
+<details>
+  <summary style="font-size: 1.3em; font-weight: 600;">
     Click for optional Docker instructions if you prefer Docker
   </summary>
 

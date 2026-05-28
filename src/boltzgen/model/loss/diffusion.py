@@ -13,7 +13,6 @@ def weighted_rigid_centering(
     mask,  # Bool['b n'] | None = None    # mask for variable lengths
 ):  # -> Float['b n 3']:
     """Algorithm 28  without rotation alignment"""
-
     # zero out all predicted and true coordinates where not an atom
     mask = mask.bool()
     true_coords = einx.where("b n, b n c, -> b n c", mask, true_coords, 0.0)
@@ -48,8 +47,8 @@ def weighted_rigid_align(
     mask,  # Bool['b n'] | None = None    # mask for variable lengths
 ):  # -> Float['b n 3']:
     """Algorithm 28 : note there is a problem with the pseudocode in the paper where predicted and
-    GT are swapped in algorithm 28, but correct in equation (2). Aligns true_coords to pred_coords."""
-
+    GT are swapped in algorithm 28, but correct in equation (2). Aligns true_coords to pred_coords.
+    """
     batch_size, num_points, dim = true_coords.shape
     weights = (mask * weights).unsqueeze(-1)
 
@@ -68,7 +67,7 @@ def weighted_rigid_align(
     if torch.any(mask.sum(dim=-1) < (dim + 1)):
         print(
             "Warning: The size of one of the point clouds is <= dim+1. "
-            + "`WeightedRigidAlign` cannot return a unique rotation."
+             "`WeightedRigidAlign` cannot return a unique rotation."
         )
 
     # Compute the weighted covariance matrix
@@ -89,8 +88,8 @@ def weighted_rigid_align(
     if (S.abs() <= 1e-15).any() and not (num_points < (dim + 1)):
         print(
             "Warning: Excessively low rank of "
-            + "cross-correlation between aligned point clouds. "
-            + "`WeightedRigidAlign` cannot return a unique rotation."
+             "cross-correlation between aligned point clouds. "
+             "`WeightedRigidAlign` cannot return a unique rotation."
         )
 
     # Compute the rotation matrix

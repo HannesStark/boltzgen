@@ -1,6 +1,7 @@
 from typing import Dict, Tuple, List, Optional
 import warnings
 
+from boltzgen.model.modules.utils import get_autocast_device_type
 import torch
 from torch import Tensor, nn
 from torch.nn.functional import one_hot
@@ -470,7 +471,7 @@ class InverseFoldingEncoder(nn.Module):
             dim=-1,
         )
 
-        with torch.autocast("cuda", enabled=False):
+        with torch.autocast(get_autocast_device_type(), enabled=False):
             atom_to_token = feats["atom_to_token"].float()
             atom_to_token_mean = atom_to_token / (
                 atom_to_token.sum(dim=1, keepdim=True) + 1e-6

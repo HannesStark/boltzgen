@@ -1,5 +1,6 @@
 from typing import Tuple
 
+from boltzgen.model.modules.utils import get_autocast_device_type
 import torch
 from torch import Tensor, nn
 from functools import partial
@@ -174,7 +175,7 @@ class PairformerLayer(nn.Module):
         z = z + self.transition_z(z)
 
         # Compute sequence stack
-        with torch.autocast("cuda", enabled=False):
+        with torch.autocast(get_autocast_device_type(), enabled=False):
             s_normed = self.pre_norm_s(s.float())
             s = s.float() + self.attention(
                 s=s_normed, z=z.float(), mask=mask.float(), k_in=s_normed

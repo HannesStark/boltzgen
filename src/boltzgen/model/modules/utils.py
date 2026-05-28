@@ -6,8 +6,8 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 from torch.nn import (
-    Module,
     Linear,
+    Module,
 )
 from torch.types import Device
 
@@ -118,7 +118,7 @@ class GaussianRandom3DEncodings(torch.nn.Module):
     def __init__(self, dim=50):
         super().__init__()
         center = torch.randn((dim, 3))
-        std = torch.rand((dim))
+        std = torch.rand(dim)
         self.dim = dim
         self.register_buffer("center", center)
         self.register_buffer("std", std)
@@ -146,7 +146,8 @@ def _copysign(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         a: source tensor.
         b: tensor whose signs will be used, of the same shape as a.
 
-    Returns:
+    Returns
+    -------
         Tensor of the same shape as a with the signs of b.
     """
     signs_differ = (a < 0) != (b < 0)
@@ -161,7 +162,8 @@ def quaternion_to_matrix(quaternions: torch.Tensor) -> torch.Tensor:
         quaternions: quaternions with real part first,
             as tensor of shape (..., 4).
 
-    Returns:
+    Returns
+    -------
         Rotation matrices as tensor of shape (..., 3, 3).
     """
     r, i, j, k = torch.unbind(quaternions, -1)
@@ -198,7 +200,8 @@ def random_quaternions(
         device: Desired device of returned tensor. Default:
             uses the current device for the default tensor type.
 
-    Returns:
+    Returns
+    -------
         Quaternions as tensor of shape (N, 4).
     """
     if isinstance(device, str):
@@ -221,8 +224,24 @@ def random_rotations(
         device: Device of returned tensor. Default: if None,
             uses the current device for the default tensor type.
 
-    Returns:
+    Returns
+    -------
         Rotation matrices as tensor of shape (n, 3, 3).
     """
     quaternions = random_quaternions(n, dtype=dtype, device=device)
     return quaternion_to_matrix(quaternions)
+
+def get_autocast_device_type() -> str:
+    """Infer device type from system availability for torch.autocast.
+
+    Returns
+    -------
+        The device type for torch.autocast.
+    """
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        device_type = "xpu"
+    elif torch.cuda.is_available() and torch.cuda.device_count() > 0:
+        device_type = "cuda"
+    else:
+        device_type = "cpu"
+    return device_type

@@ -43,6 +43,7 @@ from boltzgen.model.modules.utils import (
     center_random_augmentation,
     compute_random_augmentation,
     default,
+    get_autocast_device_type,
     log,
 )
 from scipy.stats import beta
@@ -599,7 +600,7 @@ class AtomDiffusion(Module):
                 )
 
             if self.alignment_reverse_diff:
-                with torch.autocast("cuda", enabled=False):
+                with torch.autocast(get_autocast_device_type(), enabled=False):
                     atom_coords_noisy = weighted_rigid_align(
                         atom_coords_noisy.float(),
                         atom_coords_denoised.float(),
@@ -709,7 +710,7 @@ class AtomDiffusion(Module):
         residue_type_weight=0.0,
         multiplicity=1,
     ):
-        with torch.autocast("cuda", enabled=False):
+        with torch.autocast(get_autocast_device_type(), enabled=False):
             denoised_atom_coords = out_dict["denoised_atom_coords"].float()
             noised_atom_coords = out_dict["noised_atom_coords"].float()
             sigmas = out_dict["sigmas"].float()

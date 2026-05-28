@@ -1,3 +1,4 @@
+from boltzgen.model.modules.utils import get_autocast_device_type
 import torch
 from torch import Tensor, nn
 
@@ -79,7 +80,7 @@ class OuterProductMean(nn.Module):
                 sliced_weight_proj_o = self.proj_o.weight[
                     :, i * self.c_hidden : (i + chunk_size) * self.c_hidden
                 ]
-                with torch.autocast("cuda", enabled=False):
+                with torch.autocast(get_autocast_device_type(), enabled=False):
                     z = torch.einsum("bsic,bsjd->bijcd", a_chunk.float(), b.float())
 
                 z = z.reshape(*z.shape[:3], -1)
@@ -94,7 +95,7 @@ class OuterProductMean(nn.Module):
             return z_out
         else:
             # Compute outer product
-            with torch.autocast("cuda", enabled=False):
+            with torch.autocast(get_autocast_device_type(), enabled=False):
                 z = torch.einsum("bsic,bsjd->bijcd", a.float(), b.float())
 
             # Compute mask sum

@@ -20,9 +20,10 @@ from boltzgen.model.layers.transition import Transition
 from boltzgen.model.modules.encoders import (
     AtomAttentionEncoder,
     AtomEncoder,
-    FourierEmbedding,
     DistanceTokenEncoder,
+    FourierEmbedding,
 )
+from boltzgen.model.modules.utils import get_autocast_device_type
 
 
 class ContactConditioning(nn.Module):
@@ -357,7 +358,7 @@ class TemplateModule(nn.Module):
         ).float()
 
         # Compute template features
-        with torch.autocast(device_type="cuda", enabled=False):
+        with torch.autocast(device_type=get_autocast_device_type(), enabled=False):
             # Compute distogram
             cb_dists = torch.cdist(cb_coords, cb_coords)
             boundaries = torch.linspace(self.min_dist, self.max_dist, self.num_bins - 1)
@@ -507,7 +508,7 @@ class TokenDistanceModule(nn.Module):
         token_coords = feats["center_coords"]
 
         # Compute template features
-        with torch.autocast(device_type="cuda", enabled=False):
+        with torch.autocast(device_type=get_autocast_device_type(), enabled=False):
             # Compute distogram
             dists = torch.cdist(token_coords, token_coords)
             boundaries = torch.linspace(self.min_dist, self.max_dist, self.num_bins - 1)

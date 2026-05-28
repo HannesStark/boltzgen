@@ -15,14 +15,15 @@ from boltzgen.data.data import (
     convert_ccd,
 )
 from boltzgen.data.feature.featurizer import (
+    res_all_gly,
     res_from_atom14,
     res_from_atom37,
-    res_all_gly,
 )
 from boltzgen.data.write.mmcif import to_mmcif
 from boltzgen.data.write.pdb import to_pdb
 from boltzgen.model.loss.diffusion import weighted_rigid_align
 from boltzgen.model.modules.masker import BoltzMasker
+from boltzgen.model.modules.utils import get_autocast_device_type
 
 
 class FoldingWriter(BasePredictionWriter):
@@ -49,7 +50,7 @@ class FoldingWriter(BasePredictionWriter):
         self.outdir.mkdir(exist_ok=True, parents=True)
         self.failed = 0
 
-    def write_on_batch_end(  # noqa: PLR0915
+    def write_on_batch_end(
         self,
         trainer: Trainer = None,  # noqa: ARG002
         pl_module: LightningModule = None,  # noqa: ARG002
@@ -104,7 +105,7 @@ class FoldingWriter(BasePredictionWriter):
         trainer: Trainer,  # noqa: ARG002
         pl_module: LightningModule,  # noqa: ARG002
     ) -> None:
-        print(f"Number of failed structure predictions: {self.failed}")  # noqa: T201
+        print(f"Number of failed structure predictions: {self.failed}")
 
 
 class AffinityWriter(BasePredictionWriter):
@@ -123,7 +124,7 @@ class AffinityWriter(BasePredictionWriter):
         self.outdir.mkdir(exist_ok=True, parents=True)
         self.failed = 0
 
-    def write_on_batch_end(  # noqa: PLR0915
+    def write_on_batch_end(
         self,
         trainer: Trainer = None,  # noqa: ARG002
         pl_module: LightningModule = None,  # noqa: ARG002
@@ -154,7 +155,7 @@ class AffinityWriter(BasePredictionWriter):
         trainer: Trainer,  # noqa: ARG002
         pl_module: LightningModule,  # noqa: ARG002
     ) -> None:
-        print(f"Number of failed affinity predictions: {self.failed}")  # noqa: T201
+        print(f"Number of failed affinity predictions: {self.failed}")
 
 
 class DesignWriter(BasePredictionWriter):
@@ -207,7 +208,7 @@ class DesignWriter(BasePredictionWriter):
 
     def write_on_batch_end(  # noqa: PLR0915
         self,
-        trainer: Trainer = None,  # noqa: ARG002
+        trainer: Trainer = None,
         pl_module: LightningModule = None,  # noqa: ARG002
         prediction: Dict[str, Tensor] = None,
         batch_indices: List[int] = None,  # noqa: ARG002
@@ -243,7 +244,7 @@ class DesignWriter(BasePredictionWriter):
                 if k == "coords":
                     native[k] = batch[k][0][0].unsqueeze(0)
                     sample[k] = prediction[k][n]
-                    
+
                 if k in const.token_features:
                     sample[k] = prediction[k][0]
                     native[k] = batch[k][0]
@@ -415,7 +416,7 @@ class DesignWriter(BasePredictionWriter):
                     traj = trajs[n]
                     aligned = [traj[0]]
                     for frame in traj[1:]:
-                        with torch.autocast("cuda", enabled=False):
+                        with torch.autocast(get_autocast_device_type(), enabled=False):
                             aligned.append(
                                 weighted_rigid_align(
                                     frame.float().unsqueeze(0),
@@ -463,7 +464,7 @@ class DesignWriter(BasePredictionWriter):
                     traj = trajs[n]
                     aligned = [traj[0]]
                     for frame in traj[1:]:
-                        with torch.autocast("cuda", enabled=False):
+                        with torch.autocast(get_autocast_device_type(), enabled=False):
                             aligned.append(
                                 weighted_rigid_align(
                                     frame.float().unsqueeze(0),
@@ -508,7 +509,7 @@ class DesignWriter(BasePredictionWriter):
             except Exception as e:  # noqa: BLE001
                 import traceback
 
-                traceback.print_exc()  # noqa: T201
+                traceback.print_exc()
                 msg = f"predict/writer.py: Validation structure writing failed on {batch['id'][0]} with error {e}. Skipping."
                 print(msg)
 
@@ -531,4 +532,4 @@ class DesignWriter(BasePredictionWriter):
         pl_module: LightningModule,  # noqa: ARG002
     ) -> None:
         """Print the number of failed examples."""
-        print(f"Number of failed examples: {self.failed}")  # noqa: T201
+        print(f"Number of failed examples: {self.failed}")
