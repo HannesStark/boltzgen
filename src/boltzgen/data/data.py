@@ -1328,12 +1328,59 @@ class Structure(NumpySerializable):
         ]
         token_to_res_old = token_to_res_old[not_padding_selector]
 
+        # Create mapping from original token indices to filtered token indices
+        # This is needed because atom_to_token contains original indices but we're using filtered tokens
+        # Build remap tensor: old_token_idx -> new_token_idx
+        # Find the max old token index that might be referenced by atoms
+        max_old_token = atom_to_token.max().item() if len(atom_to_token) > 0 else -1
+        if max_old_token >= 0:
+            # Initialize with -1 (invalid) for all possible old token indices
+            token_remap_tensor = torch.full(
+                (max_old_token + 1,), -1, dtype=atom_to_token.dtype, device=atom_to_token.device
+            )
+            # Map old token indices to new token indices
+            for new_idx, old_idx in enumerate(not_padding_selector):
+                old_idx_item = old_idx.item()
+                if old_idx_item <= max_old_token:
+                    token_remap_tensor[old_idx_item] = new_idx
+        else:
+            token_remap_tensor = None
+
         # remove atom padding if there is any
         ref_element = ref_element[atom_pad_mask.bool()]
         ref_charge = ref_charge[atom_pad_mask.bool()]
         ref_atom_name_chars = ref_atom_name_chars[atom_pad_mask.bool()]
         coords = coords[atom_pad_mask.bool()]
         atom_to_token = atom_to_token[atom_pad_mask.bool()]
+
+        # Remap atom_to_token to use filtered token indices
+        # atom_to_token currently contains original token indices, but we need filtered indices
+        if token_remap_tensor is not None:
+            atom_to_token = token_remap_tensor[atom_to_token]
+            # Check for atoms that mapped to -1 (invalid token references)
+            invalid_mask = atom_to_token == -1
+            if invalid_mask.any():
+                # This indicates atom_pad_mask is incorrect - atoms reference non-existent tokens
+                invalid_count = invalid_mask.sum().item()
+                raise ValueError(
+                    f"Found {invalid_count} atoms with token indices that don't exist in filtered token array. "
+                    "This indicates data corruption in atom_pad_mask or atom_to_token. "
+                    f"Invalid atom indices: {torch.where(invalid_mask)[0].tolist()[:10]}..."
+                )
+
+        # Validate that all atom_to_token values are within bounds of filtered token array
+        if len(not_padding_selector) > 0:
+            max_valid_token = len(not_padding_selector) - 1
+            if (atom_to_token > max_valid_token).any():
+                invalid_count = (atom_to_token > max_valid_token).sum().item()
+                invalid_indices = torch.where(atom_to_token > max_valid_token)[0]
+                raise ValueError(
+                    f"Found {invalid_count} atoms with token indices > {max_valid_token} "
+                    f"(filtered token array size = {len(not_padding_selector)}). "
+                    "This indicates data corruption in atom_pad_mask. "
+                    f"Invalid atom indices: {invalid_indices.tolist()[:10]}... "
+                    f"Invalid token values: {atom_to_token[invalid_indices].tolist()[:10]}..."
+                )
 
         # create residue identifiers
         res_identifiers = []

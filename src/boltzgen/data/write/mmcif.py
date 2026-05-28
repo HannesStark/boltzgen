@@ -329,6 +329,7 @@ def add_design_cols(structure, block, colors):
         "metric_value",
     ]
     plddt_loop = block.init_loop("_ma_qa_metric_local.", plddt_cols)
+    ordinal_id = 0
     global_res_idx = -1
     for chain in structure.chains:
         chain_name_str = re.sub(r"\d+", "", chain["name"].item())
@@ -342,11 +343,12 @@ def add_design_cols(structure, block, colors):
             global_res_idx += 1
             if not res["is_present"]:
                 continue
+            ordinal_id += 1
             mon_id = res["name"].item()
             design_label = colors[global_res_idx]  # [plddt_loop.length()]
             plddt_loop.add_row(
                 [
-                    str(plddt_loop.length() + 1),  # ordinal_id
+                    str(ordinal_id),  # ordinal_id
                     "1",  # model_id
                     chain_id,  # label_asym_id
                     str(res["res_idx"].item() + 1),
@@ -382,6 +384,7 @@ def add_plddt_cols(structure, block):
         "metric_value",
     ]
     plddt_loop = block.init_loop("_ma_qa_metric_local.", plddt_cols)
+    ordinal_id = 0
     for chain in structure.chains:
         if chain["mol_type"].item() == const.chain_type_ids["NONPOLYMER"]:
             continue
@@ -396,12 +399,13 @@ def add_plddt_cols(structure, block):
         for _, res in enumerate(residues, 1):
             if not res["is_present"]:
                 continue
+            ordinal_id += 1
             mon_id = res["name"].item()
             ref_atom_idx = res["atom_idx"]
             plddt_score = structure.atoms[ref_atom_idx]["bfactor"].item()
             plddt_loop.add_row(
                 [
-                    str(plddt_loop.length() + 1),  # ordinal_id
+                    str(ordinal_id),  # ordinal_id
                     "1",  # model_id
                     chain_id,  # label_asym_id
                     str(res["res_idx"].item() + 1),

@@ -1715,12 +1715,14 @@ class YamlDesignParser:
                 if c2 in total_renaming.keys():
                     c2 = total_renaming[c2]
 
-                if c1 not in all_parsed_chains.keys():
+                # Check if chain exists in either parsed_chains (protein/ligand) or data.chains (file entities)
+                chain_names_in_data = {chain["name"].item() for chain in data.chains}
+                if c1 not in all_parsed_chains.keys() and c1 not in chain_names_in_data:
                     msg = f"Chain {c1} in the specified connection does not exist: {constraint}"
-                    ValueError(msg)
-                if c2 not in all_parsed_chains.keys():
+                    raise ValueError(msg)
+                if c2 not in all_parsed_chains.keys() and c2 not in chain_names_in_data:
                     msg = f"Chain {c2} in the specified connection does not exist: {constraint}"
-                    ValueError(msg)
+                    raise ValueError(msg)
 
                 # Map index
                 if (
@@ -2105,7 +2107,8 @@ class YamlDesignParser:
 
                 # Handle the "all" case where all chains are set to be specified
                 if chain_id == "all":
-                    new_groups = np.ones(num_res)
+                    visibility = group["visibility"]
+                    new_groups = np.full(num_res, visibility, dtype=np.int32)
                     continue
 
                 if chain_id not in structure.chains["name"]:
