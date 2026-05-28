@@ -53,6 +53,23 @@ from boltzgen.data.data import Structure
 from boltzgen.data.write.mmcif import to_mmcif
 
 
+_WORKER_ANALYZE = None
+
+
+def _init_worker(analyze):
+    """Worker process with single pickled copy of the Analyze task"""
+    global _WORKER_ANALYZE
+    _WORKER_ANALYZE = analyze
+    torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
+    rdkit.Chem.SetDefaultPickleProperties(rdkit.Chem.PropertyPickleOptions.AllProps)
+
+
+def _worker_compute_metrics(idx):
+    """Module-level. Only the index is pickled per submission"""
+    return _WORKER_ANALYZE.compute_metrics(idx)
+
+
 class Analyze(Task):
     """
     The Analyze step of the BoltzGen pipeline.
@@ -205,9 +222,15 @@ class Analyze(Task):
 
             try:
                 with ProcessPoolExecutor(
-                    max_workers=num_processes, mp_context=ctx
+                    max_workers=num_processes,
+                    mp_context=ctx,
+                    initializer=_init_worker,
+                    initargs=(self,),
                 ) as ex:
-                    fut2idx = {ex.submit(self.compute_metrics, i): i for i in remaining}
+                    # Submit only index
+                    fut2idx = {
+                        ex.submit(_worker_compute_metrics, i): i for i in remaining
+                    }
 
                     # Iterate over futures that actually *completed* (finished or raised)
                     for f in as_completed(fut2idx):
