@@ -93,11 +93,19 @@ protocol_configs = {
         "filtering": ["use_affinity=true"],
     },
     "nanobody-anything": {
-        "analysis": ["largest_hydrophobic=false", "largest_hydrophobic_refolded=false"],
+        "analysis": [
+            "largest_hydrophobic=false",
+            "largest_hydrophobic_refolded=false",
+            "liability_modality=antibody",
+        ],
         "filtering": ["filter_cysteine=true"],
     },
     "antibody-anything": {
-        "analysis": ["largest_hydrophobic=false", "largest_hydrophobic_refolded=false"],
+        "analysis": [
+            "largest_hydrophobic=false",
+            "largest_hydrophobic_refolded=false",
+            "liability_modality=antibody",
+        ],
         "filtering": ["filter_cysteine=true"],
     },
     "protein-redesign": {
