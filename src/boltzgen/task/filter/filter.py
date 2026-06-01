@@ -404,9 +404,9 @@ class Filter(Task):
             filter_col = f"pass_{feat}_filter"
             filter_cols.append(filter_col)
             if low:
-                self.df[filter_col] = self.df[feat] <= threshold
+                self.df[filter_col] = self.df[feat] < threshold
             else:
-                self.df[filter_col] = self.df[feat] >= threshold
+                self.df[filter_col] = self.df[feat] > threshold
 
             self.df["num_filters_passed"] += self.df[filter_cols].all(axis=1)
             self.df["pass_filters"] = self.df[filter_cols].all(axis=1)
