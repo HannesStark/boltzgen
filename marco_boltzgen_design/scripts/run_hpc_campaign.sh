@@ -45,8 +45,38 @@ NUM_DESIGNS="${NUM_DESIGNS:-2000}"
 BUDGET="${BUDGET:-150}"
 CONDA_ENV="${CONDA_ENV:-boltzgen}"
 GPUS="${GPUS:-2}"                  # RTX 5000 x2 → use 2 GPUs
-MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size 2 --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0}"
+
+# ── Speed mode ──────────────────────────────────────────────────────────────
+# SPEED_MODE=1  →  aggressive speedup for large batches / screening
+#   • fold: sampling_steps 200→100, recycling_steps 3→1, diffusion_samples 5→1
+#   • design: compile_pairformer=true compile_structure=true  (~20-40% faster)
+#   • inverse_fold: precision FP32→bf16-mixed
+#   • diffusion_batch_size: 2→8  (better GPU utilization on 16 GB VRAM)
+# SPEED_MODE=0  →  default balanced quality (or unset)
+SPEED_MODE="${SPEED_MODE:-0}"
+
+if [[ "$SPEED_MODE" == "1" ]]; then
+  echo "[marco-run] SPEED_MODE=1 — using fast folding config"
+  echo "            fold: sampling_steps=100 recycling_steps=1 diffusion_samples=1"
+  echo "            design: compile_pairformer=true compile_structure=true"
+  echo "            inverse_fold: precision=bf16-mixed"
+  echo "            diffusion_batch_size=8"
+fi
+
+# diffusion_batch_size: RTX 5000 (16 GB) handles more than the old default of 2.
+DEFAULT_DIFFUSION_BATCH_SIZE=2
+[[ "$SPEED_MODE" == "1" ]] && DEFAULT_DIFFUSION_BATCH_SIZE=8
+
+# Speed-mode fold/inverse_fold/config overrides
+SPEED_FOLD_ARGS="--config fold sampling_steps=100 recycling_steps=1 diffusion_samples=1"
+SPEED_DESIGN_ARGS="--config design compile_pairformer=true compile_structure=true"
+SPEED_IFOLD_ARGS="--config inverse_fold precision=bf16-mixed"
+
+MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size $DEFAULT_DIFFUSION_BATCH_SIZE --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
+if [[ "$SPEED_MODE" == "1" ]]; then
+  EXTRA_ARGS="$SPEED_FOLD_ARGS $SPEED_DESIGN_ARGS $SPEED_IFOLD_ARGS $EXTRA_ARGS"
+fi
 
 # ── Validate ─────────────────────────────────────────────────────────────────
 if [[ ! -f "$SPEC" ]]; then

@@ -43,6 +43,12 @@ boltzgen check specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml
 # Run production on HPC (2000 designs → 200 final)
 NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
   specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_prod
+
+# ── Speed mode (2–4× faster, for screening / large batches) ─────────────────
+# Sets SPEED_MODE=1 to apply: fold sampling_steps=100, recycling_steps=1,
+# diffusion_samples=1, design torch.compile, inverse_fold bf16, diffusion_batch_size=8
+SPEED_MODE=1 NUM_DESIGNS=5000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_fast
 ```
 
 ---
@@ -220,7 +226,7 @@ EXTRA_ARGS='--inverse_fold_avoid ""' ./runs/run_nanobody_campaign.sh \
 
 ## Step 3 — HPC Production
 
-### 3.1 Single-GPU Job (RTX 5000, 16 GB VRAM)
+### 3.1 Standard Production (quality mode)
 
 ```bash
 # Set D — beta-pairing cross-reactive
@@ -232,55 +238,27 @@ NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
 NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
   specs/crossreactive_marco_nanobody_setC_hybrid.yaml \
   runs/setC
-
-# Set A — mouse
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_nanobody_setA_so4_pocket.yaml \
-  runs/setA_mouse
-
-# Set A — human
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_setA_so4_pocket.yaml \
-  runs/setA_human
-
-# Set B — patent epitope (human-only)
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_setB_patent_epitope.yaml \
-  runs/setB
-
-# Set D — beta-pairing cross-reactive
-NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_beta_pairing &
-
-wait
 ```
 
+### 3.2 Speed Mode (2–4× faster, for screening / large batches)
 
-**Bash CLI (no `sbatch`, run directly):**
+Set `SPEED_MODE=1` to apply these optimizations automatically:
+
+| Step | Parameter | Default → Speed Mode | Est. speedup |
+|------|-----------|----------------------|--------------|
+| **fold** | `sampling_steps` | 200 → **100** | ~2× |
+| **fold** | `recycling_steps` | 3 → **1** | ~3× per forward |
+| **fold** | `diffusion_samples` | 5 → **1** | 5× fewer passes |
+| **design** | `compile_pairformer` | false → **true** | ~20–40% |
+| **design** | `compile_structure` | false → **true** | ~20–40% |
+| **inverse_fold** | `precision` | FP32 → **bf16-mixed** | ~2× |
+| **global** | `diffusion_batch_size` | 2 → **8** | better GPU util. |
+
 ```bash
-# Run directly from shell on a GPU node (or local workstation with GPUs).
-# This uses the same script without SLURM submission.
-NUM_DESIGNS=2000 BUDGET=200 GPUS=1 bash scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC_direct
-
-# Run Set D directly
-NUM_DESIGNS=2000 BUDGET=200 GPUS=1 bash scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_beta_pairing_direct
-```
-
-**Dual-GPU (both RTX 5000s, parallel jobs):**
-```bash
-# Job 1 — GPU 1
-GPUS=1 NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_setA_so4_pocket.yaml \
-  runs/setA_human_gpu1 &
-
-# Job 2 — GPU 2
-GPUS=1 NUM_DESIGNS=2000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_nanobody_setA_so4_pocket.yaml \
-  runs/setA_mouse_gpu2 &
-
-wait
+# Speed mode — recommended for 5000+ design batches
+SPEED_MODE=1 NUM_DESIGNS=5000 BUDGET=200 sbatch scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml \
+  runs/setD_fast
 ```
 
 ### 3.3 All-Sets Production (Example Full Batch)
