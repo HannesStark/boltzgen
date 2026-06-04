@@ -689,13 +689,17 @@ def get_delta_sasa(
         [_radius(rn, an, el) for rn, an, el in zip(target_res, target_atm, target_elem)],
         dtype=float,
     )
-    target_area = sasa(
-        target_atoms,
-        probe_radius=1.4,
-        point_number=960,
-        vdw_radii=radii_lig,
-    )
-    delta = target_area.sum() - target_bound
+    try:
+        target_area = sasa(
+            target_atoms,
+            probe_radius=1.4,
+            point_number=960,
+            vdw_radii=radii_lig,
+        )
+        delta = target_area.sum() - target_bound
+    except ValueError:
+        return float("nan"), float("nan"), float("nan")
+    
     return delta, target_area.sum(), target_bound
 
 
