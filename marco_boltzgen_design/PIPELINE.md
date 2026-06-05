@@ -118,6 +118,26 @@ NUM_DESIGNS=1000 BUDGET=200 ./scripts/run_hpc_campaign.sh \
 wait  # wait for all three to complete
 ```
 
+### Speed Mode (2–4× faster for large batches)
+
+Set `SPEED_MODE=1` to apply aggressive folding optimizations:
+`sampling_steps` 200→100, `recycling_steps` 3→1, `diffusion_samples` 5→1,
+`design compile_pairformer/structure=true`, `inverse_fold precision=bf16-mixed`,
+`diffusion_batch_size` 2→8.
+
+```bash
+# Standard quality mode (default)
+NUM_DESIGNS=1000 BUDGET=200 ./scripts/run_hpc_campaign.sh \
+  specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_vhh_prod
+
+# Speed mode — recommended for 5000+ design batches
+SPEED_MODE=1 NUM_DESIGNS=5000 BUDGET=200 ./scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_fast
+```
+
+> **Tip:** Use speed mode for screening to generate more candidates faster.
+> Fall back to quality mode for final validation of top-ranked candidates.
+
 ### SLURM resource requirements
 
 | Parameter | Value | Notes |
