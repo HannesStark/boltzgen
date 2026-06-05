@@ -326,8 +326,7 @@ class DesignWriter(BasePredictionWriter):
                     sample["atom_to_token"].float() @ binding_type.unsqueeze(-1).float()
                 )
 
-                atom_binding_type = atom_binding_type.squeeze().bool()
-                binding_type = native["binding_type"].float()
+                atom_binding_type = atom_binding_type.squeeze().int()
                 bfactor[atom_binding_type == const.binding_type_ids["BINDING"]] = 60
 
                 bfactor = atom_design_mask[sample["atom_pad_mask"].bool()].float()
