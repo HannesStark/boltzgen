@@ -1,5 +1,4 @@
-# TFG-specific BoltzGen Image
-# Extends base BoltzGen with BBB classifier and TAU scoring modules
+# TFG-specific BoltzGen image for GSK3beta pipeline
 
 FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
 
@@ -24,8 +23,8 @@ RUN apt-get update && apt-get install -y \
 # Create symlink for python
 RUN ln -s /usr/bin/python3.11 /usr/bin/python
 
-# Install BoltzGen
-RUN git clone https://github.com/HannesStark/boltzgen.git /boltzgen && \
+# Install BoltzGen (TFG fork branch)
+RUN git clone -b add-bbb-head-and-md https://github.com/manumartinm/boltzgen.git /boltzgen && \
     cd /boltzgen && \
     pip install --no-cache-dir -e .
 
@@ -37,21 +36,10 @@ RUN pip install --no-cache-dir \
     numpy \
     scipy
 
-# Copy TFG custom modules
-COPY src/features /workspace/tfg/src/features
-COPY src/scoring /workspace/tfg/src/scoring
-COPY src/msa /workspace/tfg/src/msa
+# Copy GSK3beta design spec placeholder (replace at runtime as needed)
+COPY example/double_disulfide_peptide_against_specific_site/norepinephrine.yaml /workspace/design_spec.yaml
 
-# Copy BBB model and TAU data
-COPY models/bbb_classifier.pt /workspace/tfg/models/bbb_classifier.pt
-COPY data/tau /workspace/tfg/data/tau
-
-# Copy design specs and scripts
-COPY workbench/tau_peptide_baseline.yaml /workspace/design_spec.yaml
-COPY scripts/rerank_baseline_designs.py /workspace/scripts/rerank.py
-
-# Add tfg to Python path
-ENV PYTHONPATH="/workspace/tfg:${PYTHONPATH}"
+ENV PYTHONPATH="/workspace:${PYTHONPATH}"
 
 # Create output directories
 RUN mkdir -p /workspace/output /workspace/cache

@@ -25,7 +25,6 @@ from boltzgen.model.loss.confidence import (
 )
 from boltzgen.model.loss.distogram import distogram_loss
 from boltzgen.model.loss.res_type import res_type_loss_fn
-from boltzgen.model.loss.bbb import bbb_loss
 
 from boltzgen.model.modules.confidence import ConfidenceModule
 from boltzgen.model.modules.diffusion import AtomDiffusion
@@ -34,9 +33,7 @@ from boltzgen.model.modules.diffusion_conditioning import (
 )
 from boltzgen.model.modules.encoders import RelativePositionEncoder
 from boltzgen.model.modules.affinity import AffinityModule
-from boltzgen.model.modules.bbb import BBBModule
 from boltzgen.model.modules.masker import BoltzMasker
-from boltzgen.model.modules.tau_conditioning import TauConditioning
 from boltzgen.model.modules.trunk import (
     BFactorModule,
     ContactConditioning,
@@ -80,11 +77,6 @@ class Boltz(LightningModule):
         affinity_model_args1: Dict[str, Any] = {},
         affinity_model_args2: Dict[str, Any] = {},
         confidence_model_args: Optional[Dict[str, Any]] = None,
-        bbb_prediction: bool = False,
-        bbb_model_args: Dict[str, Any] = {},
-        bbb_task_type: str = "binary",
-        tau_conditioning: bool = False,
-        tau_conditioning_args: Dict[str, Any] = {},
         validators: Any = None,
         masker_args: dict[str, Any] = {},
         num_val_datasets: int = 1,
@@ -343,27 +335,6 @@ class Boltz(LightningModule):
         self.affinity_mw_correction = affinity_mw_correction
         self.validate_structure = validate_structure
 
-        ### BBB Permeability Prediction ###
-        self.bbb_prediction = bbb_prediction
-        self.bbb_task_type = bbb_task_type
-
-        if self.bbb_prediction:
-            self.bbb_module = BBBModule(
-                token_s,
-                token_z,
-                **bbb_model_args,
-            )
-        
-        ### Tau Conditioning ###
-        self.tau_conditioning = tau_conditioning
-        
-        if self.tau_conditioning:
-            self.tau_conditioning_module = TauConditioning(
-                token_s=token_s,
-                token_z=token_z,
-                **tau_conditioning_args,
-            )
-
         if self.affinity_prediction:
             if self.affinity_ensemble:
                 self.affinity_module1 = AffinityModule(
@@ -407,7 +378,7 @@ class Boltz(LightningModule):
         if not structure_prediction_training:
             for name, param in self.named_parameters():
                 if (
-                    name.split(".")[0] not in ["confidence_module", "affinity_module", "bbb_module"]
+                    name.split(".")[0] not in ["confidence_module", "affinity_module"]
                     and "out_token_feat_update" not in name
                 ):
                     param.requires_grad = False
@@ -629,20 +600,6 @@ class Boltz(LightningModule):
                             use_kernels=self.use_kernels,
                         )
                         
-                        # Apply Tau conditioning if enabled
-                        if self.tau_conditioning and "tau_embeddings" in feats:
-                            tau_embeddings = feats["tau_embeddings"]
-                            tau_mask = feats.get("tau_mask", None)
-                            peptide_mask = feats.get("token_pad_mask", None)
-                            
-                            s, z = self.tau_conditioning_module(
-                                peptide_seq=s,
-                                peptide_pair=z,
-                                tau_embeddings=tau_embeddings,
-                                tau_mask=tau_mask,
-                                peptide_mask=peptide_mask,
-                            )
-
             if not self.inverse_fold:
                 pdistogram = self.distogram_module(z)
                 dict_out["pdistogram"] = pdistogram.float()
@@ -695,7 +652,6 @@ class Boltz(LightningModule):
                 (not self.training)
                 or self.confidence_prediction
                 or self.affinity_prediction
-                or self.bbb_prediction
             ):
                 if self.inference_logging:
                     print("\nRunning Structure Module.\n")
@@ -908,51 +864,6 @@ class Boltz(LightningModule):
                         }
                     )
 
-        if self.bbb_prediction:
-            # BBB permeability prediction
-            # Similar to affinity, use the best predicted structure
-            if "iptm" in dict_out:
-                argsort = torch.argsort(dict_out["iptm"], descending=True)
-                best_idx = argsort[0].item()
-            else:
-                best_idx = 0
-            
-            # Get coordinates for BBB prediction
-            if "sample_atom_coords" in dict_out:
-                coords_bbb = dict_out["sample_atom_coords"].detach()
-                if len(coords_bbb.shape) == 3:
-                    coords_bbb = coords_bbb[None, None]  # (1, 1, L, 3)
-                elif len(coords_bbb.shape) == 4:
-                    coords_bbb = coords_bbb[best_idx][None, None]  # (1, 1, L, 3)
-            else:
-                # Fallback: use input coordinates
-                coords_bbb = feats["coords"][0][None, None]
-
-            # Use shared backbone embeddings (detached to avoid double backprop)
-            # For peptides, we can use all tokens or filter by mask
-            with torch.autocast("cuda", enabled=False):
-                # Get s_inputs if not inverse fold
-                if not self.inverse_fold:
-                    s_inputs_bbb = self.input_embedder(feats)
-                else:
-                    s_inputs_bbb = None
-                
-                dict_out_bbb = self.bbb_module(
-                    s_inputs=s_inputs_bbb.detach() if s_inputs_bbb is not None else None,
-                    z=z.detach(),
-                    x_pred=coords_bbb,
-                    feats=feats,
-                    multiplicity=diffusion_samples,
-                    use_kernels=self.use_kernels,
-                )
-                dict_out.update(
-                    {
-                        "bbb_pred_value": dict_out_bbb.get("bbb_pred_value"),
-                        "bbb_logits_binary": dict_out_bbb.get("bbb_logits_binary"),
-                        "bbb_probability": dict_out_bbb.get("bbb_probability"),
-                    }
-                )
-
         if return_z_feats:
             dict_out["z_feats"] = z
 
@@ -1077,20 +988,6 @@ class Boltz(LightningModule):
                 "loss_breakdown": {},
             }
 
-        # BBB permeability prediction loss
-        if self.bbb_prediction:
-            bbb_loss_dict = bbb_loss(
-                out,
-                batch,
-                task_type=self.bbb_task_type,
-                reduction="mean",
-            )
-        else:
-            bbb_loss_dict = {
-                "loss": torch.tensor(0.0, device=batch["token_index"].device),
-                "loss_breakdown": {},
-            }
-
         # Skip step if single representation has unstable magnitude.
         # Reference: https://github.com/IntelliGen-AI/IntFold
         if self.training_args.skip_batch_by_single_rep:
@@ -1109,7 +1006,6 @@ class Boltz(LightningModule):
             + self.training_args.distogram_loss_weight * disto_loss
             + self.training_args.get("bfactor_loss_weight", 0.0) * bfactor_loss
             + self.training_args.get("res_type_loss_weight", 0.0) * res_type_loss
-            + self.training_args.get("bbb_loss_weight", 0.0) * bbb_loss_dict["loss"]
         )
 
         if not (self.global_step % self.log_loss_every_steps):
@@ -1136,11 +1032,6 @@ class Boltz(LightningModule):
                             else confidence_loss_dict["loss_breakdown"][k]
                         ),
                     )
-
-            if self.bbb_prediction:
-                self.log("train/bbb_loss", bbb_loss_dict["loss"])
-                for k, v in bbb_loss_dict["loss_breakdown"].items():
-                    self.log(f"train/{k}", v)
 
             self.log("train/loss", loss)
             self.log("train/forward_dur", time.time() - start)

@@ -308,15 +308,10 @@ def extract_peptide_features(
 
     # Optional: ESM-2 embeddings
     if include_esm:
-        try:
-            from boltzgen.utils.tau_embeddings import load_esm2_embeddings
-
-            esm_emb = load_esm2_embeddings(sequence, model_name=esm_model_name, device=device)
-            # Pool to single vector (mean over sequence length)
-            esm_pooled = esm_emb.mean(dim=1).squeeze(0)  # (embedding_dim,)
-            features["esm_embedding"] = esm_pooled
-        except ImportError:
-            print("Warning: transformers not available, skipping ESM embeddings")
+        raise NotImplementedError(
+            "Local ESM extraction was removed from boltzgen. "
+            "Use TFG/bbb_classifier for ESM-based BBB inference."
+        )
 
     return features
 

@@ -16,6 +16,22 @@ from typing import Dict, Optional, Tuple, List
 from pathlib import Path
 import warnings
 
+try:
+    from openmm import LangevinMiddleIntegrator, Platform, MonteCarloBarostat
+    from openmm.app import (
+        DCDReporter,
+        Modeller,
+        PDBFile,
+        PME,
+        Simulation,
+        StateDataReporter,
+        Topology,
+    )
+    from openmm.unit import kelvin, picoseconds, bar, nanometer, kilojoule_per_mole
+    OPENMM_AVAILABLE = True
+except ImportError:
+    OPENMM_AVAILABLE = False
+
 
 class MembraneSystemBuilder:
     """
@@ -189,6 +205,48 @@ class MembraneSimulation:
         self.timestep = timestep
         self.trajectory = None
         self.energies = None
+        self.simulation = None
+        self.topology = None
+        self.positions = None
+
+    def prepare_openmm(
+        self,
+        pdb_path: Optional[Path] = None,
+        force_field_files: Optional[List[str]] = None,
+        nonbonded_cutoff_nm: float = 1.0,
+    ) -> None:
+        """Prepare an OpenMM simulation object from a PDB and force-field files."""
+        if not OPENMM_AVAILABLE:
+            raise RuntimeError("OpenMM is not installed. Install openmm to run MD.")
+        if pdb_path is None:
+            raise ValueError("pdb_path is required for OpenMM preparation.")
+
+        from openmm.app import ForceField
+
+        force_field_files = force_field_files or ["charmm36.xml", "charmm36/water.xml"]
+        pdb = PDBFile(str(pdb_path))
+        modeller = Modeller(pdb.topology, pdb.positions)
+
+        forcefield = ForceField(*force_field_files)
+        system = forcefield.createSystem(
+            modeller.topology,
+            nonbondedMethod=PME,
+            nonbondedCutoff=nonbonded_cutoff_nm * nanometer,
+            constraints=None,
+        )
+        system.addForce(MonteCarloBarostat(self.pressure * bar, self.temperature * kelvin))
+        integrator = LangevinMiddleIntegrator(
+            self.temperature * kelvin,
+            1.0 / picoseconds,
+            self.timestep * picoseconds,
+        )
+        platform = Platform.getPlatformByName("CUDA") if Platform.getNumPlatforms() > 1 else Platform.getPlatformByName("CPU")
+        simulation = Simulation(modeller.topology, system, integrator, platform)
+        simulation.context.setPositions(modeller.positions)
+
+        self.simulation = simulation
+        self.topology = modeller.topology
+        self.positions = modeller.positions
         
     def run_simulation(
         self,
@@ -222,22 +280,54 @@ class MembraneSimulation:
         """
         output_dir = output_dir or Path("md_output")
         output_dir.mkdir(exist_ok=True)
-        
-        # In practice, this would interface with GROMACS, NAMD, or OpenMM
-        warnings.warn(
-            "MD simulation is a placeholder. In production, interface with "
-            "GROMACS, NAMD, OpenMM, or similar MD engines."
+
+        if self.simulation is None:
+            warnings.warn(
+                "OpenMM simulation is not prepared. Falling back to placeholder output. "
+                "Call prepare_openmm(...) before run_simulation(...) for real MD."
+            )
+            return {
+                "trajectory": None,
+                "energies": None,
+                "insertion_depth": np.zeros(max(1, n_steps // max(output_freq, 1))),
+                "membrane_interactions": {},
+            }
+
+        dcd_path = output_dir / "trajectory.dcd"
+        log_path = output_dir / "md.log"
+        self.simulation.reporters.append(DCDReporter(str(dcd_path), output_freq))
+        self.simulation.reporters.append(
+            StateDataReporter(
+                str(log_path),
+                output_freq,
+                step=True,
+                potentialEnergy=True,
+                temperature=True,
+                speed=True,
+                remainingTime=True,
+            )
         )
-        
-        # Placeholder simulation results
-        results = {
-            "trajectory": None,
-            "energies": None,
-            "insertion_depth": np.zeros(n_steps // output_freq),
+
+        self.simulation.minimizeEnergy()
+        if equilibration_steps > 0:
+            self.simulation.step(equilibration_steps)
+        if n_steps > equilibration_steps:
+            self.simulation.step(n_steps - equilibration_steps)
+
+        state = self.simulation.context.getState(getEnergy=True, getPositions=True)
+        potential_energy = state.getPotentialEnergy().value_in_unit(kilojoule_per_mole)
+        positions = state.getPositions(asNumpy=True)
+
+        self.trajectory = positions
+        self.energies = {"potential_energy": potential_energy}
+        return {
+            "trajectory": positions,
+            "energies": self.energies,
+            "insertion_depth": np.array([]),
             "membrane_interactions": {},
+            "trajectory_path": str(dcd_path),
+            "log_path": str(log_path),
         }
-        
-        return results
     
     def analyze_insertion(
         self,
