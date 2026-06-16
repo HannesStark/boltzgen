@@ -901,10 +901,18 @@ class Analyze(Task):
                 if not folded_path.exists():
                     print(f"Folded path does not exist. Skipping: {folded_path}")
                     return None
-
-                folded = np.load(
-                    self.design_dir / const.folding_design_dirname / f"{feat['id']}.npz"
-                )
+                try:
+                    folded = np.load(
+                        self.design_dir
+                        / const.folding_design_dirname
+                        / f"{feat['id']}.npz"
+                    )
+                except Exception as e:
+                    print(
+                        f"[Error] loading folded npz for {path}: {e}. Skipping this file."
+                    )
+                    traceback.print_exc()
+                    return None
                 feat_design = {
                     k: torch.from_numpy(folded[k]).squeeze(0)
                     for k in [
@@ -969,9 +977,16 @@ class Analyze(Task):
             if not folded_path.exists():
                 print(f"Folded path does not exist. Skipping: {folded_path}")
                 return None
-            folded = np.load(
-                self.design_dir / const.folding_dirname / f"{feat['id']}.npz"
-            )
+            try:
+                folded = np.load(
+                    self.design_dir / const.folding_dirname / f"{feat['id']}.npz"
+                )
+            except Exception as e:
+                print(
+                    f"[Error] loading folded npz for {path}: {e}. Skipping this file."
+                )
+                traceback.print_exc()
+                return None
             if (
                 not len(folded["res_type"].squeeze()) == len(feat["res_type"])
                 or not (folded["res_type"].squeeze() == feat["res_type"].numpy()).all()

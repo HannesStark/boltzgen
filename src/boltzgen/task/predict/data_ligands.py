@@ -314,7 +314,7 @@ class LigandBinderDataModule(pl.LightningDataModule):
         self.pin_memory = pin_memory
 
         with Path(cfg.target_ids).open("r") as f:
-            target_ids = [x for x in f.read().splitlines()]
+            target_ids = [x.strip() for x in f]
             print("split", target_ids)
 
         dataset = Dataset(

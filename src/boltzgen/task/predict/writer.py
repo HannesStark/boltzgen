@@ -89,7 +89,7 @@ class FoldingWriter(BasePredictionWriter):
             plddt_atom[prediction_out["atom_pad_mask"].bool()].float().cpu().numpy()
         )
         cif_text = to_mmcif(structure)
-        open(self.refold_cif_dir / f"{batch['id'][0]}.cif", "w").write(cif_text)
+        (self.refold_cif_dir / f"{batch['id'][0]}.cif").write_text(cif_text)
 
         # Failed prediction handling
         if isinstance(prediction["exception"], bool):
@@ -353,7 +353,7 @@ class DesignWriter(BasePredictionWriter):
                     )
 
                 if self.write_native:
-                    open(native_path, "w").write(to_mmcif(str_native))
+                    Path(native_path).write_text(to_mmcif(str_native))
 
                 pred_binding_mask = prediction["binding_type"][0].cpu().bool().numpy()
                 if self.design:
@@ -373,7 +373,7 @@ class DesignWriter(BasePredictionWriter):
                 unique_mask = np.ones_like(token_to_res, dtype=bool)
                 unique_mask[1:] = token_to_res[1:] != token_to_res[:-1]
                 design_color_features = design_color_features[unique_mask]
-                open(gen_path, "w").write(
+                Path(gen_path).write_text(
                     to_mmcif(
                         structure,
                         design_coloring=True,
@@ -453,7 +453,7 @@ class DesignWriter(BasePredictionWriter):
                         )
                         atom_idx += len(str_frame.coords)
 
-                    open(self.outdir / f"{file_name}_traj.pdb", "w").write(
+                    (self.outdir / f"{file_name}_traj.pdb").write_text(
                         self.combine_pdb_models(pdbs)
                     )
 
@@ -501,7 +501,7 @@ class DesignWriter(BasePredictionWriter):
                         )
                         atom_idx += len(str_frame.coords)
 
-                    open(self.outdir / f"{file_name}_x0_traj.pdb", "w").write(
+                    (self.outdir / f"{file_name}_x0_traj.pdb").write_text(
                         self.combine_pdb_models(pdbs)
                     )
 

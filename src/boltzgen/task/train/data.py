@@ -861,7 +861,7 @@ class TrainingDataModule(pl.LightningDataModule):
             # Split records if givens
             if data_config.split is not None:
                 with Path(data_config.split).open("r") as f:
-                    split = {x.lower() for x in f.read().splitlines()}
+                    split = {line.strip().lower() for line in f}
 
                 train_records = []
                 val_records = []
@@ -1050,7 +1050,7 @@ class TrainingDataModule(pl.LightningDataModule):
         print("monomer_split", self.monomer_split)
         if self.monomer_split is not None:
             with Path(self.monomer_split).open("r") as f:
-                monomer_ids = [x.lower() for x in f.read().splitlines()]
+                monomer_ids = [line.strip().lower() for line in f]
                 print("monomer_split", monomer_ids)
 
             dataset = data_protein_binder.Dataset(
@@ -1082,9 +1082,10 @@ class TrainingDataModule(pl.LightningDataModule):
         self.ligand_split = cfg.ligand_split
         print("ligand_split", self.ligand_split)
         if self.ligand_split is not None:
-            with Path(self.ligand_split).open("r") as f:
-                ligand_ids = [x.lower() for x in f.read().splitlines()]
-                print("ligand_split", ligand_ids)
+            ligand_ids = [
+                x.lower() for x in Path(self.ligand_split).read_text().splitlines()
+            ]
+            print("ligand_split", ligand_ids)
 
             dataset = data_ligands.Dataset(
                 struct_dir=Path(cfg.ligand_target_dir) / "structures",

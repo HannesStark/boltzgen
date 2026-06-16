@@ -23,8 +23,10 @@ class FilterIDFromTXT(DynamicFilter):
 
         all_ids = []
         for path in paths:
-            with open(path, "r") as f:
-                ids_from_file = [line.strip().lower() for line in f if line.strip()]
+            with open(path) as f:
+                ids_from_file = [
+                    s_line.lower() for line in f if (s_line := line.strip())
+                ]
                 all_ids.extend(ids_from_file)
 
         self.id_set = set(all_ids)

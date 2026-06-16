@@ -655,19 +655,19 @@ def parse_range(ranges, c_start=0, c_end=None):
         if re.fullmatch(r"\d+", spec):
             # Single number. Convert it from 1 indexed to 0 indexed.
             start = int(spec) - 1
-            end = int(spec) - 1
+            end = start
             indices.append(c_start + start)
-        elif re.fullmatch(r"\d+..\d+", spec):
+        elif re.fullmatch(r"\d+\.\.\d+", spec):
             # Range with start and end. Convert the start from 1 indexed to 0 indexed. Leave the end untouched because the specification is inclusive (+1) but 1 indexed (-1).
             start, end = map(int, spec.split(".."))
             start -= 1
             indices += list(range(c_start + start, c_start + end))
-        elif re.fullmatch(r"..\d+", spec):
+        elif re.fullmatch(r"\.\.\d+", spec):
             # Range that is inclusive of the specified end (which is specified in a 1 indexed fashion).
             end = int(spec.replace("..", ""))
             start = 0
             indices += list(range(c_start, c_start + end))
-        elif re.fullmatch(r"\d+..", spec):
+        elif re.fullmatch(r"\d+\.\.", spec):
             assert c_end is not None
             # Range that is inclusive of the specified start (which is specified in a 1 indexed fashion).
             start = int(spec.replace("..", ""))
@@ -1258,12 +1258,11 @@ def parse_redesign_yaml(
     path: Path,
     tokenized: Tokenized,
 ) -> Target:
-    """parse a design mask override yaml file"""
+    """Parse a design mask override yaml file."""
+    if path.suffix not in {".yaml", ".yml"}:
+        raise ValueError(f"Unsupported file type: {str(path)}")
     with path.open("r") as file:
-        if path.suffix == ".yaml":
-            data = yaml.safe_load(file)
-        else:
-            raise ValueError(f"Unsupported file type: {str(path)}")
+        data = yaml.safe_load(file)
     target = parse_redesign_schema(data, tokenized)
 
     return target
@@ -1291,10 +1290,10 @@ class YamlDesignParser:
     ) -> Target:
         """Parse a Boltz input yaml / json."""
         with path.open("r") as file:
-            if path.suffix == ".yaml":
+            if path.suffix in {".yaml", ".yml"}:
                 data = yaml.safe_load(file)
             elif path.suffix == ".pdb":
-                data = parse_pdb(file)
+                data = parse_pdb(str(path))
             else:
                 raise ValueError(f"Unsupported file type: {str(path)}")
 

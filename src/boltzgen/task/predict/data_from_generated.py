@@ -359,7 +359,7 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
         # Load design
         if self.extra_mol_dir is not None:
             mols = {
-                path.stem: pickle.load(path.open("rb"))
+                path.stem: pickle.load(path.open("rb"))  # noqa: S301
                 for path in self.extra_mol_dir.glob("*.pkl")
             }
             for mol_name, mol in mols.items():
@@ -770,10 +770,11 @@ class FromGeneratedDataModule(pl.LightningDataModule):
         filtered_paths2 = []
         if self.subset_target_ids is not None:
             subset_ids = [
-                l.strip() for l in open(self.subset_target_ids, "r").readlines()
+                line.strip()
+                for line in Path(self.subset_target_ids).read_text().splitlines()
             ]
             for path in filtered_paths:
-                if any([sid in str(path) for sid in subset_ids]):
+                if any(sid in str(path) for sid in subset_ids):
                     filtered_paths2.append(path)
             filtered_paths = filtered_paths2
 

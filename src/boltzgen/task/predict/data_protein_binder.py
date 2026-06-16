@@ -478,7 +478,7 @@ class ProteinBinderDataModule(pl.LightningDataModule):
         with Path(cfg.target_ids).open("r") as f:
             regex = re.compile(r"([^_]+)(?:_(.*))?")
             target_ids = [
-                regex.match(x.lower()).groups() for x in f.read().splitlines()
+                regex.match(line.strip().lower()).groups() for line in f
             ]
             chain_ids = [tup[1] for tup in target_ids]
             target_ids = [tup[0] for tup in target_ids]

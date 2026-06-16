@@ -93,11 +93,19 @@ protocol_configs = {
         "filtering": ["use_affinity=true"],
     },
     "nanobody-anything": {
-        "analysis": ["largest_hydrophobic=false", "largest_hydrophobic_refolded=false"],
+        "analysis": [
+            "largest_hydrophobic=false",
+            "largest_hydrophobic_refolded=false",
+            "liability_modality=antibody",
+        ],
         "filtering": ["filter_cysteine=true"],
     },
     "antibody-anything": {
-        "analysis": ["largest_hydrophobic=false", "largest_hydrophobic_refolded=false"],
+        "analysis": [
+            "largest_hydrophobic=false",
+            "largest_hydrophobic_refolded=false",
+            "liability_modality=antibody",
+        ],
         "filtering": ["filter_cysteine=true"],
     },
     "protein-redesign": {
@@ -531,12 +539,14 @@ def build_parser() -> argparse.ArgumentParser:
         prog="boltzgen",
         description="Boltzgen command line interface",
     )
+
     # Support: boltzgen -v / --version
     def get_package_version() -> str:
         try:
             return pkg_version("boltzgen")
         except PackageNotFoundError:
             return "unknown"
+
     parser.add_argument(
         "-v",
         "--version",
@@ -1066,7 +1076,12 @@ class BinderDesignPipeline:
                     if args.inverse_fold_avoid is not None
                     else (
                         "C"
-                        if protocol in ["peptide-anything", "nanobody-anything", "antibody-anything"]
+                        if protocol
+                        in [
+                            "peptide-anything",
+                            "nanobody-anything",
+                            "antibody-anything",
+                        ]
                         else ""
                     )
                 )
@@ -1619,7 +1634,6 @@ def merge_command(args: argparse.Namespace) -> None:
 
         return merged_count
 
-
     def _copy_design_files(
         src_dir: Path,
         dest_dir: Path,
@@ -1657,17 +1671,14 @@ def merge_command(args: argparse.Namespace) -> None:
                 required=False,
             )
 
-
     def _make_new_file_name(original_file: str, new_id: str) -> str:
         path = Path(original_file)
         suffix = "".join(path.suffixes)
         return f"{new_id}{suffix}" if suffix else new_id
 
-
     def _slugify_run_tag(path: Path, index: int) -> str:
         slug = re.sub(r"[^0-9A-Za-z]+", "-", path.name).strip("-").lower()
         return slug or f"run{index}"
-
 
     def _copy_path(src: Path, dst: Path, *, required: bool) -> None:
         if src.exists():
