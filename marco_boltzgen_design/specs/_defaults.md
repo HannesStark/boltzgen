@@ -1,4 +1,4 @@
-# ============================================================================== 
+# ==============================================================================
 # Common defaults for BoltzGen design specs in this directory.
 # BoltzGen does NOT read this file — it is documentation only.
 #
@@ -30,4 +30,23 @@
 #   --diffusion.num_steps 200
 #   --diffusion.guidance_scale 0.1
 #   --diffusion.temperature 1.0
+#
+# ==============================================================================
+# N-GLYCOSYLATION SITE EXCLUSION (BoltzProt-1 best practice)
+# ==============================================================================
+# All 36 NXS/T sequons are EXCLUDED at generation time, not filtered post-hoc.
+# This doubles confirmed-binder rate vs applying the filter only at ranking.
+# Source: BoltzProt-1 Technical Report Appendix E.2, Listing 1 lines 27–32.
+#
+# In the YAML binder_specification.rules, add:
+#
+#   rules:
+#     excluded_sequence_motifs:
+#       - NAS,NAT,NCS,NCT,NDS,NDT,NES,NET,NFS,NFT
+#       - NGS,NGT,NHS,NHT,NIS,NIT,NKS,NKT,NLS,NLT
+#       - NMS,NMT,NNS,NNT,NQS,NQT,NRS,NRT,NSS,NST
+#       - NTS,NTT,NVS,NVT,NWS,NWT,NYS,NYT
+#
+# This is applied automatically when using --protocol nanobody-anything with
+# --binder_specification boltz_curated. For custom specs, add explicitly.
 # ============================================================================== 

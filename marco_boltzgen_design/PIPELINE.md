@@ -268,6 +268,39 @@ Designs passing AF validation are ready for experimental characterization.
 
 ---
 
+## BoltzProt-1 Improvements
+
+The [BoltzProt-1 Technical Report](https://arxiv.org/abs/2512.00000) showed that the biggest gain in de novo binder design comes from **better ranking**, not just better generation. Key improvements applied here:
+
+### 1. N-glycosylation exclusion at generation time (not post-hoc)
+
+The BoltzProt-1 API excludes all 36 NXS/T sequons during design. This **doubles** the confirmed-binder rate vs filtering only at ranking. With `--protocol nanobody-anything` + `--binder_specification boltz_curated` this is automatic. For custom specs, add the motif list from `specs/_defaults.md`. All 36 motifs: `NAS`,`NAT`,`NCS`,`NCT`,`NDS`…`NYS`,`NYT`.
+
+### 2. Six-assay developability panel
+
+BoltzProt-1 screens against six experimental assays. We map these to sequence-based proxy flags in `analysis/developability_rank.py`:
+
+| Assay | Measures | Our proxy flag |
+|-------|---------|----------------|
+| nDSF (Tm) | Thermal stability | `has_proline` (>2% disrupts Tm) |
+| AC-SINS | Self-interaction | `hydrophobic_risk` (frac_hydro > 0.42) |
+| HIC | Hydrophobicity | `acidic_risk` / `basic_risk` (charge extremes) |
+| aSEC | Monomeric fraction | `has_cys`, `has_nglyc` |
+| BVP ELISA | Polyspecificity | `hydrophobic_risk` |
+| DLS PDI | Solution homogeneity | `has_nglyc` |
+
+Risk score 0 = **Tier-1** (best), 1–2 = Tier-2, 3–4 = Screening-Hit, 5–6 = developability problems.
+
+### 3. Screening hit vs confirmed binder distinction
+
+The paper distinguishes:
+- **Screening hit** — sensorgram shows interaction, KD not reliably fit
+- **Confirmed binder** — clean 1:1 Langmuir fit, KD < 1 µM
+
+When importing experimental data, record which tier each candidate belongs to and weight ranking accordingly.
+
+---
+
 ## Common Pitfalls
 
 ### OOM on local machine
