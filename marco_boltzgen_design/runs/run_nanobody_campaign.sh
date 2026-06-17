@@ -3,7 +3,7 @@ set -euo pipefail
 
 SPEC="${1:-specs/human_marco_nanobody_anywhere.yaml}"
 OUTDIR="${2:-runs/nanobody_$(date +%Y%m%d_%H%M%S)}"
-NUM_DESIGNS="${NUM_DESIGNS:-200}"
+NUM_DESIGNS="${NUM_DESIGNS:-6000}"  # 6k for local; use 60k+ on HPC for production
 BUDGET="${BUDGET:-40}"
 DEVICES="${DEVICES:-2}"
 
@@ -52,6 +52,9 @@ fi
 
 mkdir -p "$OUTDIR"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 echo "[marco-run] spec=$SPEC"
 echo "[marco-run] outdir=$OUTDIR"
 echo "[marco-run] protocol=$PROTOCOL"
@@ -74,4 +77,21 @@ extra_arr=( $EXTRA_ARGS )
 
 cmd+=("${marco_extra_arr[@]}" "${extra_arr[@]}")
 
+cd "$PROJECT_DIR"
 "${cmd[@]}"
+
+# ── Post-generation: filter out N-glycosylation sequon designs ───────────────
+# BoltzProt-1 protocol: excludes 32 NXS/T sequons (N[^P][ST]) from binder sequences.
+# Enable with EXCLUDE_NGLYC=1 (default), disable with EXCLUDE_NGLYC=0.
+EXCLUDE_NGLYC="${EXCLUDE_NGLYC:-1}"
+if [[ "$EXCLUDE_NGLYC" == "1" ]]; then
+  METRICS_CSV="$OUTDIR/final_ranked_designs/all_designs_metrics.csv"
+  if [[ -f "$METRICS_CSV" ]]; then
+    echo "[marco-run] Filtering N-glycosylation sequon designs..."
+    python scripts/filter_nglyc.py --metrics "$METRICS_CSV" --out "$METRICS_CSV"
+    echo "[marco-run] N-glyc filter done. Re-rank with:"
+    echo "            python scripts/rank_designs.py --metrics $METRICS_CSV ..."
+  fi
+fi
+
+echo "[marco-run] Done. Results in: $OUTDIR"

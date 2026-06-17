@@ -41,7 +41,7 @@ cd "$PROJECT_DIR"
 # ── Args ─────────────────────────────────────────────────────────────────────
 SPEC="${1:-specs/crossreactive_marco_nanobody_hotspot.yaml}"
 OUTDIR="${2:-runs/slurm_${SLURM_JOB_ID:-manual}}"
-NUM_DESIGNS="${NUM_DESIGNS:-2000}"
+NUM_DESIGNS="${NUM_DESIGNS:-60000}"  # 60k matches BoltzProt-1 production standard
 BUDGET="${BUDGET:-150}"
 CONDA_ENV="${CONDA_ENV:-boltzgen}"
 GPUS="${GPUS:-2}"                  # RTX 5000 x2 → use 2 GPUs
@@ -152,6 +152,26 @@ RUN_EXIT=${PIPESTATUS[0]}
 if [[ $RUN_EXIT -ne 0 ]]; then
   echo "ERROR: boltzgen run failed with exit code $RUN_EXIT" >&2
   exit $RUN_EXIT
+fi
+
+# ── Post-generation: filter out N-glycosylation sequon designs ───────────────
+# BoltzProt-1 protocol: exclude NAS/NAT/NCS...NTS/NTT/NVS... (32 NXS/T motifs)
+# from the binder sequence so the VHH is manufacturable without glycan heterogeneity.
+# Enable with EXCLUDE_NGLYC=1 (default), disable with EXCLUDE_NGLYC=0.
+EXCLUDE_NGLYC="${EXCLUDE_NGLYC:-1}"
+if [[ "$EXCLUDE_NGLYC" == "1" ]]; then
+  METRICS_CSV="$OUTDIR/final_ranked_designs/all_designs_metrics.csv"
+  if [[ -f "$METRICS_CSV" ]]; then
+    echo "=== Filtering N-glycosylation sequon designs ==="
+    python scripts/filter_nglyc.py \
+      --metrics "$METRICS_CSV" \
+      --out "$METRICS_CSV" \
+      2>&1 | tee -a "${LOG_PREFIX}_run.log"
+    LINES=$(wc -l < "$METRICS_CSV")
+    echo "Post-NGLYC-filter lines: $LINES (header + data rows)"
+  else
+    echo "WARNING: $METRICS_CSV not found — skipping NGLYC filter"
+  fi
 fi
 
 echo "Done. Results in: $OUTDIR"
