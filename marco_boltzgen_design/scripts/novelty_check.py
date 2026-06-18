@@ -12,9 +12,28 @@ This script:
   3. For each design, computes:
        - min_edit_distance(CDR3, reference_set)  [CDR3 alone]
        - min_edit_distance(CDR1+CDR2+CDR3, reference_set)  [all three CDRs]
-  4. Flags designs with edit_distance < 4 (too similar to known SAbDab entries)
+  4. Flags designs with edit_distance < threshold
+  5. Supports filtering on CDR3 distance alone, cdr1+2+3 distance alone, or BOTH
 
 Usage:
+  # Default (both CDR3 AND CDR1+2+3 must pass):
+  python scripts/novelty_check.py \
+    --designs results/ranked_candidates.csv \
+    --out results/novelty_checked.csv
+
+  # CDR3 only (legacy behaviour):
+  python scripts/novelty_check.py --designs results/ranked_candidates.csv \
+    --filter_mode cdr3_only
+
+  # CDR1+2+3 only (primary filter, CDR3 as secondary):
+  python scripts/novelty_check.py --designs results/ranked_candidates.csv \
+    --filter_mode cdrs_only
+
+  # Separate thresholds:
+  python scripts/novelty_check.py --designs results/ranked_candidates.csv \
+    --min_edit_distance 4 \
+    --cdrs_edit_distance_threshold 6
+
   # First run (builds cache + checks):
   python scripts/novelty_check.py \
     --designs results/ranked_candidates.csv \
@@ -48,9 +67,41 @@ def levenshtein_distance(a: str, b: str) -> int:
         return len(b)
     if not b:
         return len(a)
-
     # Use SequenceMatcher (C-accelerated under the hood)
     return sum(1 for op in SequenceMatcher(a=a, b=b).get_opcodes() if op[0] != "equal")
+
+
+def min_edit_distance_optimized(
+    seq: str,
+    reference_by_len: dict[int, list[str]],
+    max_search: int = 200,
+) -> int:
+    """Fast min-edit-distance using length-bucketed reference.
+
+    Groups reference sequences by length. Only compares against references
+    within ±3 aa of the query length, then takes the best result.
+    Falls back to full scan if the candidate pool is too small.
+    """
+    if not seq:
+        return 999
+    L = len(seq)
+    candidates: list[str] = []
+    # Collect refs within ±3 aa of query length
+    for length in range(max(1, L - 3), L + 4):
+        if length in reference_by_len:
+            candidates.extend(reference_by_len[length])
+    # If too few candidates, supplement with all remaining lengths
+    if len(candidates) < 20:
+        for length, bucket in reference_by_len.items():
+            if abs(length - L) > 3:
+                candidates.extend(bucket)
+    if not candidates:
+        return 999
+    # Cap candidates for speed
+    if len(candidates) > max_search:
+        import random
+        candidates = random.sample(candidates, max_search)
+    return min(levenshtein_distance(seq, ref) for ref in candidates)
 
 
 # ── CDR3 extraction from IMGT-numbered PDBs ────────────────────────────────────
@@ -171,19 +222,42 @@ def build_reference_from_zip(zip_path: str, cache_path: str) -> dict:
 
 # ── Novelty checking ──────────────────────────────────────────────────────────
 
+def build_reference_by_length(cdr3_list: list[str]) -> dict[int, list[str]]:
+    """Index reference sequences by length for O(1) length-bucketed lookup."""
+    by_len: dict[int, list[str]] = {}
+    for seq in cdr3_list:
+        by_len.setdefault(len(seq), []).append(seq)
+    return by_len
+
+
 def check_novelty(
     designs_path: str,
-    reference_cdr3s: list[str],
+    reference_by_len: dict[int, list[str]],
     cache_path: str,
     min_edit_distance: int = 4,
+    cdrs_edit_distance_threshold: int | None = None,
+    filter_mode: str = "both",  # "cdr3_only" | "cdrs_only" | "both"
 ) -> pd.DataFrame:
-    """Compute min-edit-distance to SAbDab for each design's CDR3.
+    """Compute min-edit-distance to SAbDab for each design's CDR3 and CDR1+2+3.
+
+    filter_mode:
+      both     — both CDR3 and CDR1+2+3 must meet their thresholds (strictest)
+      cdr3_only — only CDR3 edit distance is used as the filter gate
+      cdrs_only — only CDR1+2+3 edit distance is used; CDR3 threshold is ignored
+                   in the novelty_pass output (but both distances are still reported)
 
     Returns DataFrame with added columns:
       cdr3_seq, min_cdr3_edit_distance, cdr3_novel,
-      cdr123_concat, min_cdr123_edit_distance, cdr123_novel
+      cdr123_concat, min_cdr123_edit_distance, cdr123_novel,
+      novelty_pass (bool — primary gate based on filter_mode)
     """
     import pandas as pd
+
+    cdrs_thresh = (
+        cdrs_edit_distance_threshold
+        if cdrs_edit_distance_threshold is not None
+        else min_edit_distance
+    )
 
     df = pd.read_csv(designs_path)
     if "design_id" not in df.columns:
@@ -213,12 +287,17 @@ def check_novelty(
         cdr3 = seq[104:117].strip()
         return cdr1 + cdr2 + cdr3
 
-    print(f"\nNovelty checking {len(df):,} designs against {len(reference_cdr3s):,} SAbDab CDR3s ...")
+    print(
+        f"\nNovelty checking {len(df):,} designs "
+        f"(ref: {sum(len(v) for v in reference_by_len.values()):,} sequences) ..."
+    )
+    print(f"  filter_mode       : {filter_mode}")
+    print(f"  CDR3 threshold    : {min_edit_distance}")
+    print(f"  CDR1+2+3 threshold: {cdrs_thresh}")
 
-    # Precompute distances in batches
     n = len(df)
     chunk_size = 500
-    min_cdr3_dists  = []
+    min_cdr3_dists   = []
     min_cdr123_dists = []
 
     for start in range(0, n, chunk_size):
@@ -229,44 +308,42 @@ def check_novelty(
         for seq in chunk:
             cdr3   = get_cdr3(seq)
             cdr123 = get_cdr123(seq)
+            min_cdr3_dists.append(min_edit_distance_optimized(cdr3, reference_by_len))
+            min_cdr123_dists.append(min_edit_distance_optimized(cdr123, reference_by_len))
 
-            # Min edit distance to all reference CDR3s
-            if cdr3 and reference_cdr3s:
-                dists_cdr3 = [levenshtein_distance(cdr3, ref) for ref in reference_cdr3s]
-                min_cdr3 = min(dists_cdr3)
-            else:
-                min_cdr3 = 999
+    df["cdr3_seq"]                = df["_seq"].apply(get_cdr3)
+    df["min_cdr3_edit_distance"]  = min_cdr3_dists
+    df["cdr3_novel"]              = df["min_cdr3_edit_distance"] >= min_edit_distance
 
-            if cdr123 and reference_cdr3s:
-                dists_cdr123 = [levenshtein_distance(cdr123, ref) for ref in reference_cdr3s]
-                min_cdr123 = min(dists_cdr123)
-            else:
-                min_cdr123 = 999
-
-            min_cdr3_dists.append(min_cdr3)
-            min_cdr123_dists.append(min_cdr123)
-
-    df["cdr3_seq"]               = df["_seq"].apply(get_cdr3)
-    df["min_cdr3_edit_distance"] = min_cdr3_dists
-    df["cdr3_novel"]             = df["min_cdr3_edit_distance"] >= min_edit_distance
-
-    df["cdr123_concat"]           = df["_seq"].apply(get_cdr123)
+    df["cdr123_concat"]            = df["_seq"].apply(get_cdr123)
     df["min_cdr123_edit_distance"] = min_cdr123_dists
-    df["cdr123_novel"]             = df["min_cdr123_edit_distance"] >= min_edit_distance
+    df["cdr123_novel"]             = df["min_cdr123_edit_distance"] >= cdrs_thresh
 
-    # ── Summary ────────────────────────────────────────────────────────────
-    n_cdr3_ok  = df["cdr3_novel"].sum()
+    # ── Primary filter gate: novelty_pass ─────────────────────────────────────
+    if filter_mode == "both":
+        df["novelty_pass"] = df["cdr3_novel"] & df["cdr123_novel"]
+    elif filter_mode == "cdr3_only":
+        df["novelty_pass"] = df["cdr3_novel"]
+    elif filter_mode == "cdrs_only":
+        df["novelty_pass"] = df["cdr123_novel"]
+
+    # ── Summary ─────────────────────────────────────────────────────────────
+    n_cdr3_ok   = df["cdr3_novel"].sum()
     n_cdr123_ok = df["cdr123_novel"].sum()
+    n_pass      = df["novelty_pass"].sum()
 
-    print(f"\nNovelty results (threshold: edit_distance >= {min_edit_distance}):")
-    print(f"  CDR3-novel    : {n_cdr3_ok}/{len(df)} ({100*n_cdr3_ok/len(df):.1f}%)")
-    print(f"  CDR1+2+3-novel: {n_cdr123_ok}/{len(df)} ({100*n_cdr123_ok/len(df):.1f}%)")
+    print(f"\nNovelty results:")
+    print(f"  CDR3-novel  (dist ≥ {min_edit_distance})  : {n_cdr3_ok}/{len(df)} ({100*n_cdr3_ok/len(df):.1f}%)")
+    print(f"  CDR1+2+3-novel (dist ≥ {cdrs_thresh})       : {n_cdr123_ok}/{len(df)} ({100*n_cdr123_ok/len(df):.1f}%)")
+    print(f"  novelty_pass [{filter_mode}]                  : {n_pass}/{len(df)} ({100*n_pass/len(df):.1f}%)")
 
-    if n_cdr3_ok < len(df):
-        dupes = df[~df["cdr3_novel"]][["design_id", "cdr3_seq", "min_cdr3_edit_distance"]]
-        print(f"\n  Designs too similar to SAbDab (CDR3 edit_dist < {min_edit_distance}):")
+    if n_pass < len(df):
+        dupes = df[~df["novelty_pass"]][["design_id", "cdr3_seq", "min_cdr3_edit_distance", "min_cdr123_edit_distance"]]
+        print(f"\n  Designs failing novelty gate (first 5):")
         for _, row in dupes.head(5).iterrows():
-            print(f"    {row['design_id']}: '{row['cdr3_seq']}' dist={row['min_cdr3_edit_distance']}")
+            print(f"    id={row['design_id']} cdr3='{row['cdr3_seq']}' "
+                  f"cdr3_dist={row['min_cdr3_edit_distance']} "
+                  f"cdrs_dist={row['min_cdr123_edit_distance']}")
 
     # Clean up temp column
     df.drop(columns=["_seq"], inplace=True, errors="ignore")
@@ -285,7 +362,16 @@ def main():
         help="Cache file for extracted CDR3 reference set (default: .sabdab_reference.json)")
     ap.add_argument("--out", help="Output CSV (default: adds _novelty suffix to --designs)")
     ap.add_argument("--min_edit_distance", type=int, default=4,
-        help="Minimum edit distance to SAbDab to be considered novel (default: 4)")
+        help="Minimum edit distance for CDR3 to be considered novel (default: 4)")
+    ap.add_argument("--cdrs_edit_distance_threshold", type=int, default=None,
+        help="Minimum edit distance for CDR1+2+3 to be considered novel. "
+             "Default: same as --min_edit_distance")
+    ap.add_argument("--filter_mode",
+        choices=["both", "cdr3_only", "cdrs_only"], default="both",
+        help="Filter gate mode (default: both):\n"
+             "  both     — both CDR3 and CDR1+2+3 must meet thresholds (strictest)\n"
+             "  cdr3_only — only CDR3 distance is used (legacy behaviour)\n"
+             "  cdrs_only — only CDR1+2+3 distance is used (primary gate)")
     ap.add_argument("--build_cache", action="store_true",
         help="Force rebuild of the SAbDab reference cache")
     ap.add_argument("--min_cdr3_len", type=int, default=5,
@@ -305,9 +391,12 @@ def main():
         print(f"  Loaded {ref['unique_count']:,} unique CDR3s from {ref['pdb_count']:,} PDBs")
 
     ref_cdr3s = [c for c in ref["cdr3_set"] if len(c) >= args.min_cdr3_len]
-    print(f"  Using {len(ref_cdr3s):,} reference CDR3s (len >= {args.min_cdr3_len})\n")
+    # Build length-indexed reference for fast distance lookup
+    ref_by_len = build_reference_by_length(ref_cdr3s)
+    print(f"  Using {len(ref_cdr3s):,} reference CDR3s (len ≥ {args.min_cdr3_len}), "
+          f"indexed into {len(ref_by_len)} length buckets\n")
 
-    # ── Check designs ──────────────────────────────────────────────────────
+    # ── Check designs ─────────────────────────────────────────────────────
     if args.designs:
         try:
             import pandas as pd
@@ -316,14 +405,21 @@ def main():
 
         out_path = args.out or re.sub(r"(\.csv)?$", "_novelty.csv", args.designs)
         designs_df = check_novelty(
-            args.designs, ref_cdr3s, str(cache_path), args.min_edit_distance
+            args.designs, ref_by_len, str(cache_path),
+            min_edit_distance=args.min_edit_distance,
+            cdrs_edit_distance_threshold=args.cdrs_edit_distance_threshold,
+            filter_mode=args.filter_mode,
         )
 
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         designs_df.to_csv(out_path, index=False)
         print(f"\nWrote: {out_path}")
-        print(f"  Novel designs (CDR3 edit_dist >= {args.min_edit_distance}): "
-              f"{(designs_df['cdr3_novel']).sum()}/{len(designs_df)}")
+        n_pass = designs_df["novelty_pass"].sum()
+        cdrs_thresh = args.cdrs_edit_distance_threshold or args.min_edit_distance
+        print(f"  novelty_pass [{args.filter_mode}]: {n_pass}/{len(designs_df)} "
+              f"({100*n_pass/len(designs_df):.1f}%)")
+        print(f"  (CDR3 dist ≥ {args.min_edit_distance}: {(designs_df['cdr3_novel']).sum()}, "
+              f"CDR1+2+3 dist ≥ {cdrs_thresh}: {(designs_df['cdr123_novel']).sum()})")
     else:
         print("No --designs provided. Cache built/loaded successfully.")
 

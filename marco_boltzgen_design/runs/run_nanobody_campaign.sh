@@ -100,4 +100,19 @@ if [[ "$EXCLUDE_NGLYC" == "1" ]]; then
   fi
 fi
 
+# ── CDR novelty check (BoltzProt-1 Section 3.5) ─────────────────────────────
+# Default: both CDR3 and CDR1+2+3 must pass (--filter_mode both).
+# Set NOVELTY_MODE=cdrs_only for CDR1+2+3-only gate.
+NOVELTY_MODE="${NOVELTY_MODE:-both}"
+METRICS_CSV="$OUTDIR/final_ranked_designs/all_designs_metrics.csv"
+if [[ -f "$METRICS_CSV" ]]; then
+  echo "[marco-run] CDR novelty check (mode=$NOVELTY_MODE)..."
+  python scripts/novelty_check.py \
+    --designs "$METRICS_CSV" \
+    --filter_mode "$NOVELTY_MODE" \
+    --min_edit_distance 4 \
+    --out "$METRICS_CSV"
+  echo "[marco-run] Novelty check done."
+fi
+
 echo "[marco-run] Done. Results in: $OUTDIR"

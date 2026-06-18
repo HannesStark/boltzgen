@@ -181,4 +181,25 @@ if [[ "$EXCLUDE_NGLYC" == "1" ]]; then
   fi
 fi
 
+# ── CDR novelty check (BoltzProt-1 Section 3.5) ─────────────────────────────
+# Check CDR3 and CDR1+CDR2+CDR3 edit distance vs SAbDab reference.
+# Default: both must pass (--filter_mode both). Set NOVELTY_MODE=cdrs_only
+# to use only CDR1+2+3 as the primary filter gate.
+# The pre-built .sabdab_reference.json (4,466 unique CDR3s) is committed
+# to the repo — no cache rebuild needed on HPC.
+NOVELTY_MODE="${NOVELTY_MODE:-both}"
+METRICS_AFTER_NGLYC="$OUTDIR/final_ranked_designs/all_designs_metrics.csv"
+if [[ -f "$METRICS_AFTER_NGLYC" ]]; then
+  echo "=== CDR novelty check (mode=$NOVELTY_MODE) ==="
+  python scripts/novelty_check.py \
+    --designs "$METRICS_AFTER_NGLYC" \
+    --filter_mode "$NOVELTY_MODE" \
+    --min_edit_distance 4 \
+    --out "$METRICS_AFTER_NGLYC" \
+    2>&1 | tee -a "${LOG_PREFIX}_run.log"
+  echo "Novelty check done. Updated metrics: $METRICS_AFTER_NGLYC"
+else
+  echo "WARNING: $METRICS_AFTER_NGLYC not found — skipping novelty check"
+fi
+
 echo "Done. Results in: $OUTDIR"
