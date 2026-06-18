@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""
+novelty_check.py — Check VHH nanobody designs against SAbDab CDR3 reference set.
+
+BoltzProt-1 protocol (Technical Report Section 3.5):
+  "Across both target panels, every recovered design has a minimum CDR3 edit distance
+   of at least four to its closest SAbDab match."
+
+This script:
+  1. Extracts unique CDR3 sequences from the local SAbDab IMGT PDB zip archive
+  2. Caches the reference set to avoid re-parsing the zip on every run
+  3. For each design, computes:
+       - min_edit_distance(CDR3, reference_set)  [CDR3 alone]
+       - min_edit_distance(CDR1+CDR2+CDR3, reference_set)  [all three CDRs]
+  4. Flags designs with edit_distance < 4 (too similar to known SAbDab entries)
+
+Usage:
+  # First run (builds cache + checks):
+  python scripts/novelty_check.py \
+    --designs results/ranked_candidates.csv \
+    --sabdab_zip ~/Downloads/all_structures.zip \
+    --out results/novelty_checked.csv
+
+  # Subsequent runs (uses cached reference):
+  python scripts/novelty_check.py --designs results/ranked_candidates.csv
+
+  # Standalone: rebuild reference cache
+  python scripts/novelty_check.py --build_cache --sabdab_zip ~/Downloads/all_structures.zip
+"""
+from __future__ import annotations
+import argparse
+import csv
+import json
+import re
+import sys
+import time
+import zipfile
+from difflib import SequenceMatcher
+from pathlib import Path
+
+# ── Edit distance ────────────────────────────────────────────────────────────
+
+def levenshtein_distance(a: str, b: str) -> int:
+    """Pure-Python Levenshtein distance. Fast enough for CDR3 (10-20 aa) strings."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+
+    # Use SequenceMatcher (C-accelerated under the hood)
+    return sum(1 for op in SequenceMatcher(a=a, b=b).get_opcodes() if op[0] != "equal")
+
+
+# ── CDR3 extraction from IMGT-numbered PDBs ────────────────────────────────────
+
+# IMGT CDR3: positions 105-117 (inclusive), 1-indexed
+# In PDB ATOM lines, residues are 1-indexed → slice [104:117] in Python
+IMGT_CDR3_START = 104   # 0-indexed start (pos 105 in 1-indexed IMGT)
+IMGT_CDR3_END   = 117   # 0-indexed exclusive (pos 117 in 1-indexed IMGT)
+
+# IMGT CDR1: 27-38, CDR2: 56-65 (0-indexed: 26-38, 55-65)
+IMGT_CDR1_START, IMGT_CDR1_END = 26, 38
+IMGT_CDR2_START, IMGT_CDR2_END = 55, 65
+
+
+def extract_hchain_seq(atom_lines: list[str]) -> dict[int, str]:
+    """Extract per-residue amino acid for the first H-type chain found.
+
+    H-type = chain whose sequence has length > 110 residues (full VHH).
+    Returns dict of {resnum: one_letter_aa}.
+    """
+    by_chain: dict[str, dict[int, str]] = {}
+
+    for l in atom_lines:
+        try:
+            chain  = l[21]
+            res    = int(l[22:26].strip())
+            aa     = l[17]
+            if aa not in "ACDEFGHIKLMNPQRSTVWY":
+                continue
+            by_chain.setdefault(chain, {})[res] = aa
+        except (ValueError, IndexError):
+            continue
+
+    # Pick the first chain with a full-length VHH sequence (>110 aa)
+    for chain, residues in sorted(by_chain.items()):
+        seq_len = max(residues.keys()) - min(residues.keys()) + 1
+        if seq_len >= 110:
+            return residues
+
+    return {}
+
+
+def imgt_cdr123(seq: str) -> tuple[str, str, str]:
+    """Extract CDR1, CDR2, CDR3 from an IMGT-numbered full VHH sequence."""
+    cdr1 = seq[IMGT_CDR1_START:IMGT_CDR1_END].strip()
+    cdr2 = seq[IMGT_CDR2_START:IMGT_CDR2_END].strip()
+    cdr3 = seq[IMGT_CDR3_START:IMGT_CDR3_END].strip()
+    return cdr1, cdr2, cdr3
+
+
+# ── Reference set building ────────────────────────────────────────────────────
+
+def build_reference_from_zip(zip_path: str, cache_path: str) -> dict:
+    """Extract unique CDR3 sequences from SAbDab IMGT PDB zip.
+
+    Writes a JSON cache after extraction.
+    Returns dict with 'cdr3_set' (list), 'all_cdr3' (list), 'pdb_count', 'unique_count'.
+    """
+    t0 = time.time()
+    cdr3_set = set()
+    all_cdr3 = []
+    pdb_count = 0
+
+    with zipfile.ZipFile(zip_path, "r") as z:
+        imgt_files = [n for n in z.namelist()
+                     if n.endswith(".pdb") and "/imgt/" in n]
+
+        print(f"Scanning {len(imgt_files):,} IMGT PDBs from {zip_path} ...")
+        for i, name in enumerate(imgt_files):
+            if i > 0 and i % 5000 == 0:
+                print(f"  [{i:,}/{len(imgt_files):,}] unique CDR3s so far: {len(cdr3_set):,}")
+
+            try:
+                content = z.read(name).decode("utf-8", errors="replace")
+            except Exception:
+                continue
+
+            atom_lines = [l for l in content.split("\n") if l.startswith("ATOM")]
+            h_residues = extract_hchain_seq(atom_lines)
+            if not h_residues:
+                continue
+
+            start = min(h_residues.keys())
+            end   = max(h_residues.keys())
+            seq   = "".join(h_residues.get(r, "") for r in range(start, end + 1))
+
+            if len(seq) < 110:
+                continue
+
+            cdr1, cdr2, cdr3 = imgt_cdr123(seq)
+            if len(cdr3) >= 5:          # discard degenerate / incomplete CDR3s
+                all_cdr3.append(cdr3)
+                cdr3_set.add(cdr3)
+
+            pdb_count += 1
+
+    result = {
+        "cdr3_set": sorted(cdr3_set),
+        "all_cdr3": all_cdr3,
+        "pdb_count": pdb_count,
+        "unique_count": len(cdr3_set),
+        "zip_path": str(zip_path),
+    }
+
+    Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(cache_path, "w") as f:
+        json.dump(result, f, indent=1)
+
+    elapsed = time.time() - t0
+    print(f"\nSAbDab reference built:")
+    print(f"  PDBs processed : {pdb_count:,}")
+    print(f"  Unique CDR3s   : {len(cdr3_set):,}")
+    print(f"  CDR3 length range: {min(len(c) for c in cdr3_set) if cdr3_set else 0}"
+          f" – {max(len(c) for c in cdr3_set) if cdr3_set else 0} aa")
+    print(f"  Cache written  : {cache_path} ({elapsed:.1f}s)")
+    return result
+
+
+# ── Novelty checking ──────────────────────────────────────────────────────────
+
+def check_novelty(
+    designs_path: str,
+    reference_cdr3s: list[str],
+    cache_path: str,
+    min_edit_distance: int = 4,
+) -> pd.DataFrame:
+    """Compute min-edit-distance to SAbDab for each design's CDR3.
+
+    Returns DataFrame with added columns:
+      cdr3_seq, min_cdr3_edit_distance, cdr3_novel,
+      cdr123_concat, min_cdr123_edit_distance, cdr123_novel
+    """
+    import pandas as pd
+
+    df = pd.read_csv(designs_path)
+    if "design_id" not in df.columns:
+        df["design_id"] = range(len(df))
+
+    # ── Infer binder sequence ───────────────────────────────────────────────
+    def infer_seq(row):
+        for k in ("designed_sequence", "binder_sequence", "sequence", "seq"):
+            if k in row and isinstance(row[k], str):
+                return row[k]
+        return ""
+
+    df["_seq"] = df.apply(infer_seq, axis=1)
+
+    # ── Extract CDR3 (IMGT: positions 105-117, 0-indexed 104-117) ──────────
+    def get_cdr3(seq: str) -> str:
+        if not seq or len(seq) < 110:
+            return ""
+        return seq[104:117].strip()
+
+    # ── Extract CDR1+2+3 ───────────────────────────────────────────────────
+    def get_cdr123(seq: str) -> str:
+        if not seq or len(seq) < 110:
+            return ""
+        cdr1 = seq[26:38].strip()
+        cdr2 = seq[55:65].strip()
+        cdr3 = seq[104:117].strip()
+        return cdr1 + cdr2 + cdr3
+
+    print(f"\nNovelty checking {len(df):,} designs against {len(reference_cdr3s):,} SAbDab CDR3s ...")
+
+    # Precompute distances in batches
+    n = len(df)
+    chunk_size = 500
+    min_cdr3_dists  = []
+    min_cdr123_dists = []
+
+    for start in range(0, n, chunk_size):
+        chunk = df["_seq"].iloc[start:start + chunk_size]
+        if start > 0 and start % 2000 == 0:
+            print(f"  [{start:,}/{n:,}]")
+
+        for seq in chunk:
+            cdr3   = get_cdr3(seq)
+            cdr123 = get_cdr123(seq)
+
+            # Min edit distance to all reference CDR3s
+            if cdr3 and reference_cdr3s:
+                dists_cdr3 = [levenshtein_distance(cdr3, ref) for ref in reference_cdr3s]
+                min_cdr3 = min(dists_cdr3)
+            else:
+                min_cdr3 = 999
+
+            if cdr123 and reference_cdr3s:
+                dists_cdr123 = [levenshtein_distance(cdr123, ref) for ref in reference_cdr3s]
+                min_cdr123 = min(dists_cdr123)
+            else:
+                min_cdr123 = 999
+
+            min_cdr3_dists.append(min_cdr3)
+            min_cdr123_dists.append(min_cdr123)
+
+    df["cdr3_seq"]               = df["_seq"].apply(get_cdr3)
+    df["min_cdr3_edit_distance"] = min_cdr3_dists
+    df["cdr3_novel"]             = df["min_cdr3_edit_distance"] >= min_edit_distance
+
+    df["cdr123_concat"]           = df["_seq"].apply(get_cdr123)
+    df["min_cdr123_edit_distance"] = min_cdr123_dists
+    df["cdr123_novel"]             = df["min_cdr123_edit_distance"] >= min_edit_distance
+
+    # ── Summary ────────────────────────────────────────────────────────────
+    n_cdr3_ok  = df["cdr3_novel"].sum()
+    n_cdr123_ok = df["cdr123_novel"].sum()
+
+    print(f"\nNovelty results (threshold: edit_distance >= {min_edit_distance}):")
+    print(f"  CDR3-novel    : {n_cdr3_ok}/{len(df)} ({100*n_cdr3_ok/len(df):.1f}%)")
+    print(f"  CDR1+2+3-novel: {n_cdr123_ok}/{len(df)} ({100*n_cdr123_ok/len(df):.1f}%)")
+
+    if n_cdr3_ok < len(df):
+        dupes = df[~df["cdr3_novel"]][["design_id", "cdr3_seq", "min_cdr3_edit_distance"]]
+        print(f"\n  Designs too similar to SAbDab (CDR3 edit_dist < {min_edit_distance}):")
+        for _, row in dupes.head(5).iterrows():
+            print(f"    {row['design_id']}: '{row['cdr3_seq']}' dist={row['min_cdr3_edit_distance']}")
+
+    # Clean up temp column
+    df.drop(columns=["_seq"], inplace=True, errors="ignore")
+
+    return df
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--designs", help="CSV with binder_sequence column (from rank_designs.py output)")
+    ap.add_argument("--sabdab_zip", default="~/Downloads/all_structures.zip",
+        help="Path to SAbDab all_structures.zip from SAbDab (default: ~/Downloads/all_structures.zip)")
+    ap.add_argument("--cache", default=".sabdab_reference.json",
+        help="Cache file for extracted CDR3 reference set (default: .sabdab_reference.json)")
+    ap.add_argument("--out", help="Output CSV (default: adds _novelty suffix to --designs)")
+    ap.add_argument("--min_edit_distance", type=int, default=4,
+        help="Minimum edit distance to SAbDab to be considered novel (default: 4)")
+    ap.add_argument("--build_cache", action="store_true",
+        help="Force rebuild of the SAbDab reference cache")
+    ap.add_argument("--min_cdr3_len", type=int, default=5,
+        help="Minimum CDR3 length to include in reference (default: 5)")
+    args = ap.parse_args()
+
+    sablab_zip = str(Path(args.sabdab_zip).expanduser())
+    cache_path = Path(args.cache).expanduser()
+
+    # ── Load or build reference ────────────────────────────────────────────
+    if args.build_cache or not cache_path.exists():
+        ref = build_reference_from_zip(sablab_zip, str(cache_path))
+    else:
+        print(f"Loading cached SAbDab reference from {cache_path} ...")
+        with open(cache_path) as f:
+            ref = json.load(f)
+        print(f"  Loaded {ref['unique_count']:,} unique CDR3s from {ref['pdb_count']:,} PDBs")
+
+    ref_cdr3s = [c for c in ref["cdr3_set"] if len(c) >= args.min_cdr3_len]
+    print(f"  Using {len(ref_cdr3s):,} reference CDR3s (len >= {args.min_cdr3_len})\n")
+
+    # ── Check designs ──────────────────────────────────────────────────────
+    if args.designs:
+        try:
+            import pandas as pd
+        except ModuleNotFoundError:
+            raise SystemExit("pandas is required for --designs. Install it or run build_cache only.")
+
+        out_path = args.out or re.sub(r"(\.csv)?$", "_novelty.csv", args.designs)
+        designs_df = check_novelty(
+            args.designs, ref_cdr3s, str(cache_path), args.min_edit_distance
+        )
+
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        designs_df.to_csv(out_path, index=False)
+        print(f"\nWrote: {out_path}")
+        print(f"  Novel designs (CDR3 edit_dist >= {args.min_edit_distance}): "
+              f"{(designs_df['cdr3_novel']).sum()}/{len(designs_df)}")
+    else:
+        print("No --designs provided. Cache built/loaded successfully.")
+
+
+if __name__ == "__main__":
+    main()
