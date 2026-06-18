@@ -35,7 +35,13 @@ fi
 DEFAULT_DIFFUSION_BATCH_SIZE=2
 [[ "$SPEED_MODE" == "1" ]] && DEFAULT_DIFFUSION_BATCH_SIZE=8
 
-MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size $DEFAULT_DIFFUSION_BATCH_SIZE --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0}"
+# BoltzProt-1 protocol: 32 NXS/T sequons (Appendix E) blocked at generation
+# time via rejection sampling in the inverse-fold decoder (~2× confirmed-binder
+# rate vs post-hoc removal). Post-filter still runs as safety net.
+NGLYC_MOTIFS="NAS,NAT,NCS,NCT,NDS,NDT,NES,NET,NGS,NGT,NIS,NIT,NKS,NKT,NLS,NLT,NMS,NMT,NNS,NNT,NQS,NQT,NRS,NRT,NSS,NST,NTS,NTT,NVS,NVT,NWS,NWT,NYS,NYT"
+EXCLUDE_NGLYC="${EXCLUDE_NGLYC:-1}"
+
+MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size $DEFAULT_DIFFUSION_BATCH_SIZE --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0 --inverse_fold_excluded_sequence_motifs $NGLYC_MOTIFS}"
 
 # ── Speed-mode fold/inverse_fold overrides ──────────────────────────────────
 # folding:    sampling_steps 200→100, recycling_steps 3→1, diffusion_samples 5→1
@@ -80,10 +86,10 @@ cmd+=("${marco_extra_arr[@]}" "${extra_arr[@]}")
 cd "$PROJECT_DIR"
 "${cmd[@]}"
 
-# ── Post-generation: filter out N-glycosylation sequon designs ───────────────
-# BoltzProt-1 protocol: excludes 32 NXS/T sequons (N[^P][ST]) from binder sequences.
-# Enable with EXCLUDE_NGLYC=1 (default), disable with EXCLUDE_NGLYC=0.
-EXCLUDE_NGLYC="${EXCLUDE_NGLYC:-1}"
+# ── Post-generation: safety-net filter for any remaining N-glyc sequons ──
+# Generation-time exclusion (--inverse_fold_excluded_sequence_motifs in
+# MARCO_EXTRA_ARGS) should catch most motifs. The post-filter catches any
+# edge cases the rejection sampler missed. Disable with EXCLUDE_NGLYC=0.
 if [[ "$EXCLUDE_NGLYC" == "1" ]]; then
   METRICS_CSV="$OUTDIR/final_ranked_designs/all_designs_metrics.csv"
   if [[ -f "$METRICS_CSV" ]]; then
