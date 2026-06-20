@@ -166,19 +166,40 @@ fi
 # Generation-time exclusion (--inverse_fold_excluded_sequence_motifs in
 # MARCO_EXTRA_ARGS) should catch most motifs. The post-filter catches any
 # edge cases the rejection sampler missed. Disable with EXCLUDE_NGLYC=0.
+FILTER_PROLINE="${FILTER_PROLINE:-1}"
+METRICS_AFTER_FILTER="$OUTDIR/final_ranked_designs/all_designs_metrics.csv"
 if [[ "$EXCLUDE_NGLYC" == "1" ]]; then
   METRICS_CSV="$OUTDIR/final_ranked_designs/all_designs_metrics.csv"
   if [[ -f "$METRICS_CSV" ]]; then
     echo "=== Filtering N-glycosylation sequon designs ==="
-    python scripts/filter_nglyc.py \
+    python scripts/filter_developability.py \
       --metrics "$METRICS_CSV" \
+      --filter_nglyc \
       --out "$METRICS_CSV" \
       2>&1 | tee -a "${LOG_PREFIX}_run.log"
     LINES=$(wc -l < "$METRICS_CSV")
     echo "Post-NGLYC-filter lines: $LINES (header + data rows)"
+    METRICS_AFTER_FILTER="$METRICS_CSV"
   else
     echo "WARNING: $METRICS_CSV not found — skipping NGLYC filter"
   fi
+fi
+
+# ── Proline-in-CDR3 filter (before ranking) ───────────────────────────────
+# Proline in CDR3 disrupts the β-sheet scaffold and correlates with low Tm.
+# Filtering before ranking avoids wasting compute on thermally unstable designs.
+# Disable with FILTER_PROLINE=0.
+if [[ "$FILTER_PROLINE" == "1" && -f "$METRICS_AFTER_FILTER" ]]; then
+  echo "=== Filtering proline-in-CDR3 designs ==="
+  python scripts/filter_developability.py \
+    --metrics "$METRICS_AFTER_FILTER" \
+    --filter_proline \
+    --out "$METRICS_AFTER_FILTER" \
+    2>&1 | tee -a "${LOG_PREFIX}_run.log"
+  LINES=$(wc -l < "$METRICS_AFTER_FILTER")
+  echo "Post-PROLINE-filter lines: $LINES (header + data rows)"
+else
+  echo "NOTE: FILTER_PROLINE=$FILTER_PROLINE — skipping proline filter"
 fi
 
 # ── CDR novelty check (BoltzProt-1 Section 3.5) ─────────────────────────────
@@ -188,18 +209,18 @@ fi
 # The pre-built .sabdab_reference.json (4,466 unique CDR3s) is committed
 # to the repo — no cache rebuild needed on HPC.
 NOVELTY_MODE="${NOVELTY_MODE:-both}"
-METRICS_AFTER_NGLYC="$OUTDIR/final_ranked_designs/all_designs_metrics.csv"
-if [[ -f "$METRICS_AFTER_NGLYC" ]]; then
+METRICS_FOR_NOVELTY="$METRICS_AFTER_PROLINE"
+if [[ -f "$METRICS_FOR_NOVELTY" ]]; then
   echo "=== CDR novelty check (mode=$NOVELTY_MODE) ==="
   python scripts/novelty_check.py \
-    --designs "$METRICS_AFTER_NGLYC" \
+    --designs "$METRICS_FOR_NOVELTY" \
     --filter_mode "$NOVELTY_MODE" \
     --min_edit_distance 4 \
-    --out "$METRICS_AFTER_NGLYC" \
+    --out "$METRICS_FOR_NOVELTY" \
     2>&1 | tee -a "${LOG_PREFIX}_run.log"
-  echo "Novelty check done. Updated metrics: $METRICS_AFTER_NGLYC"
+  echo "Novelty check done. Updated metrics: $METRICS_FOR_NOVELTY"
 else
-  echo "WARNING: $METRICS_AFTER_NGLYC not found — skipping novelty check"
+  echo "WARNING: $METRICS_FOR_NOVELTY not found — skipping novelty check"
 fi
 
 echo "Done. Results in: $OUTDIR"
