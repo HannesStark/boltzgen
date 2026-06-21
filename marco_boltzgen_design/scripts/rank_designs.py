@@ -21,7 +21,14 @@ Extends the standard BoltzGen ranking with a BoltzProt-1-aligned developability 
   3. Confidence score
      • pLDDT / ipTM / ptm / ranking_score (BoltzGen confidence metrics)
 
-Final score = base_confidence + 0.5 * crossreactivity_score - developability_penalties
+Final score = base_confidence + α × crossreactivity_score + β × affinity_signal − penalties
+
+where:
+  α (--alpha_crossreactivity)  — cross-reactivity weight  (default: 0.5)
+  β (--affinity_weight)        — interface quality weight (default: 0.3)
+                                 (ipTM + interface H-bonds + salt bridges + buried SA)
+  Penalties: cysteine, length, charge, hydrophobicity, N-glyc (2×), aromatic (2×),
+             proline-in-CDR3 (2×)
 
 Output columns include per-flag boolean columns and a human-readable `developability_flags`
 summary column listing all issues for quick review.
@@ -29,10 +36,15 @@ summary column listing all issues for quick review.
 Usage:
   python scripts/rank_designs.py --metrics results/all_designs_metrics.csv
 
-  # With epitope coverage:
+  # With epitope coverage and tuned alpha (more cross-reactive bias):
   python scripts/rank_designs.py --metrics results/all_designs_metrics.csv \
     --human-conserved A:423,A:425,A:432,A:461,A:467,A:469,A:489,A:500 \
-    --mouse-conserved A:6,A:8,A:15,A:44,A:50,A:52,A:72,A:83
+    --mouse-conserved A:6,A:8,A:15,A:44,A:50,A:52,A:72,A:83 \
+    --alpha_crossreactivity 0.8
+
+  # With interface-quality signal (default β=0.3, use 0 to disable):
+  python scripts/rank_designs.py --metrics results/all_designs_metrics.csv \
+    --affinity_weight 0.3
 
   # Load contacts from external CSV:
   python scripts/rank_designs.py --metrics results/all_designs_metrics.csv \
@@ -189,6 +201,10 @@ def main():
         help="Max hydrophobic fraction (default: 0.42 — BoltzProt-1 HIC proxy)")
     ap.add_argument("--frac-aro-max", type=float, default=0.14,
         help="Max aromatic fraction (default: 0.14 — BVP/polyspecificity proxy)")
+    ap.add_argument("--alpha_crossreactivity", type=float, default=0.5,
+        help="Weight for cross-reactivity score (default: 0.5). Tune up for more cross-reactive designs, down for human-selective.")
+    ap.add_argument("--affinity_weight", type=float, default=0.3,
+        help="Weight for interface-quality/affinity signal (default: 0.3). Set to 0 to disable. Uses ipTM, H-bonds, salt bridges, and buried SA from PLIP metrics.")
     ap.add_argument("--out", default="results/ranked_candidates.csv",
         help="Output CSV (default: results/ranked_candidates.csv)")
     args = ap.parse_args()
@@ -258,6 +274,28 @@ def main():
                  if c in df.columns]
     base_conf = df[conf_cols].mean(axis=1) if conf_cols else 0
 
+    # ── Interface quality / affinity signal ──────────────────────────────────
+    # Combines ipTM (binding specificity), PLIP H-bonds, salt bridges, and
+    # buried surface area — all from BoltzGen folding analysis step.
+    # Higher = better interface. Normalised to [0, 1] per column before summing.
+    def _norm(s, col, lo, hi):
+        """Min-max normalise a column, clamping outliers to [0, 1]."""
+        if col not in s.columns:
+            return 0.0
+        v = s[col].fillna(0)
+        return ((v - lo) / (hi - lo)).clip(0, 1)
+
+    iq = pd.DataFrame(index=df.index)
+    iq["iptm"] = _norm(df, "iptm", 0.5, 0.9)          # ipTM: 0.5→0.9 maps to 0→1
+    iq["hbonds"] = _norm(df, "plip_hbonds_refolded", 0, 10)   # up to 10 H-bonds
+    iq["sb"]    = _norm(df, "plip_saltbridges_refolded", 0, 5) # up to 5 salt bridges
+    iq["bsa"]   = _norm(df, "delta_sasa_refolded", 200, 1200)  # buried SA 200→1200 Å²
+    # Mean of available components (handles missing columns gracefully)
+    iface_cols = [c for c in iq.columns if c in df.columns]
+    df["interface_quality"] = iq[iface_cols].mean(axis=1) if iface_cols else 0.0
+    n_iface = (iq[iface_cols] > 0).sum(axis=1) if iface_cols else 0
+    df["interface_quality"] = df["interface_quality"].where(n_iface > 0, 0.0)
+
     # ── Final score ──────────────────────────────────────────────────────────
     # Each flag = -1 penalty. N-glyc and Pro_CDR3 penalized more (known developability issues)
     penalties = (
@@ -271,7 +309,12 @@ def main():
         + df["pi_basic"].astype(int)
         + df["proline_cdr3"].astype(int) * 2         # strong penalty — Tm disruption
     )
-    df["final_score"] = base_conf + 0.5 * df["crossreactivity_score"] - penalties
+    df["final_score"] = (
+        base_conf
+        + args.alpha_crossreactivity * df["crossreactivity_score"]
+        + args.affinity_weight * df["interface_quality"]
+        - penalties
+    )
     df["base_confidence"] = base_conf
     df["developability_penalties"] = penalties
 
@@ -284,6 +327,7 @@ def main():
     out_cols = [
         "design_id", "binder_sequence", "binder_length",
         "final_score", "base_confidence", "crossreactivity_score",
+        "interface_quality",
         "developability_penalties", "developability_flags",
         # flag detail
         "has_cys", "nglyc_motif", "too_long",
@@ -311,6 +355,9 @@ def main():
     print(f"  pI basic       : {ranked['pi_basic'].sum()}")
     print(f"  Pro in CDR3    : {ranked['proline_cdr3'].sum()}")
     print(f"  Pass all       : {n_pass} ({100*n_pass/len(ranked):.1f}%)")
+    iq_vals = ranked["interface_quality"]
+    print(f"  Interface quality: mean={iq_vals.mean():.3f}  median={iq_vals.median():.3f}  max={iq_vals.max():.3f}")
+    print(f"  Score params:  α (crossreactivity) = {args.alpha_crossreactivity}  β (affinity) = {args.affinity_weight}")
     print(f"\nTop 5 candidates:")
     print(ranked[["design_id","final_score","developability_flags","binder_sequence"]].head().to_string(index=False))
 
