@@ -65,13 +65,17 @@ def has_nglyc(seq: str) -> bool:
 
 
 def proline_in_cdr3(seq: str) -> bool:
-    """Proline in CDR3 region (approx. central 30% of VHH) is especially disruptive to Tm."""
-    if not seq or len(seq) < 6:
+    """Proline in CDR3 region (last ~18% of VHH sequence).
+
+    For a typical ~113-aa VHH, CDR3 occupies the C-terminal ~18 residues
+    (~Kabat positions 95–113). FR3 contains conserved prolines (e.g. PGK,
+    PW) so the old 1/3–2/3 heuristic falsely flags framework as CDR3.
+    Checking the last 18% correctly captures CDR3 for sequences ≥ 60 aa.
+    """
+    if not seq or len(seq) < 60:
         return False
-    cdr3_start = len(seq) // 3
-    cdr3_end = 2 * len(seq) // 3
-    cdr3 = seq[cdr3_start:cdr3_end]
-    return "P" in cdr3
+    cdr3_region = seq[int(len(seq) * 0.82):]
+    return "P" in cdr3_region
 
 
 def main():
