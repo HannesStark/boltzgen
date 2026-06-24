@@ -64,7 +64,7 @@ Validate   →     HPC Design  →    Collect &   →    Rank &      →    Nove
 | **4 — Novelty** | `novelty_check.py` — CDR3 edit distance ≥ 4 from SAbDab | Local | `results/novelty_checked.csv` |
 | **5 — Validate** | `validate_designs.py` (AF2 backfold) | Local/HPC | `results/af_validation.csv` |
 
-**Automatic post-processing:** Both `run_hpc_campaign.sh` and `run_nanobody_campaign.sh` automatically apply the **N-glycosylation sequon filter** (`filter_nglyc.py`) after generation, removing any design containing NXS/T motifs before ranking.
+**Automatic post-processing:** Both `run_hpc_campaign.sh` and `run_nanobody_campaign.sh` automatically apply two hard-gate developability filters after generation — removing any design with an **N-glycosylation sequon** (NXS/T motif) and any design with a **proline in CDR3** (last 18% of sequence) — before ranking.
 
 ---
 
@@ -178,6 +178,7 @@ wait
 | `GPUS` | 2 | GPUs per job (RTX 5000 x2) |
 | `SPEED_MODE` | 0 | Set to 1 for fast screening mode |
 | `EXCLUDE_NGLYC` | 1 | Auto-filter N-glyc sequons post-generation |
+| `FILTER_PROLINE` | 1 | Auto-filter proline-in-CDR3 post-generation |
 
 **BUDGET on RTX 5000:** `100–150` is the sweet spot. `200` may exceed 96-hour time limit for 60k designs.
 
@@ -229,7 +230,9 @@ python scripts/rank_designs.py \
 ```
 
 What this does:
-- Sorts by `final_score = base_confidence + 0.5 × crossreactivity_score − developability_penalties`
+- Sorts by `final_score = base_confidence + α × crossreactivity_score + β × interface_quality − developability_penalties`
+- α (cross-reactivity weight) and β (interface quality weight) are tunable via `--alpha_crossreactivity` (default 0.5) and `--affinity_weight` (default 0.3)
+- `interface_quality` is a min-max normalised composite of PLIP metrics (ipTM, H-bonds, salt bridges, buried SA) already present in BoltzGen output
 - Applies 9 developability flag columns (Cys, length, charge, hydrophobicity, aromatic fraction, pI region, Pro in CDR3, N-glyc motifs)
 - Auto-detects contact columns in metrics CSV for cross-reactivity scoring
 
@@ -361,10 +364,10 @@ Four strategy groups cover distinct SRCR surfaces. **Set D** and **Set C** are t
 
 | Script | What it does |
 |--------|-------------|
-| `scripts/run_hpc_campaign.sh` | SLURM submission — full 5-step pipeline + N-glyc filter |
+| `scripts/run_hpc_campaign.sh` | SLURM submission — full pipeline, N-glyc + proline pre-filters, then ranking |
 | `runs/run_nanobody_campaign.sh` | Local campaign runner (Mac/HPC login node) |
-| `scripts/filter_nglyc.py` | Remove designs with NXS/T sequons (32 motifs) |
-| `scripts/rank_designs.py` | Rank by confidence + developability + epitope coverage |
+| `scripts/filter_developability.py` | Unified N-glyc sequon filter AND proline-in-CDR3 filter (32-motif NXS/T list matches Boltz API) |
+| `scripts/rank_designs.py` | Rank by `base_conf + α·crossreactivity + β·interface_quality − penalties`; outputs `interface_quality` column |
 | `scripts/novelty_check.py` | Check CDR3 edit distance against SAbDab reference |
 | `scripts/validate_designs.py` | AF2 backfold validation |
 | `scripts/collect_campaign.sh` | Merge metrics from multiple runs |
@@ -385,7 +388,7 @@ The `rank_designs.py` script applies 9 sequence-based developability flags align
 | `aromatic_high` | Aromatic fraction > 0.14 | Polyspecificity / BVP ELISA risk |
 | `pi_acidic` | Net charge < −5 | HIC retention / acidic pI risk |
 | `pi_basic` | Net charge > +5 | HIC retention / basic pI risk |
-| `proline_cdr3` | Pro in central 30% of sequence | Thermal stability / Tm disruption |
+| `proline_cdr3` | Pro in last 18% of sequence (~CDR3 region) | Thermal stability / Tm disruption |
 
 **Penalty weights in final score:** `nglyc_motif` and `proline_cdr3` incur a **2× penalty** (stronger weight); all others incur 1×.
 
