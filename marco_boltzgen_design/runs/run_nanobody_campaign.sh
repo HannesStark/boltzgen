@@ -41,7 +41,7 @@ DEFAULT_DIFFUSION_BATCH_SIZE=2
 NGLYC_MOTIFS="NAS,NAT,NCS,NCT,NDS,NDT,NES,NET,NGS,NGT,NIS,NIT,NKS,NKT,NLS,NLT,NMS,NMT,NNS,NNT,NQS,NQT,NRS,NRT,NSS,NST,NTS,NTT,NVS,NVT,NWS,NWT,NYS,NYT"
 EXCLUDE_NGLYC="${EXCLUDE_NGLYC:-1}"
 
-MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size $DEFAULT_DIFFUSION_BATCH_SIZE --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0 --inverse_fold_excluded_sequence_motifs $NGLYC_MOTIFS}"
+MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size $DEFAULT_DIFFUSION_BATCH_SIZE --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0 --inverse_fold_excluded_sequence_motifs "$NGLYC_MOTIFS"}"
 
 # ── Speed-mode fold/inverse_fold overrides ──────────────────────────────────
 # folding:    sampling_steps 200→100, recycling_steps 3→1, diffusion_samples 5→1

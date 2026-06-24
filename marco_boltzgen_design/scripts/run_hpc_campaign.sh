@@ -3,13 +3,21 @@
 # run_hpc_campaign.sh — SLURM submission script for MARCO nanobody design
 # =============================================================================
 # Usage (from HPC login node, or directly via sbatch):
-#   sbatch scripts/run_hpc_campaign.sh specs/mouse_marco_nanobody_hotspot.yaml runs/mouse_vhh_batch1
+#   sbatch scripts/run_hpc_campaign.sh specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD
 #
-# Required env vars (with defaults):
-#   NUM_DESIGNS   Number of designs to generate  (default: 2000)
-#   BUDGET        Inference budget (iterations)   (default: 150)
+# Required env vars (with recommended production values):
+#   NUM_DESIGNS   Number of designs to generate  (recommended: 50,000-100,000)
+#   BUDGET        Inference budget (iterations)   (recommended: 200-250 for RTX 5000)
 #   CONDA_ENV     Conda environment name          (default: boltzgen)
 #   GPUS          Number of GPUs to use           (default: 2, for RTX 5000 x2)
+#
+# NOTE on quality vs quantity:
+#   - BUDGET 100-150: usable for screening, but ipTM distribution is skewed low.
+#                     Only ~11%% of designs reach ipTM > 0.25 at BUDGET=150.
+#   - BUDGET 200-250: significantly better ipTM/PAE distribution; required for
+#                     confident binder predictions (Boltz confirmed binders: ipTM > 0.5).
+#   - NUM_DESIGNS: For production, generate 50k-100k designs to get 50-200 quality
+#                  candidates after all filters (N-glyc, proline, Gly/Ala, novelty).
 #
 # GPU strategy: With 2x RTX 5000 (16 GB each), use --devices $GPUS so
 # BoltzGen splits the batch across both GPUs within a single job. The SLURM
@@ -80,7 +88,7 @@ SPEED_IFOLD_ARGS="--config inverse_fold precision=bf16-mixed"
 NGLYC_MOTIFS="NAS,NAT,NCS,NCT,NDS,NDT,NES,NET,NGS,NGT,NIS,NIT,NKS,NKT,NLS,NLT,NMS,NMT,NNS,NNT,NQS,NQT,NRS,NRT,NSS,NST,NTS,NTT,NVS,NVT,NWS,NWT,NYS,NYT"
 EXCLUDE_NGLYC="${EXCLUDE_NGLYC:-1}"
 
-MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size $DEFAULT_DIFFUSION_BATCH_SIZE --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0 --inverse_fold_excluded_sequence_motifs $NGLYC_MOTIFS}"
+MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size $DEFAULT_DIFFUSION_BATCH_SIZE --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0 --inverse_fold_excluded_sequence_motifs "$NGLYC_MOTIFS"}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 if [[ "$SPEED_MODE" == "1" ]]; then
   EXTRA_ARGS="$SPEED_FOLD_ARGS $SPEED_DESIGN_ARGS $SPEED_IFOLD_ARGS $EXTRA_ARGS"

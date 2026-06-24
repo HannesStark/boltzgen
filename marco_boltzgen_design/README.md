@@ -210,10 +210,10 @@ rsync -avz hpc:boltzgen/marco_boltzgen_design/runs/ runs/
 
 ## Step 6 — Rank & Filter
 
-Rank by confidence, developability, and epitope coverage:
+Rank by confidence, developability, and epitope coverage, with optional quality pre-filter gates:
 
 ```bash
-# Set D / Set C / Set A (cross-reactive or mouse)
+# Standard ranking (no pre-filter gates):
 python scripts/rank_designs.py \
   --metrics results/all_metrics.csv \
   --human-conserved "A:423,A:424,A:431,A:460,A:466,A:468,A:488,A:499" \
@@ -221,19 +221,38 @@ python scripts/rank_designs.py \
   --max-len 120 \
   --out results/ranked_candidates.csv
 
-# Set B (human-only patent epitope)
+# With quality pre-filter gates (recommended for production):
 python scripts/rank_designs.py \
   --metrics results/all_metrics.csv \
-  --human-conserved "A:33,A:35,A:56,A:70,A:82,A:88,A:90,A:92,A:94" \
+  --human-conserved "A:423,A:424,A:431,A:460,A:466,A:468,A:488,A:499" \
+  --mouse-conserved "A:6,A:8,A:15,A:44,A:50,A:52,A:72,A:83" \
   --max-len 120 \
+  --min_iptm 0.25 \
+  --max_pae 15 \
+  --max_gly_ala_frac 0.35 \
+  --out results/ranked_candidates.csv
+
+# Tune alpha for more cross-reactive bias (default: 0.5):
+python scripts/rank_designs.py \
+  --metrics results/all_metrics.csv \
+  --alpha_crossreactivity 0.8 \
+  --affinity_weight 0.3 \
+  --min_iptm 0.25 \
   --out results/ranked_candidates.csv
 ```
 
+**Quality pre-filter gates** (applied before scoring, to remove non-binders early):
+
+| Flag | What it does | Recommended threshold |
+|------|-------------|----------------------|
+| `--min_iptm` | Remove designs below ipTM threshold | `0.25–0.30` (Boltz confirmed binders: ipTM > 0.5) |
+| `--max_pae` | Remove designs above this PAE (Å) | `12–15` (close interface geometry) |
+| `--max_gly_ala_frac` | Remove overly Gly/Ala-rich CDR3s | `0.30–0.35` (natural VHH: < 30%) |
+
 What this does:
-- Sorts by `final_score = base_confidence + α × crossreactivity_score + β × interface_quality − developability_penalties`
-- α (cross-reactivity weight) and β (interface quality weight) are tunable via `--alpha_crossreactivity` (default 0.5) and `--affinity_weight` (default 0.3)
+- Sorts by `final_score = base_confidence + alpha x crossreactivity_score + beta x interface_quality − developability_penalties`
 - `interface_quality` is a min-max normalised composite of PLIP metrics (ipTM, H-bonds, salt bridges, buried SA) already present in BoltzGen output
-- Applies 9 developability flag columns (Cys, length, charge, hydrophobicity, aromatic fraction, pI region, Pro in CDR3, N-glyc motifs)
+- Applies 9 developability flag columns (Cys in CDR regions, length, charge, hydrophobicity, aromatic fraction, pI region, Pro in CDR3, N-glyc motifs, Gly/Ala-rich CDR3)
 - Auto-detects contact columns in metrics CSV for cross-reactivity scoring
 
 **Inspect top candidates:**
@@ -241,7 +260,8 @@ What this does:
 ```python
 import pandas as pd
 df = pd.read_csv('results/ranked_candidates.csv')
-print(df[['design_id','final_score','developability_flags','binder_sequence']].head(20))
+print(df[['design_id','final_score','iptm','min_interaction_pae',
+          'cdr3_gly_ala_frac','developability_flags','binder_sequence']].head(20))
 ```
 
 ---
@@ -366,8 +386,8 @@ Four strategy groups cover distinct SRCR surfaces. **Set D** and **Set C** are t
 |--------|-------------|
 | `scripts/run_hpc_campaign.sh` | SLURM submission — full pipeline, N-glyc + proline pre-filters, then ranking |
 | `runs/run_nanobody_campaign.sh` | Local campaign runner (Mac/HPC login node) |
-| `scripts/filter_developability.py` | Unified N-glyc sequon filter AND proline-in-CDR3 filter (32-motif NXS/T list matches Boltz API) |
-| `scripts/rank_designs.py` | Rank by `base_conf + α·crossreactivity + β·interface_quality − penalties`; outputs `interface_quality` column |
+| `scripts/filter_developability.py` | Unified N-glyc sequon filter, proline-in-CDR3 filter, and Gly/Ala-rich CDR3 filter (last 18% heuristic); use `--filter_gly_ala --gly_ala_threshold 0.35` |
+| `scripts/rank_designs.py` | Rank by `base_conf + alpha x crossreactivity + beta x interface_quality − penalties`; output `interface_quality` and `cdr3_gly_ala_frac` columns; has quality pre-filter gates `--min_iptm`, `--max_pae`, `--max_gly_ala_frac` |
 | `scripts/novelty_check.py` | Check CDR3 edit distance against SAbDab reference |
 | `scripts/validate_designs.py` | AF2 backfold validation |
 | `scripts/collect_campaign.sh` | Merge metrics from multiple runs |
@@ -376,11 +396,11 @@ Four strategy groups cover distinct SRCR surfaces. **Set D** and **Set C** are t
 
 ## BoltzProt-1 Developability Flags
 
-The `rank_designs.py` script applies 9 sequence-based developability flags aligned with the BoltzProt-1 six-assay panel:
+The `rank_designs.py` script applies 10 sequence-based developability flags aligned with the BoltzProt-1 six-assay panel:
 
 | Flag | Threshold | Risk |
 |------|-----------|------|
-| `has_cys` | Any Cys in sequence | Disulfide scrambling / oxidative aggregation |
+| `has_cys` | Any Cys in CDR1/2/3 regions | Disulfide scrambling / oxidative aggregation (framework C's at pos ~22 and ~95 are structural and excluded) |
 | `nglyc_motif` | N[^P][ST] pattern present | Glycan heterogeneity during expression |
 | `too_long` | Binder length > 120 aa | High-risk for expression |
 | `excess_positive_charge` | Net charge > +8 | Self-association / AC-SINS risk |
@@ -389,8 +409,9 @@ The `rank_designs.py` script applies 9 sequence-based developability flags align
 | `pi_acidic` | Net charge < −5 | HIC retention / acidic pI risk |
 | `pi_basic` | Net charge > +5 | HIC retention / basic pI risk |
 | `proline_cdr3` | Pro in last 18% of sequence (~CDR3 region) | Thermal stability / Tm disruption |
+| `gly_ala_rich_cdr3` | Gly+Ala fraction > 35% in CDR3 | Synthetic loop / non-native paratope (diffusion-model failure mode) |
 
-**Penalty weights in final score:** `nglyc_motif` and `proline_cdr3` incur a **2× penalty** (stronger weight); all others incur 1×.
+**Penalty weights in final score:** `nglyc_motif`, `proline_cdr3`, and `gly_ala_rich_cdr3` incur a **2× penalty** (stronger weight); all others incur 1×.
 
 **Developability tiers (from BoltzProt-1):**
 

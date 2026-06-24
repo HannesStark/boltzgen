@@ -85,6 +85,60 @@ def infer_sequence(row):
     return ""
 
 
+def extract_cdr3(seq: str) -> str:
+    """Extract CDR3 loop from a VHH sequence using FR4 motif as anchor."""
+    if not seq:
+        return ""
+    fr4_match = re.search(r"WGQGT[LI]VTVSS", seq)
+    if fr4_match:
+        fr4_start = fr4_match.start()
+        last_c = seq.rfind("C", 0, fr4_start)
+        if last_c > 70:  # genuine CDR3 start position (not FR1 C)
+            return seq[last_c + 1 : fr4_start]
+    return ""
+
+
+def has_cdr_cys(full_seq: str) -> bool:
+    """Flag only Cysteines INSIDE CDR regions (not the conserved FR1 C at position ~22).
+
+    VHH structure (approximate Kabat 0-indexed positions):
+      FR1:    0-25   (ends at WG motif)
+      CDR1:  ~26-38  (starts after first WG, ends before second WG)
+      FR2:   ~39-54  (ends at WG motif)
+      CDR2:  ~55-65  (starts after second WG, ~10 aa)
+      FR3:   ~66-92
+      CDR3:  ~93-110 (starts at last C before WGQGT, ends at WGQGT)
+      FR4:   ~111-end
+
+    Framework C positions:
+      - FR1 conserved C at ~position 22 (anchor for CDR1)
+      - CDR3 start C at ~position 93-97
+    """
+    if not full_seq:
+        return False
+    L = len(full_seq)
+
+    # Extract CDR3
+    cdr3 = extract_cdr3(full_seq)
+
+    # Extract CDR1: after first WG, before second WG
+    wg_positions = [m.start() for m in re.finditer(r"WG", full_seq[:70])]
+    cdr1 = ""
+    if len(wg_positions) >= 2:
+        cdr1 = full_seq[wg_positions[0] + 2 : wg_positions[1]]
+
+    # Extract CDR2: after second WG, ~12 aa
+    cdr2 = ""
+    if len(wg_positions) >= 2:
+        cdr2 = full_seq[wg_positions[1] + 2 : wg_positions[1] + 14]
+
+    # Flag if any CDR contains a C
+    for cdr in (cdr1, cdr2, cdr3):
+        if cdr and "C" in cdr:
+            return True
+    return False
+
+
 def has_nglyc(seq: str) -> bool:
     return bool(NGLEC_PATTERN.search(seq or ""))
 
@@ -211,6 +265,16 @@ def main():
         help="Weight for interface-quality/affinity signal (default: 0.3). Set to 0 to disable. Uses ipTM, H-bonds, salt bridges, and buried SA from PLIP metrics.")
     ap.add_argument("--out", default="results/ranked_candidates.csv",
         help="Output CSV (default: results/ranked_candidates.csv)")
+    # ── Quality pre-filter gates ─────────────────────────────────────────────
+    ap.add_argument("--min_iptm", type=float, default=0.0,
+        help="Hard gate: only rank designs with ipTM >= this value (default: 0, i.e. no filter). "
+             "Recommended: 0.25-0.30 to remove non-binders before ranking.")
+    ap.add_argument("--max_pae", type=float, default=0.0,
+        help="Hard gate: only rank designs with min_interaction_pae <= this value (default: 0, no filter). "
+             "Recommended: 12-15 Å to enforce close interface geometry.")
+    ap.add_argument("--max_gly_ala_frac", type=float, default=1.0,
+        help="Hard gate: only rank designs where CDR3 Gly+Ala fraction <= this value (default: 1.0, no filter). "
+             "Recommended: 0.30-0.35 to exclude overly Gly/Ala-rich synthetic loops.")
     args = ap.parse_args()
 
     df = pd.read_csv(args.metrics)
@@ -229,7 +293,12 @@ def main():
     df["frac_aromatic"] = df["binder_sequence"].apply(frac_aromatic)
 
     # ── Developability flag columns ──────────────────────────────────────────
-    df["has_cys"] = df["binder_sequence"].str.contains("C", na=False)
+    # has_cys: only flag extra C's INSIDE CDR loops, not conserved framework C's
+    # (FR1 C at pos ~22 is structural; CDR3-start C at pos ~93-97 is structural)
+    if "designed_chain_sequence" in df.columns:
+        df["has_cys"] = df["designed_chain_sequence"].apply(has_cdr_cys)
+    else:
+        df["has_cys"] = df["binder_sequence"].apply(has_cdr_cys)
 
     # N-glycosylation — 32-motif list (Boltz API match)
     df["nglyc_motif"] = df["binder_sequence"].apply(has_nglyc)
@@ -300,7 +369,39 @@ def main():
     n_iface = (iq[iface_cols] > 0).sum(axis=1) if iface_cols else 0
     df["interface_quality"] = df["interface_quality"].where(n_iface > 0, 0.0)
 
-    # ── Final score ──────────────────────────────────────────────────────────
+    # ── CDR3 Gly/Ala fraction (synthetic-loop detector) ──────────────────────
+    def gly_ala_frac(row) -> float:
+        cdr3 = extract_cdr3(str(row.get("designed_chain_sequence", "")))
+        if len(cdr3) == 0:
+            cdr3 = str(row.get("binder_sequence", ""))
+        if not cdr3:
+            return 0.0
+        return (cdr3.count("G") + cdr3.count("A")) / len(cdr3)
+
+    df["cdr3_gly_ala_frac"] = df.apply(gly_ala_frac, axis=1)
+
+    # ── Quality pre-filter gates ─────────────────────────────────────────────
+    # Applied BEFORE ranking to remove non-binders and poor-quality designs.
+    n_before = len(df)
+    gate_iptm = df["iptm"] >= args.min_iptm if args.min_iptm > 0 else pd.Series(True, index=df.index)
+    gate_pae  = df["min_interaction_pae"] <= args.max_pae if args.max_pae > 0 else pd.Series(True, index=df.index)
+    gate_ga   = df["cdr3_gly_ala_frac"] <= args.max_gly_ala_frac
+
+    df["_gate_pass"] = gate_iptm & gate_pae & gate_ga
+    n_after = int(df["_gate_pass"].sum())
+
+    if args.min_iptm > 0 or args.max_pae > 0 or args.max_gly_ala_frac < 1.0:
+        print(f"\n=== Quality pre-filter gates ===")
+        if args.min_iptm > 0:
+            print(f"  ipTM < {args.min_iptm}:  {(~gate_iptm).sum()} removed")
+        if args.max_pae > 0:
+            print(f"  PAE > {args.max_pae} A:  {(~gate_pae).sum()} removed")
+        if args.max_gly_ala_frac < 1.0:
+            print(f"  Gly+Ala frac > {args.max_gly_ala_frac}: {(~gate_ga).sum()} removed")
+        print(f"  Designs after gating: {n_after}/{n_before}")
+
+    # Remove failed designs (keep those that pass all gates)
+    df = df[df["_gate_pass"]].copy()
     # Each flag = -1 penalty. N-glyc and Pro_CDR3 penalized more (known developability issues)
     penalties = (
         df["has_cys"].astype(int)
@@ -360,10 +461,17 @@ def main():
     print(f"  Pro in CDR3    : {ranked['proline_cdr3'].sum()}")
     print(f"  Pass all       : {n_pass} ({100*n_pass/len(ranked):.1f}%)")
     iq_vals = ranked["interface_quality"]
+    ga_vals = ranked["cdr3_gly_ala_frac"]
     print(f"  Interface quality: mean={iq_vals.mean():.3f}  median={iq_vals.median():.3f}  max={iq_vals.max():.3f}")
-    print(f"  Score params:  α (crossreactivity) = {args.alpha_crossreactivity}  β (affinity) = {args.affinity_weight}")
-    print(f"\nTop 5 candidates:")
-    print(ranked[["design_id","final_score","developability_flags","binder_sequence"]].head().to_string(index=False))
+    print(f"  CDR3 Gly+Ala frac: mean={ga_vals.mean():.3f}  max={ga_vals.max():.3f}")
+    print(f"  Score params:  alpha (crossreactivity) = {args.alpha_crossreactivity}  beta (affinity) = {args.affinity_weight}")
+    if args.min_iptm > 0 or args.max_pae > 0 or args.max_gly_ala_frac < 1.0:
+        print(f"  Quality gates: min_iptm={args.min_iptm}  max_pae={args.max_pae}  max_gly_ala_frac={args.max_gly_ala_frac}")
+
+    print(f"\n=== Quality summary (top 10 by final_score) ===")
+    top10 = ranked.head(10)[["design_id","final_score","iptm","min_interaction_pae",
+                              "cdr3_gly_ala_frac","developability_flags"]]
+    print(top10.to_string(index=False))
 
 
 if __name__ == "__main__":

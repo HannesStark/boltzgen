@@ -68,14 +68,29 @@ def proline_in_cdr3(seq: str) -> bool:
     """Proline in CDR3 region (last ~18% of VHH sequence).
 
     For a typical ~113-aa VHH, CDR3 occupies the C-terminal ~18 residues
-    (~Kabat positions 95–113). FR3 contains conserved prolines (e.g. PGK,
-    PW) so the old 1/3–2/3 heuristic falsely flags framework as CDR3.
-    Checking the last 18% correctly captures CDR3 for sequences ≥ 60 aa.
+    (~Kabat positions 95-113). FR3 contains conserved prolines (e.g. PGK,
+    PW) so the old 1/3-2/3 heuristic falsely flags framework as CDR3.
+    Checking the last 18% correctly captures CDR3 for sequences >= 60 aa.
     """
     if not seq or len(seq) < 60:
         return False
     cdr3_region = seq[int(len(seq) * 0.82):]
     return "P" in cdr3_region
+
+
+def gly_ala_frac(seq: str) -> float:
+    """Fraction of Gly+Ala in the CDR3 region (last 18% of sequence).
+
+    Overly Gly/Ala-rich CDR3s are a known diffusion-model failure mode:
+    they produce synthetic linker-like loops instead of natural paratopes.
+    Typical natural VHH CDR3s are < 30% Gly+Ala.
+    """
+    if not seq or len(seq) < 60:
+        return 0.0
+    cdr3_region = seq[int(len(seq) * 0.82):]
+    if not cdr3_region:
+        return 0.0
+    return (cdr3_region.count("G") + cdr3_region.count("A")) / len(cdr3_region)
 
 
 def main():
@@ -91,12 +106,17 @@ def main():
                     help="Remove designs with N-glycosylation sequons (N[^P][ST])")
     ap.add_argument("--filter_proline", action="store_true",
                     help="Remove designs with proline in CDR3 region")
+    ap.add_argument("--filter_gly_ala", action="store_true",
+                    help="Remove designs with Gly+Ala fraction > --gly_ala_threshold in CDR3 "
+                         "(default: 0.35 = 35%%; catches synthetic-loop failure mode)")
+    ap.add_argument("--gly_ala_threshold", type=float, default=0.35,
+                    help="Max Gly+Ala fraction in CDR3 to pass --filter_gly_ala (default: 0.35)")
     ap.add_argument("--dry_run", action="store_true",
                     help="Print stats but do not write")
     args = ap.parse_args()
 
-    if not (args.filter_nglyc or args.filter_proline):
-        print("ERROR: at least one of --filter_nglyc or --filter_proline is required.")
+    if not (args.filter_nglyc or args.filter_proline or args.filter_gly_ala):
+        print("ERROR: at least one of --filter_nglyc, --filter_proline, or --filter_gly_ala is required.")
         sys.exit(1)
 
     out_path = Path(args.out) if args.out else Path(args.metrics)
@@ -125,16 +145,24 @@ def main():
     else:
         df["_has_proline"] = False
 
+    # Gly/Ala fraction filter (CDR3 synthetic-loop detector)
+    if args.filter_gly_ala:
+        df["_gly_ala_frac"] = df["_seq"].apply(gly_ala_frac)
+        df["_has_gly_ala"] = df["_gly_ala_frac"] > args.gly_ala_threshold
+    else:
+        df["_has_gly_ala"] = False
+        df["_gly_ala_frac"] = 0.0
+
     n_nglyc = int(df["_has_nglyc"].sum())
     n_proline = int(df["_has_proline"].sum())
 
     # Combined mask
-    df["_filtered"] = df["_has_nglyc"] | df["_has_proline"]
+    df["_filtered"] = df["_has_nglyc"] | df["_has_proline"] | df["_has_gly_ala"]
     n_removed = int(df["_filtered"].sum())
 
     # Keep clean designs
     df_clean = df[~df["_filtered"]].copy()
-    df_clean.drop(columns=["_seq", "_has_nglyc", "_has_proline", "_filtered"],
+    df_clean.drop(columns=["_seq", "_has_nglyc", "_has_proline", "_has_gly_ala", "_gly_ala_frac", "_filtered"],
                   inplace=True, errors="ignore")
     n_after = len(df_clean)
 
@@ -150,6 +178,10 @@ def main():
                 print(f"    {motif}: {count}")
     if args.filter_proline:
         print(f"  Proline-CDR3 removed: {n_proline} ({100*n_proline/n_before:.1f}%)")
+    if args.filter_gly_ala:
+        n_gly_ala = df["_has_gly_ala"].sum()
+        print(f"  Gly+Ala-CDR3 removed: {n_gly_ala} ({100*n_gly_ala/n_before:.1f}%)  "
+              f"(threshold={args.gly_ala_threshold})")
     print(f"  Designs after:      {n_after}")
     print(f"  Total removed:       {n_removed} ({100*n_removed/n_before:.1f}%)")
 
