@@ -49,6 +49,7 @@ import hydra
 import omegaconf
 import torch
 
+from boltzgen.cli.cuda_validation import validate_cuda_runtime
 from boltzgen.data import const
 from boltzgen.data.mol import load_canonicals
 from boltzgen.data.parse.schema import YamlDesignParser
@@ -75,6 +76,7 @@ step_names = [
     "analysis",
     "filtering",
 ]
+
 
 ### Protocol-specific configuration overrides (which can be overridden by user) ####
 protocol_configs = {
@@ -917,8 +919,12 @@ class BinderDesignPipeline:
                 f"Invalid protocol: {protocol}. Valid protocols: {list(protocol_configs.keys())}"
             )
 
+        devices = (
+            args.devices if args.devices is not None else torch.cuda.device_count()
+        )
+        devices, device_capability = validate_cuda_runtime(devices)
+
         # Handle use_kernels argument
-        device_capability = torch.cuda.get_device_capability()
         use_kernels = None
         if args.use_kernels == "auto":
             use_kernels = device_capability[0] >= 8
@@ -938,9 +944,6 @@ class BinderDesignPipeline:
             protocol_config, args.config, step_names
         )
 
-        devices = (
-            args.devices if args.devices is not None else torch.cuda.device_count()
-        )
         print(f"Using {devices} devices")
 
         self.steps = []
