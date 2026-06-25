@@ -599,7 +599,7 @@ class Boltz(LightningModule):
                             pair_mask=pair_mask,
                             use_kernels=self.use_kernels,
                         )
-
+                        
             if not self.inverse_fold:
                 pdistogram = self.distogram_module(z)
                 dict_out["pdistogram"] = pdistogram.float()
@@ -863,6 +863,7 @@ class Boltz(LightningModule):
                             ),
                         }
                     )
+
         if return_z_feats:
             dict_out["z_feats"] = z
 
@@ -1031,6 +1032,7 @@ class Boltz(LightningModule):
                             else confidence_loss_dict["loss_breakdown"][k]
                         ),
                     )
+
             self.log("train/loss", loss)
             self.log("train/forward_dur", time.time() - start)
             self.log("train/step_dur", time.time() - self.timestamp)

@@ -118,7 +118,6 @@ class InputEmbedder(nn.Module):
         self.add_design_mask_flag = add_design_mask_flag
         self.add_binding_specification = add_binding_specification
         self.add_ss_specification = add_ss_specification
-
         self.atom_encoder = AtomEncoder(
             atom_s=atom_s,
             atom_z=atom_z,
@@ -241,7 +240,6 @@ class InputEmbedder(nn.Module):
             s = s + self.binding_specification_conditioning_init(feats["binding_type"])
         if self.add_ss_specification:
             s = s + self.ss_specification_init(feats["ss_type"])
-
         return s
 
 

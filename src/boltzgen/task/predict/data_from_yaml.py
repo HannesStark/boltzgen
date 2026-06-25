@@ -1,7 +1,8 @@
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import re
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pytorch_lightning as pl
@@ -41,6 +42,8 @@ class DataConfig:
     skip_offset: int = 0
     diffusion_samples: int = 1
     output_dir: Optional[str] = None
+    guidance_feats_json: Optional[str] = None
+    guidance_feats_inline: Optional[Dict[str, Any]] = None
   
    
 
@@ -51,6 +54,65 @@ class Dataset:
     tokenizer: Tokenizer
     featurizer: Featurizer
     multiplicity: int = 1
+
+
+GUIDANCE_FEAT_DEFAULTS: Dict[str, Any] = {
+    "guidance_hotspot_weight": 0.0,
+    "guidance_atp_weight": 0.0,
+    "guidance_alpha": 8.0,
+    "guidance_cutoff_angstrom": 5.0,
+    "guidance_lj_sigma": 3.0,
+    "guidance_max_force": 1.0,
+    "guidance_bbb_weight": 0.0,
+    "guidance_membrane_weight": 0.0,
+    "guidance_bbb_ckpt": "",
+    "guidance_bbb_sigma_gate": 4.0,
+    "guidance_bbb_hidden": 64,
+    "guidance_bbb_layers": 3,
+}
+
+GUIDANCE_INT_KEYS = {"guidance_bbb_hidden", "guidance_bbb_layers"}
+GUIDANCE_STR_KEYS = {"guidance_bbb_ckpt"}
+
+
+def _load_guidance_feats(
+    *,
+    json_path: Optional[str],
+    inline: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = dict(GUIDANCE_FEAT_DEFAULTS)
+
+    if json_path:
+        guidance_path = Path(json_path).expanduser().resolve()
+        with guidance_path.open("r", encoding="utf-8") as handle:
+            loaded = json.load(handle)
+        if not isinstance(loaded, dict):
+            raise ValueError(
+                f"Guidance feats file must contain a JSON object, got: {type(loaded)!r}"
+            )
+        payload.update(loaded)
+
+    if inline:
+        for key, value in dict(inline).items():
+            if value is not None:
+                payload[key] = value
+
+    unknown_keys = set(payload.keys()) - set(GUIDANCE_FEAT_DEFAULTS.keys())
+    if unknown_keys:
+        unknown = ", ".join(sorted(unknown_keys))
+        raise ValueError(f"Unknown guidance feat keys: {unknown}")
+
+    normalized: Dict[str, Any] = {}
+    for key, default in GUIDANCE_FEAT_DEFAULTS.items():
+        value = payload.get(key, default)
+        if key in GUIDANCE_STR_KEYS:
+            normalized[key] = str(value) if value is not None else ""
+        elif key in GUIDANCE_INT_KEYS:
+            normalized[key] = int(value)
+        else:
+            normalized[key] = float(value)
+
+    return normalized
 
 
 def collate(data: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
@@ -283,6 +345,7 @@ class PredictionDataset(torch.utils.data.Dataset):
 
         # set chain_design_mask
         features["chain_design_mask"] = torch.from_numpy(chain_design_mask)
+        self._ensure_guidance_atom_indices(features)
 
         # Compute template features
         templates_features = load_dummy_templates(
@@ -304,6 +367,37 @@ class PredictionDataset(torch.utils.data.Dataset):
             features["tokenized"] = tokenized
 
         return features
+
+    def _ensure_guidance_atom_indices(self, features: Dict[str, Tensor]) -> None:
+        if "atom_to_token" not in features or "binding_type" not in features:
+            return
+
+        atom_to_token = features["atom_to_token"].float()
+        binding_type = features["binding_type"]
+
+        binding_id = const.binding_type_ids["BINDING"]
+        not_binding_id = const.binding_type_ids["NOT_BINDING"]
+
+        hotspot_token_mask = (binding_type == binding_id).float()
+        atp_token_mask = (binding_type == not_binding_id).float()
+
+        hotspot_atom_mask = torch.matmul(atom_to_token, hotspot_token_mask) > 0
+        atp_atom_mask = torch.matmul(atom_to_token, atp_token_mask) > 0
+
+        if "guidance_hotspot_atom_indices" not in features:
+            features["guidance_hotspot_atom_indices"] = torch.nonzero(
+                hotspot_atom_mask, as_tuple=False
+            ).squeeze(-1).long()
+        if "guidance_atp_atom_indices" not in features:
+            features["guidance_atp_atom_indices"] = torch.nonzero(
+                atp_atom_mask, as_tuple=False
+            ).squeeze(-1).long()
+
+        if "guidance_peptide_atom_mask" not in features and "design_mask" in features:
+            design_atom_mask = torch.matmul(
+                atom_to_token, features["design_mask"].float()
+            ) > 0
+            features["guidance_peptide_atom_mask"] = design_atom_mask.bool()
 
     def __len__(self) -> int:
         """Get the length of the dataset.
@@ -358,6 +452,10 @@ class FromYamlDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.collate = collate
+        self.guidance_feats = _load_guidance_feats(
+            json_path=cfg.guidance_feats_json,
+            inline=cfg.guidance_feats_inline,
+        )
 
         dataset = Dataset(
             yaml_path=cfg.yaml_path,
@@ -446,4 +544,9 @@ class FromYamlDataModule(pl.LightningDataModule):
                 "data_sample_idx",
             ]:
                 batch[key] = batch[key].to(device)
+        for key, value in self.guidance_feats.items():
+            if isinstance(value, str):
+                batch[key] = value
+            else:
+                batch[key] = torch.tensor(value, device=device)
         return batch
