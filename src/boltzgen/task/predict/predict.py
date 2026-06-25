@@ -51,6 +51,7 @@ class Predict(Task):
         compile_pairformer: bool = False,
         compile_structure: bool = False,
         checkpoint_diffusion_conditioning: bool = False,
+        guidance: Optional[dict] = None,
     ) -> None:
         """Initialize the task.
 

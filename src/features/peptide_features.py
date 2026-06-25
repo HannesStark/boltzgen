@@ -310,7 +310,7 @@ def extract_peptide_features(
     if include_esm:
         raise NotImplementedError(
             "Local ESM extraction was removed from boltzgen. "
-            "Use TFG/bbb_classifier for ESM-based BBB inference."
+            "Use TFG/bbb_models for ESM-based BBB inference."
         )
 
     return features

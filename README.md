@@ -128,6 +128,28 @@ BoltzGen should be run on a GPU. On the right you can see the time required for 
 
 We suggest first running with e.g. `--num_design 50`, checking that everything behaves as desired, and then increasing `--num_design` to between 10,000 - 60,000.
 
+## BBB Geo guidance (experimental)
+
+`design` supports optional diffusion guidance features under `guidance.*` (Hydra overrides) or from a JSON payload (`guidance_feats.json`).
+
+Typical usage:
+
+```bash
+boltzgen run target.yaml \
+  --output workbench/guided \
+  --protocol peptide-anything \
+  --config design guidance.feats_json=/abs/path/guidance_feats.json \
+  --config design guidance.bbb_weight=0.3 guidance.membrane_weight=0.7 \
+  --config design guidance.bbb_ckpt=/abs/path/best.ckpt guidance.bbb_sigma_gate=4.0 \
+  --config design guidance.max_force=1.0
+```
+
+Notes:
+
+- If `guidance_bbb_weight > 0` and no checkpoint is provided, BBB guidance is skipped (no crash).
+- If `bbb_geo` is not importable at runtime, BBB guidance is skipped (no crash).
+- Geometric hotspot/ATP atom indices are inferred from `binding_types` in the design spec.
+
 ## Pipeline output
 When the pipeline completes your output directory will have:
 - `config/`, `steps.yaml`: configuration files.

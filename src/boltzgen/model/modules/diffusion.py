@@ -5,6 +5,7 @@ from __future__ import annotations
 from math import sqrt
 from math import exp
 from scipy.stats import norm
+import logging
 import math
 
 import numpy as np
@@ -46,6 +47,8 @@ from boltzgen.model.modules.utils import (
     log,
 )
 from scipy.stats import beta
+
+logger = logging.getLogger(__name__)
 
 
 def _safe_min_distance(source_coords: torch.Tensor, target_coords: torch.Tensor, eps: float):
@@ -364,20 +367,70 @@ class AtomDiffusion(Module):
 
         self.register_buffer("zero", torch.tensor(0.0), persistent=False)
         self.guidance_eps = 1e-6
+        self._guidance_log_once: set[str] = set()
+
+    def _log_guidance_once(self, key: str, level: str, message: str) -> None:
+        if key in self._guidance_log_once:
+            return
+        self._guidance_log_once.add(key)
+        if level == "warning":
+            logger.warning(message)
+        else:
+            logger.debug(message)
+
+    def _guidance_scalar(self, feats, key: str, default: float) -> float:
+        value = feats.get(key, default)
+        if isinstance(value, torch.Tensor):
+            if value.numel() == 0:
+                return float(default)
+            return float(value.reshape(-1)[0].item())
+        if isinstance(value, (list, tuple)):
+            if len(value) == 0:
+                return float(default)
+            value = value[0]
+            if isinstance(value, torch.Tensor):
+                if value.numel() == 0:
+                    return float(default)
+                return float(value.reshape(-1)[0].item())
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
+    def _guidance_int(self, feats, key: str, default: int) -> int:
+        return int(round(self._guidance_scalar(feats, key, float(default))))
+
+    def _guidance_string(self, feats, key: str, default: str = "") -> str:
+        value = feats.get(key, default)
+        if isinstance(value, (list, tuple)):
+            if len(value) == 0:
+                return default
+            value = value[0]
+        if isinstance(value, torch.Tensor):
+            if value.numel() == 0:
+                return default
+            return str(value.reshape(-1)[0].item())
+        if value is None:
+            return default
+        return str(value)
 
     def _compute_geometric_guidance(self, atom_coords, feats, atom_mask):
-        if "guidance_hotspot_atom_indices" not in feats or "guidance_atp_atom_indices" not in feats:
-            return None
-
-        w_h = float(feats.get("guidance_hotspot_weight", 0.0))
-        w_a = float(feats.get("guidance_atp_weight", 0.0))
+        w_h = self._guidance_scalar(feats, "guidance_hotspot_weight", 0.0)
+        w_a = self._guidance_scalar(feats, "guidance_atp_weight", 0.0)
         if w_h == 0.0 and w_a == 0.0:
             return None
+        if "guidance_hotspot_atom_indices" not in feats or "guidance_atp_atom_indices" not in feats:
+            self._log_guidance_once(
+                "geom_missing_indices",
+                "warning",
+                "Geometric guidance requested but hotspot/ATP atom indices are missing; continuing without geometric guidance.",
+            )
+            return None
 
-        alpha = float(feats.get("guidance_alpha", 8.0))
-        cutoff = float(feats.get("guidance_cutoff_angstrom", 5.0))
-        lj_sigma = float(feats.get("guidance_lj_sigma", 3.0))
-        max_force = float(feats.get("guidance_max_force", 1.0))
+        alpha = self._guidance_scalar(feats, "guidance_alpha", 8.0)
+        cutoff = self._guidance_scalar(feats, "guidance_cutoff_angstrom", 5.0)
+        lj_sigma = self._guidance_scalar(feats, "guidance_lj_sigma", 3.0)
+        max_force = self._guidance_scalar(feats, "guidance_max_force", 1.0)
 
         if "guidance_peptide_atom_mask" in feats:
             peptide_atom_mask = feats["guidance_peptide_atom_mask"].to(atom_coords.device).bool()
@@ -443,6 +496,54 @@ class AtomDiffusion(Module):
         if max_force > 0:
             guidance = torch.clamp(guidance, min=-max_force, max=max_force)
         return guidance.detach()
+
+    def _compute_bbb_guidance(self, atom_coords, feats, atom_mask, sigma):
+        w_bbb = self._guidance_scalar(feats, "guidance_bbb_weight", 0.0)
+        w_mem = self._guidance_scalar(feats, "guidance_membrane_weight", 0.0)
+        ckpt = self._guidance_string(feats, "guidance_bbb_ckpt", "")
+        if w_bbb == 0.0 and w_mem == 0.0:
+            return None
+        if w_bbb > 0.0 and not ckpt:
+            self._log_guidance_once(
+                "bbb_missing_ckpt",
+                "warning",
+                "BBB guidance requested with guidance_bbb_weight > 0 but no guidance_bbb_ckpt was provided; continuing without BBB guidance.",
+            )
+            return None
+        try:
+            from bbb_geo.infer.struct_guidance import BBBGuidanceConfig, compute_bbb_guidance_force
+        except ImportError:
+            self._log_guidance_once(
+                "bbb_import_error",
+                "warning",
+                "Could not import bbb_geo guidance module; continuing without BBB guidance.",
+            )
+            return None
+        cfg = BBBGuidanceConfig(
+            bbb_weight=w_bbb,
+            membrane_weight=w_mem,
+            ckpt_path=str(ckpt),
+            sigma_gate=self._guidance_scalar(feats, "guidance_bbb_sigma_gate", 4.0),
+            max_force=self._guidance_scalar(feats, "guidance_max_force", 1.0),
+            model_hidden=self._guidance_int(feats, "guidance_bbb_hidden", 64),
+            model_layers=self._guidance_int(feats, "guidance_bbb_layers", 3),
+        )
+        try:
+            bbb_guidance = compute_bbb_guidance_force(atom_coords, feats, atom_mask, sigma, cfg)
+        except Exception as exc:  # noqa: BLE001
+            self._log_guidance_once(
+                "bbb_runtime_error",
+                "warning",
+                f"BBB guidance failed at runtime ({type(exc).__name__}: {exc}); continuing without BBB guidance.",
+            )
+            return None
+        if bbb_guidance is not None:
+            self._log_guidance_once(
+                "bbb_applied",
+                "debug",
+                "BBB guidance force applied during diffusion sampling.",
+            )
+        return bbb_guidance
 
     @property
     def device(self):
@@ -705,6 +806,14 @@ class AtomDiffusion(Module):
             )
             if guidance is not None:
                 denoised_over_sigma = denoised_over_sigma + guidance
+            bbb_guidance = self._compute_bbb_guidance(
+                atom_coords=atom_coords_noisy,
+                feats=feats,
+                atom_mask=atom_mask,
+                sigma=t_hat,
+            )
+            if bbb_guidance is not None:
+                denoised_over_sigma = denoised_over_sigma + bbb_guidance
             atom_coords_next = (
                 atom_coords_noisy + step_scale * (sigma_t - t_hat) * denoised_over_sigma
             )

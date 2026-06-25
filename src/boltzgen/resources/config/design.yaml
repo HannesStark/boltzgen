@@ -13,6 +13,20 @@ data:
     yaml_path: null
     output_dir: ${output}
     diffusion_samples: ${diffusion_samples}
+    guidance_feats_json: ${guidance.feats_json}
+    guidance_feats_inline:
+      guidance_hotspot_weight: ${guidance.hotspot_weight}
+      guidance_atp_weight: ${guidance.atp_weight}
+      guidance_alpha: ${guidance.alpha}
+      guidance_cutoff_angstrom: ${guidance.cutoff_angstrom}
+      guidance_lj_sigma: ${guidance.lj_sigma}
+      guidance_max_force: ${guidance.max_force}
+      guidance_bbb_weight: ${guidance.bbb_weight}
+      guidance_membrane_weight: ${guidance.membrane_weight}
+      guidance_bbb_ckpt: ${guidance.bbb_ckpt}
+      guidance_bbb_sigma_gate: ${guidance.bbb_sigma_gate}
+      guidance_bbb_hidden: ${guidance.bbb_hidden}
+      guidance_bbb_layers: ${guidance.bbb_layers}
 
     # Design
     backbone_only: false
@@ -48,6 +62,21 @@ sampling_steps: 500
 diffusion_samples: 1
 compile_pairformer: false
 compile_structure: false
+
+guidance:
+  feats_json: null
+  hotspot_weight: null
+  atp_weight: null
+  alpha: null
+  cutoff_angstrom: null
+  lj_sigma: null
+  max_force: null
+  bbb_weight: null
+  membrane_weight: null
+  bbb_ckpt: null
+  bbb_sigma_gate: null
+  bbb_hidden: null
+  bbb_layers: null
 
 override:
   masker_args:
