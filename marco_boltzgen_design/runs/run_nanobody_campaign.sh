@@ -41,7 +41,7 @@ DEFAULT_DIFFUSION_BATCH_SIZE=2
 NGLYC_MOTIFS="NAS,NAT,NCS,NCT,NDS,NDT,NES,NET,NGS,NGT,NIS,NIT,NKS,NKT,NLS,NLT,NMS,NMT,NNS,NNT,NQS,NQT,NRS,NRT,NSS,NST,NTS,NTT,NVS,NVT,NWS,NWT,NYS,NYT"
 EXCLUDE_NGLYC="${EXCLUDE_NGLYC:-1}"
 
-MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size $DEFAULT_DIFFUSION_BATCH_SIZE --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0 --inverse_fold_excluded_sequence_motifs "$NGLYC_MOTIFS"}"
+MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size $DEFAULT_DIFFUSION_BATCH_SIZE --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0}"
 
 # ── Speed-mode fold/inverse_fold overrides ──────────────────────────────────
 # folding:    sampling_steps 200→100, recycling_steps 3→1, diffusion_samples 5→1
@@ -66,7 +66,7 @@ echo "[marco-run] outdir=$OUTDIR"
 echo "[marco-run] protocol=$PROTOCOL"
 echo "[marco-run] num_designs=$NUM_DESIGNS budget=$BUDGET devices=$DEVICES speed_mode=$SPEED_MODE"
 
-cmd=(
+cmd+=(
   boltzgen run "$SPEC"
   --output "$OUTDIR"
   --protocol "$PROTOCOL"
@@ -74,22 +74,18 @@ cmd=(
   --budget "$BUDGET"
   --devices "$DEVICES"
   --reuse
+  $MARCO_EXTRA_ARGS
+  $EXTRA_ARGS
 )
-
-# shellcheck disable=SC2206
-marco_extra_arr=( $MARCO_EXTRA_ARGS )
-# shellcheck disable=SC2206
-extra_arr=( $EXTRA_ARGS )
-
-cmd+=("${marco_extra_arr[@]}" "${extra_arr[@]}")
 
 cd "$PROJECT_DIR"
 "${cmd[@]}"
 
 # ── Post-generation: safety-net filter for any remaining N-glyc sequons ──
-# Generation-time exclusion (--inverse_fold_excluded_sequence_motifs in
-# MARCO_EXTRA_ARGS) should catch most motifs. The post-filter catches any
-# edge cases the rejection sampler missed. Disable with EXCLUDE_NGLYC=0.
+# N-glyc exclusion is handled post-generation by scripts/filter_nglyc.py
+# (run automatically when EXCLUDE_NGLYC=1 after boltzgen run completes).
+# Generation-time motif exclusion via --inverse_fold_excluded_sequence_motifs
+# is NOT used here because boltzgen v0.3.x does not support it.
 if [[ "$EXCLUDE_NGLYC" == "1" ]]; then
   METRICS_CSV="$OUTDIR/final_ranked_designs/all_designs_metrics.csv"
   if [[ -f "$METRICS_CSV" ]]; then

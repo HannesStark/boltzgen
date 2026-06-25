@@ -88,7 +88,7 @@ SPEED_IFOLD_ARGS="--config inverse_fold precision=bf16-mixed"
 NGLYC_MOTIFS="NAS,NAT,NCS,NCT,NDS,NDT,NES,NET,NGS,NGT,NIS,NIT,NKS,NKT,NLS,NLT,NMS,NMT,NNS,NNT,NQS,NQT,NRS,NRT,NSS,NST,NTS,NTT,NVS,NVT,NWS,NWT,NYS,NYT"
 EXCLUDE_NGLYC="${EXCLUDE_NGLYC:-1}"
 
-MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size $DEFAULT_DIFFUSION_BATCH_SIZE --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0 --inverse_fold_excluded_sequence_motifs "$NGLYC_MOTIFS"}"
+MARCO_EXTRA_ARGS="${MARCO_EXTRA_ARGS:---diffusion_batch_size $DEFAULT_DIFFUSION_BATCH_SIZE --metrics_override plip_hbonds_refolded=0.2 delta_sasa_refolded=0.5 --refolding_rmsd_threshold 3.0}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 if [[ "$SPEED_MODE" == "1" ]]; then
   EXTRA_ARGS="$SPEED_FOLD_ARGS $SPEED_DESIGN_ARGS $SPEED_IFOLD_ARGS $EXTRA_ARGS"
@@ -171,9 +171,10 @@ if [[ $RUN_EXIT -ne 0 ]]; then
 fi
 
 # ── Post-generation: safety-net filter for any remaining N-glyc sequons ──
-# Generation-time exclusion (--inverse_fold_excluded_sequence_motifs in
-# MARCO_EXTRA_ARGS) should catch most motifs. The post-filter catches any
-# edge cases the rejection sampler missed. Disable with EXCLUDE_NGLYC=0.
+# N-glyc exclusion is handled post-generation by scripts/filter_nglyc.py
+# (run automatically when EXCLUDE_NGLYC=1 after boltzgen run completes).
+# Generation-time motif exclusion via --inverse_fold_excluded_sequence_motifs
+# is NOT used here because boltzgen v0.3.x does not support it.
 FILTER_PROLINE="${FILTER_PROLINE:-1}"
 METRICS_AFTER_FILTER="$OUTDIR/final_ranked_designs/all_designs_metrics.csv"
 if [[ "$EXCLUDE_NGLYC" == "1" ]]; then
