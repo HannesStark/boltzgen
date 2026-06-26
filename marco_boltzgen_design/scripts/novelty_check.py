@@ -279,12 +279,14 @@ def check_novelty(
                 return row[k]
         return ""
 
-    # ── Add design_id and _seq in a single assign (avoids fragmentation) ──
-    idx = pd.RangeIndex(len(df)) if "design_id" not in df.columns else df["design_id"]
-    df = df.assign(
-        design_id=idx,
-        _seq=df.apply(infer_seq, axis=1),
+    # ── Add design_id and _seq via pd.concat (avoids assign/insert fragmentation) ──
+    # Build a fresh DataFrame for the two new columns, then merge once.
+    idx = pd.RangeIndex(len(df)) if "design_id" not in df.columns else df["design_id"].values
+    init_cols = pd.DataFrame(
+        {"design_id": idx, "_seq": df.apply(infer_seq, axis=1)},
+        index=df.index,
     )
+    df = pd.concat([df, init_cols], axis=1)
 
     print(
         f"\nNovelty checking {len(df):,} designs "
