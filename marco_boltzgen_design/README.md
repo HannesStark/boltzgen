@@ -107,80 +107,233 @@ boltzgen check specs/human_marco_nanobody_setB_patent_epitope.yaml
 
 ## Step 3 — Local Pilot
 
-Run a small batch locally to verify the pipeline before submitting HPC jobs.
+Run a small batch locally to verify the pipeline before submitting HPC jobs. All scripts automatically set `OPENBLAS_NUM_THREADS=1` to avoid RLIMIT_NPROC exhaustion.
 
-```bash
-# Set D cross-reactive pilot (recommended first run)
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/pilot
-
-# Set C hybrid pilot (maximum interface breadth)
-NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
-  specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC_pilot
-```
-
-> ⚠️ **Local Mac OOM risk:** Use `NUM_DESIGNS ≤ 100` locally. Production runs must go to HPC.
+> ⚠️ **Local Mac OOM risk:** Use `NUM_DESIGNS ≤ 100` and `DEVICES=1` locally. Production runs must go to HPC.
 
 **Output:** `runs/<name>/final_ranked_designs/all_designs_metrics.csv`
 
 ---
 
+### Priority 1 — Highest (cross-reactive binders targeting beta-sheet edge)
+
+```bash
+# ══ Set D: Beta-edge strand pairing (HIGHEST PRIORITY) ══
+
+# Cross-reactive (recommended first run)
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/pilot_setD_xr
+
+# Human MARCO
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_nanobody_setD_beta_pairing.yaml runs/pilot_setD_human
+
+# Mouse MARCO
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/mouse_marco_nanobody_setD_beta_pairing.yaml runs/pilot_setD_mouse
+
+# ══ Set C: Hybrid interface (maximum epitope breadth, cross-reactive only) ══
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/pilot_setC_xr
+```
+
+---
+
+### Priority 2 — High (species-specific interface targeting)
+
+```bash
+# ══ Set A: SO₄/pocket blocking ══
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_nanobody_setA_so4_pocket.yaml runs/pilot_setA_human
+
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/pilot_setA_mouse
+
+# ══ Set B: Patent antibody epitope (human MARCO only) ══
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_nanobody_setB_patent_epitope.yaml runs/pilot_setB
+```
+
+---
+
+### Priority 3 — Medium (conserved hotspot targeting)
+
+```bash
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/crossreactive_marco_nanobody_hotspot.yaml runs/pilot_hotspot_xr
+
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_nanobody_hotspot.yaml runs/pilot_hotspot_human
+
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/mouse_marco_nanobody_hotspot.yaml runs/pilot_hotspot_mouse
+```
+
+---
+
+### Priority 4 — Exploratory (unconstrained surface, other binder types)
+
+```bash
+# ── Anywhere (nanobody, broadest exploration) ──
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_nanobody_anywhere.yaml runs/pilot_anywhere_human
+
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/mouse_marco_nanobody_anywhere.yaml runs/pilot_anywhere_mouse
+
+# ── Binder type variants (nanobody-anything protocol) ──
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_binder_anywhere.yaml runs/pilot_binder_human
+
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/mouse_marco_binder_anywhere.yaml runs/pilot_binder_mouse
+
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_binder_hotspot.yaml runs/pilot_binder_hotspot_human
+
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/mouse_marco_binder_hotspot.yaml runs/pilot_binder_hotspot_mouse
+
+# ── Peptide (short linear motifs) ──
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/human_marco_peptide_anywhere.yaml runs/pilot_peptide_human
+
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/mouse_marco_peptide_anywhere.yaml runs/pilot_peptide_mouse
+
+# ── Conserved surface (cross-reactive nanobody) ──
+NUM_DESIGNS=50 BUDGET=10 ./runs/run_nanobody_campaign.sh \
+  specs/crossreactive_conserved_surface.yaml runs/pilot_conserved_surface
+```
+
+---
+
 ## Step 4 — HPC Production
 
-### Standard quality mode
+Choose your GPU cluster and submit accordingly. All scripts auto-set `OPENBLAS_NUM_THREADS=1` to prevent RLIMIT_NPROC exhaustion on shared nodes.
+
+---
+
+### Choose your script
+
+|| GPU node | Use this script | Key settings |
+|---|---|---|---|
+| **4× A100 80GB** (recommended) | `scripts/run_a100hpc_campaign.sh` | `GPUS=4`, `BUDGET=200`, `DIFFUSION_BATCH_SIZE=16` |
+| **2× RTX 5000 16GB** | `scripts/run_hpc_campaign.sh` | `GPUS=2`, `BUDGET=150`, `DIFFUSION_BATCH_SIZE=2` |
+
+> ⚠️ **A100 script auto-sets `A100_MODE=1`** with optimal defaults. RTX script requires manual env var overrides for the same settings.
+
+---
+
+### A100 ×4 — Recommended production commands
 
 ```bash
-# Single spec — 60,000 designs (BoltzProt-1 production standard)
-NUM_DESIGNS=60000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml \
-  runs/setD_beta_pairing
+# ── Priority 1: Set D beta-pairing (HIGHEST) ─────────────────────────────
+# Cross-reactive (highest priority — targets both human + mouse MARCO)
+NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_xr
+
+# Human MARCO
+NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/human_marco_nanobody_setD_beta_pairing.yaml runs/setD_human
+
+# Mouse MARCO
+NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/mouse_marco_nanobody_setD_beta_pairing.yaml runs/setD_mouse
+
+# ── Priority 1: Set C hybrid (cross-reactive only) ──────────────────────
+NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC_xr
+
+# ── Priority 2: Set A SO₄/pocket ─────────────────────────────────────────
+NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/human_marco_nanobody_setA_so4_pocket.yaml runs/setA_human
+
+NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/setA_mouse
+
+# ── Priority 2: Set B patent epitope (human only) ───────────────────────
+NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/human_marco_nanobody_setB_patent_epitope.yaml runs/setB
+
+# ── Priority 3: Hotspot ─────────────────────────────────────────────────
+NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_hotspot.yaml runs/hotspot_xr
+
+NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/human_marco_nanobody_hotspot.yaml runs/hotspot_human
+
+NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/mouse_marco_nanobody_hotspot.yaml runs/hotspot_mouse
 ```
 
-### Speed mode (2–4× faster, for large batches / screening)
+---
+
+### A100 ×4 — Speed mode (2–3× faster, for screening)
 
 ```bash
-SPEED_MODE=1 NUM_DESIGNS=60000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml \
-  runs/setD_fast
+SPEED_MODE=1 NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD_screen
+
+SPEED_MODE=1 NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC_screen
 ```
 
-Speed mode applies: `sampling_steps=100`, `recycling_steps=1`, `diffusion_samples=1`, `compile_pairformer=true`, `compile_structure=true`, `inverse_fold precision=bf16-mixed`, `diffusion_batch_size=8`.
+Speed mode sets: `recycling_steps=1`, `compile_pairformer=true`, `compile_structure=true`, `inverse_fold precision=bf16-mixed`, `diffusion_batch_size=32`.
 
-### Multi-spec campaign (submit all in parallel)
+---
+
+### A100 ×4 — Run all priority specs in parallel
 
 ```bash
-# ── Set A ──
-NUM_DESIGNS=60000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/mouse_marco_nanobody_setA_so4_pocket.yaml runs/setA_mouse &
-NUM_DESIGNS=60000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_setA_so4_pocket.yaml runs/setA_human &
-
-# ── Set B ──
-NUM_DESIGNS=60000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/human_marco_nanobody_setB_patent_epitope.yaml runs/setB &
-
-# ── Set C ──
-NUM_DESIGNS=60000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_setC_hybrid.yaml runs/setC &
-
-# ── Set D ──
-NUM_DESIGNS=60000 BUDGET=150 sbatch scripts/run_hpc_campaign.sh \
-  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml runs/setD &
+# Submit 7 jobs simultaneously, each on a dedicated 4×A100 node
+for SPEC in crossreactive_marco_nanobody_setD_beta_pairing \
+            human_marco_nanobody_setD_beta_pairing \
+            mouse_marco_nanobody_setD_beta_pairing \
+            crossreactive_marco_nanobody_setC_hybrid \
+            human_marco_nanobody_setA_so4_pocket \
+            mouse_marco_nanobody_setA_so4_pocket \
+            human_marco_nanobody_setB_patent_epitope; do
+  NUM_DESIGNS=60000 sbatch scripts/run_a100hpc_campaign.sh \
+    specs/${SPEC}.yaml runs/$(basename $SPEC)_a100 &
+done
 wait
 ```
 
+---
+
+### RTX 5000 ×2 — Standard quality mode
+
+```bash
+# 60,000 designs (BoltzProt-1 production standard)
+NUM_DESIGNS=60000 BUDGET=150 GPUS=2 sbatch scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml \
+  runs/setD_rtx
+```
+
+### RTX 5000 ×2 — Speed mode
+
+```bash
+SPEED_MODE=1 NUM_DESIGNS=60000 BUDGET=150 GPUS=2 sbatch scripts/run_hpc_campaign.sh \
+  specs/crossreactive_marco_nanobody_setD_beta_pairing.yaml \
+  runs/setD_rtx_fast
+```
+
+---
+
 ### Key environment variables
 
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `NUM_DESIGNS` | 60000 | Designs per HPC job |
-| `BUDGET` | 150 | Inference steps per design (higher = better quality) |
-| `GPUS` | 2 | GPUs per job (RTX 5000 x2) |
-| `SPEED_MODE` | 0 | Set to 1 for fast screening mode |
-| `EXCLUDE_NGLYC` | 1 | Auto-filter N-glyc sequons post-generation |
-| `FILTER_PROLINE` | 1 | Auto-filter proline-in-CDR3 post-generation |
+| Variable | A100 default | RTX default | Meaning |
+|----------|-------------|-------------|---------|
+| `NUM_DESIGNS` | 60000 | 60000 | Designs per job |
+| `BUDGET` | 200 | 150 | Inference steps per design |
+| `GPUS` | 4 | 2 | GPU count |
+| `DIFFUSION_BATCH_SIZE` | 16 (32 in speed) | 2 (8 in speed) | Batch size per step |
+| `SPEED_MODE` | 0 | 0 | 1 = fast screening mode |
+| `EXCLUDE_NGLYC` | 1 | 1 | Auto-filter N-glyc sequons |
+| `FILTER_PROLINE` | 1 | 1 | Auto-filter proline-in-CDR3 |
 
-**BUDGET on RTX 5000:** `100–150` is the sweet spot. `200` may exceed 96-hour time limit for 60k designs.
+---
 
 ### Monitor SLURM jobs
 
@@ -189,6 +342,13 @@ squeue -u $USER
 tail -f logs/boltzgen_<spec>_<JOB_ID>.out
 ls runs/<name>/intermediate_designs/*.cif 2>/dev/null | wc -l   # count done so far
 ```
+
+**A100 ×4 timing estimates (BUDGET=200, diffusion_batch_size=16):**
+
+| Mode | 60k designs | 100k designs |
+|------|-------------|-------------|
+| Quality (`SPEED_MODE=0`) | ~18–24 hours | ~30–40 hours |
+| Speed (`SPEED_MODE=1`) | ~8–12 hours | ~14–20 hours |
 
 ---
 
