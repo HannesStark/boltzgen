@@ -121,6 +121,16 @@ mkdir -p logs "$OUTDIR"
   nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv 2>/dev/null || echo "(nvidia-smi not available)"
 } >> "${LOG_PREFIX}_start.log"
 
+# ── Thread limits ────────────────────────────────────────────────────────────
+# OpenBLAS, OpenMP, MKL each try to spawn many threads by default.
+# On shared HPC nodes this can exhaust RLIMIT_NPROC and cause:
+#   "pthread_create failed: Resource temporarily unavailable"
+# Cap them to 1 thread each — all heavy GPU work is done by BoltzGen
+# via PyTorch, which manages its own thread pool independently.
+export OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
 # ── Activate conda ────────────────────────────────────────────────────────────
 if command -v conda >/dev/null 2>&1; then
   eval "$(conda shell.bash hook)"
