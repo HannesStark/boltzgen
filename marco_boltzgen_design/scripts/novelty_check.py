@@ -311,13 +311,18 @@ def check_novelty(
             min_cdr3_dists.append(min_edit_distance_optimized(cdr3, reference_by_len))
             min_cdr123_dists.append(min_edit_distance_optimized(cdr123, reference_by_len))
 
-    df["cdr3_seq"]                = df["_seq"].apply(get_cdr3)
-    df["min_cdr3_edit_distance"]  = min_cdr3_dists
-    df["cdr3_novel"]              = df["min_cdr3_edit_distance"] >= min_edit_distance
-
-    df["cdr123_concat"]            = df["_seq"].apply(get_cdr123)
-    df["min_cdr123_edit_distance"] = min_cdr123_dists
-    df["cdr123_novel"]             = df["min_cdr123_edit_distance"] >= cdrs_thresh
+    new_cols = pd.DataFrame(
+        {
+            "cdr3_seq":                df["_seq"].apply(get_cdr3),
+            "min_cdr3_edit_distance":  min_cdr3_dists,
+            "cdr3_novel":              [d >= min_edit_distance for d in min_cdr3_dists],
+            "cdr123_concat":           df["_seq"].apply(get_cdr123),
+            "min_cdr123_edit_distance": min_cdr123_dists,
+            "cdr123_novel":            [d >= cdrs_thresh for d in min_cdr123_dists],
+        },
+        index=df.index,
+    )
+    df = pd.concat([df, new_cols], axis=1)
 
     # ── Primary filter gate: novelty_pass ─────────────────────────────────────
     if filter_mode == "both":
