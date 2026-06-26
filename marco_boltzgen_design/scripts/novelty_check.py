@@ -260,25 +260,11 @@ def check_novelty(
     )
 
     df = pd.read_csv(designs_path)
-    if "design_id" not in df.columns:
-        df["design_id"] = range(len(df))
-
-    # ── Infer binder sequence ───────────────────────────────────────────────
-    def infer_seq(row):
-        for k in ("designed_sequence", "binder_sequence", "sequence", "seq"):
-            if k in row and isinstance(row[k], str):
-                return row[k]
-        return ""
-
-    df["_seq"] = df.apply(infer_seq, axis=1)
-
-    # ── Extract CDR3 (IMGT: positions 105-117, 0-indexed 104-117) ──────────
     def get_cdr3(seq: str) -> str:
         if not seq or len(seq) < 110:
             return ""
         return seq[104:117].strip()
 
-    # ── Extract CDR1+2+3 ───────────────────────────────────────────────────
     def get_cdr123(seq: str) -> str:
         if not seq or len(seq) < 110:
             return ""
@@ -286,6 +272,19 @@ def check_novelty(
         cdr2 = seq[55:65].strip()
         cdr3 = seq[104:117].strip()
         return cdr1 + cdr2 + cdr3
+
+    def infer_seq(row):
+        for k in ("designed_sequence", "binder_sequence", "sequence", "seq"):
+            if k in row and isinstance(row[k], str):
+                return row[k]
+        return ""
+
+    # ── Add design_id and _seq in a single assign (avoids fragmentation) ──
+    idx = pd.RangeIndex(len(df)) if "design_id" not in df.columns else df["design_id"]
+    df = df.assign(
+        design_id=idx,
+        _seq=df.apply(infer_seq, axis=1),
+    )
 
     print(
         f"\nNovelty checking {len(df):,} designs "
@@ -313,24 +312,27 @@ def check_novelty(
 
     new_cols = pd.DataFrame(
         {
-            "cdr3_seq":                df["_seq"].apply(get_cdr3),
-            "min_cdr3_edit_distance":  min_cdr3_dists,
-            "cdr3_novel":              [d >= min_edit_distance for d in min_cdr3_dists],
-            "cdr123_concat":           df["_seq"].apply(get_cdr123),
+            "cdr3_seq":                 df["_seq"].apply(get_cdr3),
+            "min_cdr3_edit_distance":   min_cdr3_dists,
+            "cdr3_novel":               [d >= min_edit_distance for d in min_cdr3_dists],
+            "cdr123_concat":            df["_seq"].apply(get_cdr123),
             "min_cdr123_edit_distance": min_cdr123_dists,
-            "cdr123_novel":            [d >= cdrs_thresh for d in min_cdr123_dists],
+            "cdr123_novel":             [d >= cdrs_thresh for d in min_cdr123_dists],
         },
         index=df.index,
     )
-    df = pd.concat([df, new_cols], axis=1)
-
-    # ── Primary filter gate: novelty_pass ─────────────────────────────────────
+    # ── Primary filter gate (added in same concat to avoid fragmentation) ──
+    cdr3_ok   = new_cols["cdr3_novel"]
+    cdr123_ok = new_cols["cdr123_novel"]
     if filter_mode == "both":
-        df["novelty_pass"] = df["cdr3_novel"] & df["cdr123_novel"]
+        novelty_pass = cdr3_ok & cdr123_ok
     elif filter_mode == "cdr3_only":
-        df["novelty_pass"] = df["cdr3_novel"]
-    elif filter_mode == "cdrs_only":
-        df["novelty_pass"] = df["cdr123_novel"]
+        novelty_pass = cdr3_ok
+    else:  # "cdrs_only"
+        novelty_pass = cdr123_ok
+    new_cols["novelty_pass"] = novelty_pass
+
+    df = pd.concat([df, new_cols], axis=1)
 
     # ── Summary ─────────────────────────────────────────────────────────────
     n_cdr3_ok   = df["cdr3_novel"].sum()
