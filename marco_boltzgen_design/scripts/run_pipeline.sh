@@ -184,7 +184,7 @@ PIPELINE_EOF
 
   chmod +x "$PIPELINE_SCRIPT"
 
-  singularity exec --nv \
+  apptainer exec --nv \
     --bind "$PROJECT_DIR" \
     --bind "$(dirname "$SIF"):/opt/sif:ro" \
     "$SIF" \

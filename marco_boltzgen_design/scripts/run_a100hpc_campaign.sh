@@ -124,11 +124,11 @@ fi
 } >> "${LOG_PREFIX}_start.log"
 
 # ════════════════════════════════════════════════════════════════════════════
-# Run the FULL pipeline inside the Singularity container.
+# Run the FULL pipeline inside the Apptainer container.
 # The SBATCH directives above are read by SLURM's sbatch command.
 # Everything below is bash code that runs on the compute node inside the SIF.
 # ════════════════════════════════════════════════════════════════════════════
-singularity exec --nv \
+apptainer exec --nv \
   --bind "$PWD" \
   --bind "$(dirname "$SIF"):/opt/sif:ro" \
   "$SIF" \

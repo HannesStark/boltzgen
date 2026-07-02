@@ -1,0 +1,9 @@
+docs: update README — score formula, proline filter, FILTER_PROLINE var
+
+- Score formula updated to parameterized form: base_conf + α·crossreactivity + β·interface_quality − penalties
+- Added --alpha_crossreactivity (default 0.5) and --affinity_weight (default 0.3) to rank_designs description
+- Added interface_quality column note (min-max normalised PLIP composite: ipTM, H-bonds, salt bridges, buried SA)
+- Updated auto-postprocessing description: N-glyc sequon filter + proline-in-CDR3 filter (last 18% heuristic) as hard gates
+- Added FILTER_PROLINE=1 to HPC environment variables table
+- Fixed proline_cdr3 developability flag: "Pro in last 18% of sequence (~CDR3 region)" not "central 30%"
+- Key Scripts table: filter_nglyc.py replaced by unified filter_developability.py; rank_designs.py description updated

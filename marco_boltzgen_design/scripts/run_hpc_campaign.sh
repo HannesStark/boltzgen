@@ -98,9 +98,9 @@ mkdir -p logs "$OUTDIR"
 } >> "${LOG_PREFIX}_start.log"
 
 # ════════════════════════════════════════════════════════════════════════════
-# Run the FULL pipeline inside the Singularity container.
+# Run the FULL pipeline inside the Apptainer container.
 # ════════════════════════════════════════════════════════════════════════════
-singularity exec --nv \
+apptainer exec --nv \
   --bind "$PWD" \
   --bind "$(dirname "$SIF"):/opt/sif:ro" \
   "$SIF" \
