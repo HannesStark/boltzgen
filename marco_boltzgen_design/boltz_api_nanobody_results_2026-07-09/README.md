@@ -10,9 +10,13 @@ epitope-focused input, for 200 unique sequences total.
 - `batch1_run.json`: API record for run `prot_des_T1SPf6J6w0X57HLnuSeD`
 - `batch2_run.json`: API record for run `prot_des_HCj2a4VVV6ayP8BVrY0z`
 - `all_200_candidates.csv`: sequences and all returned candidate metrics
+- `structures/batch1`: 100 predicted target-binder CIF structures from batch 1
+- `structures/batch2`: 100 predicted target-binder CIF structures from batch 2
 
-Raw archives and CIF files are not committed here because they add roughly
-113 MB. They remain downloadable from Boltz using the run IDs above.
+Each CIF filename begins with the candidate ID used in
+`all_200_candidates.csv`, allowing downstream scripts to join structures,
+sequences, and metrics directly. Raw archives, PAE arrays, and duplicate
+metadata files remain downloadable from Boltz using the run IDs above.
 
 ## Design
 
