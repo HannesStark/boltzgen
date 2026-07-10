@@ -43,10 +43,6 @@ Create a new conda environment for boltzgen with python 3.12, numba, numpy and l
 ```
 conda create --name bg python=3.12 llvmlite==0.44.0 numba==0.61.0 numpy==2.0.2
 ```
-Temporary fix for loading multiple libomp
-```
-export KMP_DUPLICATE_LIB_OK=TRUE
-```
 
 ### 3 - Activate the environment (do this every time you work with BoltzGen)
 
@@ -69,6 +65,22 @@ Alternatively, if you prefer to install an editable, locally-managed copy, downl
 ```bash
 pip install -e .
 ```
+
+* **MacOS**
+
+Several wheels (torch, scikit-learn) bundle their own copy of `libomp.dylib`, and
+loading more than one OpenMP runtime into the same process crashes with an `OMP:
+Error #15: Initializing libomp.dylib, but found libomp.dylib already initialized`.
+Run this once after installing BoltzGen to repoint the duplicate copies at a single
+one (requires a local clone, since this reaches into installed package internals):
+
+```bash
+python scripts/fix_macos_libomp.py
+```
+
+If you installed from PyPI without a local clone, `export KMP_DUPLICATE_LIB_OK=TRUE`
+silences the crash instead of fixing it, and can mask real correctness issues, so
+prefer the script above when possible.
 </details>
 
 <details>
