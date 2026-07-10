@@ -427,16 +427,17 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
         try:
             # Try to find molecules in the dataset moldir if provided
             # Find missing ones in global moldir and check if all found
+            # Note: load fresh from moldir to avoid losing RDKit atom properties
+            # when self.canonicals is pickled by DataLoader worker processes.
             molecules = {}
-            molecules.update(self.canonicals)
             mol_names = set(tokenized.tokens["res_name"].tolist())
-            mol_names = mol_names - set(self.canonicals.keys())
             if mols is not None:
                 molecules.update(mols)
-            mol_names = mol_names - set(molecules.keys())
+                mol_names = mol_names - set(mols.keys())
             if self.moldir is not None:
                 molecules.update(load_molecules(self.moldir, mol_names))
-            molecules.update(load_molecules(self.moldir, mol_names))
+            else:
+                molecules.update({k: v for k, v in self.canonicals.items() if k in mol_names})
         except Exception as e:  # noqa: BLE001
             print(f"Molecule loading failed for {path} with error {e}. Skipping.")
             raise DataFetchException() from e
@@ -840,11 +841,13 @@ class FromGeneratedDataModule(pl.LightningDataModule):
         )
 
     def predict_dataloader(self) -> DataLoader:
+        pin_memory = self.cfg.pin_memory and not torch.backends.mps.is_available()
         return DataLoader(
             self.predict_set,
             batch_size=self.cfg.batch_size,
             num_workers=self.cfg.num_workers,
-            pin_memory=self.cfg.pin_memory,
+            pin_memory=pin_memory,
+            persistent_workers=self.cfg.num_workers > 0,
             shuffle=False,
             collate_fn=collate,
         )
@@ -877,6 +880,8 @@ class FromGeneratedDataModule(pl.LightningDataModule):
                 "tokenized",
                 "data_sample_idx",
             ]:
+                if torch.is_tensor(batch[key]) and batch[key].dtype == torch.float64 and torch.backends.mps.is_available():
+                    batch[key] = batch[key].float()
                 batch[key] = batch[key].to(device)
 
         return batch
