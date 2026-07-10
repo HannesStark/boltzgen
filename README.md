@@ -25,7 +25,7 @@ pip install boltzgen
 Choose the installer for your operating system, download it, and follow the on-screen prompts:
 
 * **Windows:** <https://www.anaconda.com/docs/getting-started/miniconda/install#windows-installation>
-* **macOS / Linux:** <https://www.anaconda.com/docs/getting-started/miniconda/install#macos-linux-installation>
+* **MacOS / Linux:** <https://www.anaconda.com/docs/getting-started/miniconda/install#macos-linux-installation>
 
 After installation, **open a terminal / command prompt** (you may need to search for “Anaconda Prompt” on Windows).
 
@@ -35,6 +35,17 @@ Run the command below in a terminal to create a fresh environment called `bg` wi
 
 ```bash
 conda create -n bg python=3.12
+```
+* **MacOS**
+
+Create a new conda environment for boltzgen with python 3.12, numba, numpy and lvmlite:
+
+```
+conda create --name bg python=3.12 llvmlite==0.44.0 numba==0.61.0 numpy==2.0.2
+```
+Temporary fix for loading multiple libomp
+```
+export KMP_DUPLICATE_LIB_OK=TRUE
 ```
 
 ### 3 - Activate the environment (do this every time you work with BoltzGen)
@@ -57,6 +68,40 @@ Alternatively, if you prefer to install an editable, locally-managed copy, downl
 
 ```bash
 pip install -e .
+```
+
+### 5 - Running on Apple Silicon (MPS)
+
+Every pipeline step config hardcodes `trainer.accelerator: gpu`, so on a Mac you
+need to override it to `mps` for each step that actually runs the model
+(`design`, `inverse_folding`, `design_folding`, `folding`, `affinity` — `analysis`
+and `filtering` are CPU-only and don't need it):
+
+```bash
+boltzgen run example/vanilla_protein/1g13prot.yaml \
+  --output workbench/test_run \
+  --protocol protein-anything \
+  --num_designs 10 \
+  --budget 2 \
+  --config design trainer.accelerator=mps \
+  --config inverse_folding trainer.accelerator=mps \
+  --config design_folding trainer.accelerator=mps \
+  --config folding trainer.accelerator=mps \
+  --config affinity trainer.accelerator=mps
+```
+
+`bf16-mixed` precision is forced to float32 automatically on MPS (and CPU), since
+it silently produces wrong bond lengths on some backends otherwise.
+
+`torch.linalg.svd`, used in the structure alignment step on every diffusion step,
+only got a native MPS kernel in PyTorch nightly (merged after the 2.8 stable
+branch cut) — stable PyTorch transparently round-trips through CPU for it
+instead, which is slower. BoltzGen detects which one you have and picks the
+faster path automatically, so to get it, just install nightly instead of stable
+torch:
+
+```bash
+pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cpu
 ```
 </details>
 
@@ -96,7 +141,6 @@ docker build -t boltzgen:weights --build-arg DOWNLOAD_WEIGHTS=true .
 `boltzgen run` takes a [design specification](#how-to-make-a-design-specification-yaml) `.yaml` and produces a set of ranked designs.\
 ⚠️ it downloads models (~6GB) to `~/.cache`. This can by changed by passing `--cache YOUR_PATH` or by setting `$HF_HOME`.\
 ⚠️ If your run is ever interrupted, you can restart it with `--reuse`. No progress is lost.
-
 
 ```bash
 boltzgen run example/vanilla_protein/1g13prot.yaml \

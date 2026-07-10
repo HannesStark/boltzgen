@@ -917,8 +917,8 @@ class BinderDesignPipeline:
                 f"Invalid protocol: {protocol}. Valid protocols: {list(protocol_configs.keys())}"
             )
 
-        # Handle use_kernels argument
-        device_capability = torch.cuda.get_device_capability()
+        # Handle use_kernels argument, defaulting to (0,0) for CPU/MPS
+        device_capability = torch.cuda.get_device_capability() if torch.cuda.is_available() else (0, 0)
         use_kernels = None
         if args.use_kernels == "auto":
             use_kernels = device_capability[0] >= 8
@@ -937,9 +937,9 @@ class BinderDesignPipeline:
         config_args_by_step = parse_config_args(
             protocol_config, args.config, step_names
         )
-
+        # Determine number of devices to use, defaulting to 1 for MPS/CPU
         devices = (
-            args.devices if args.devices is not None else torch.cuda.device_count()
+            args.devices if args.devices is not None else torch.cuda.device_count() if torch.cuda.is_available() else 1
         )
         print(f"Using {devices} devices")
 
