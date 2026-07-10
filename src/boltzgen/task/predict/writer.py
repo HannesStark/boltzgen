@@ -89,7 +89,8 @@ class FoldingWriter(BasePredictionWriter):
             plddt_atom[prediction_out["atom_pad_mask"].bool()].float().cpu().numpy()
         )
         cif_text = to_mmcif(structure)
-        open(self.refold_cif_dir / f"{batch['id'][0]}.cif", "w").write(cif_text)
+        with open(self.refold_cif_dir / f"{batch['id'][0]}.cif", "w") as f:
+            f.write(cif_text)
 
         # Failed prediction handling
         if isinstance(prediction["exception"], bool):
@@ -353,7 +354,8 @@ class DesignWriter(BasePredictionWriter):
                     )
 
                 if self.write_native:
-                    open(native_path, "w").write(to_mmcif(str_native))
+                    with open(native_path, "w") as f:
+                        f.write(to_mmcif(str_native))
 
                 pred_binding_mask = prediction["binding_type"][0].cpu().bool().numpy()
                 if self.design:
@@ -373,13 +375,14 @@ class DesignWriter(BasePredictionWriter):
                 unique_mask = np.ones_like(token_to_res, dtype=bool)
                 unique_mask[1:] = token_to_res[1:] != token_to_res[:-1]
                 design_color_features = design_color_features[unique_mask]
-                open(gen_path, "w").write(
-                    to_mmcif(
-                        structure,
-                        design_coloring=True,
-                        color_features=design_color_features,
+                with open(gen_path, "w") as f:
+                    f.write(
+                        to_mmcif(
+                            structure,
+                            design_coloring=True,
+                            color_features=design_color_features,
+                        )
                     )
-                )
 
                 # Write metadata
                 metadata_path = f"{self.outdir}/{file_name}.npz"
@@ -453,9 +456,8 @@ class DesignWriter(BasePredictionWriter):
                         )
                         atom_idx += len(str_frame.coords)
 
-                    open(self.outdir / f"{file_name}_traj.pdb", "w").write(
-                        self.combine_pdb_models(pdbs)
-                    )
+                    with open(self.outdir / f"{file_name}_traj.pdb", "w") as f:
+                        f.write(self.combine_pdb_models(pdbs))
 
                 # Write x0 trajectories
                 if self.save_x0_traj:
@@ -501,9 +503,8 @@ class DesignWriter(BasePredictionWriter):
                         )
                         atom_idx += len(str_frame.coords)
 
-                    open(self.outdir / f"{file_name}_x0_traj.pdb", "w").write(
-                        self.combine_pdb_models(pdbs)
-                    )
+                    with open(self.outdir / f"{file_name}_x0_traj.pdb", "w") as f:
+                        f.write(self.combine_pdb_models(pdbs))
 
             except Exception as e:  # noqa: BLE001
                 import traceback
