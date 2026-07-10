@@ -68,8 +68,12 @@ class FoldingWriter(BasePredictionWriter):
                 pred_dict[key] = value.cpu().numpy()
         np.savez_compressed(self.outdir / f"{batch['id'][0]}.npz", **pred_dict)
 
-        # Get best sample
-        confidence = 0.8 * pred_dict["iptm"] + 0.2 * pred_dict["ptm"]
+        # Get best sample. Must match the metric used by
+        # analyze_utils.get_best_folding_sample() so the sample written here is
+        # the same one selected for analysis/filtering.
+        confidence = (
+            0.8 * pred_dict["design_to_target_iptm"] + 0.2 * pred_dict["design_ptm"]
+        )
         best_idx = np.argmax(confidence)
         best_sample_coords = pred_dict["coords"][best_idx]
 
@@ -415,7 +419,7 @@ class DesignWriter(BasePredictionWriter):
                     traj = trajs[n]
                     aligned = [traj[0]]
                     for frame in traj[1:]:
-                        with torch.autocast("cuda", enabled=False):
+                        with torch.autocast(device_type=frame.device.type, enabled=False):
                             aligned.append(
                                 weighted_rigid_align(
                                     frame.float().unsqueeze(0),
@@ -463,7 +467,7 @@ class DesignWriter(BasePredictionWriter):
                     traj = trajs[n]
                     aligned = [traj[0]]
                     for frame in traj[1:]:
-                        with torch.autocast("cuda", enabled=False):
+                        with torch.autocast(device_type=frame.device.type, enabled=False):
                             aligned.append(
                                 weighted_rigid_align(
                                     frame.float().unsqueeze(0),
