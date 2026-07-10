@@ -1,0 +1,82 @@
+{
+  "completed_at": "2026-07-10T02:09:31.474Z",
+  "created_at": "2026-07-10T02:01:20.266Z",
+  "data_deleted_at": null,
+  "engine": "boltzprot",
+  "engine_version": "1.0",
+  "error": null,
+  "id": "prot_des_oZbP6JEFwyOgrbNA2f4d",
+  "idempotency_key": "marco-srcr-api-human-vhh-100-v9",
+  "input": {
+    "binder_specification": {
+      "entities": [
+        {
+          "chain_ids": [
+            "B"
+          ],
+          "modifications": [],
+          "type": "designed_protein",
+          "value": "110..140"
+        }
+      ],
+      "modality": "nanobody",
+      "rules": {
+        "excluded_amino_acids": [
+          "C"
+        ],
+        "excluded_sequence_motifs": [
+          "NXS",
+          "NXT"
+        ],
+        "max_hydrophobic_fraction": 0.42
+      },
+      "type": "no_template"
+    },
+    "idempotency_key": "marco-srcr-api-human-vhh-100-v9",
+    "num_proteins": 100,
+    "target": {
+      "entities": [
+        {
+          "chain_ids": [
+            "A"
+          ],
+          "modifications": [],
+          "type": "protein",
+          "value": "SVSVRIVGSSNRGRAEVYYSGTWGTICDDEWQNSDAIVFCRMLGYSKGRALYKVGAGTGQIWLDNVQCRGTESTLWSCTKNSWGHHDCSHEEDAGVECSV"
+        }
+      ],
+      "epitope_residues": {
+        "A": [
+          5,
+          6,
+          8,
+          10,
+          12,
+          13,
+          15,
+          18,
+          19,
+          20,
+          48,
+          50,
+          52,
+          96,
+          99
+        ]
+      },
+      "type": "no_template"
+    }
+  },
+  "livemode": true,
+  "pipeline": "boltzprot",
+  "pipeline_version": "1.0",
+  "progress": {
+    "latest_result_id": "pres_u2jF4MP0N8nNcPVTajsw",
+    "num_proteins_generated": 100,
+    "total_proteins_to_generate": 100
+  },
+  "started_at": "2026-07-10T02:01:20.895Z",
+  "status": "succeeded",
+  "stopped_at": null,
+  "workspace_id": "ws_ApKVvOBCaOY90S5F5sXH"
+}
