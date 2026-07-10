@@ -142,6 +142,11 @@ class ConsecutiveCA(StaticFilter):
             res_start = chain["res_idx"]
             res_end = res_start + chain["res_num"]
             residues = structure.residues[res_start:res_end]
+            # Exclude non-standard residues (e.g. bound metal ions/hetero
+            # groups) so their atom_center isn't treated as a backbone CA,
+            # which would produce a spurious long jump and wrongly reject
+            # an otherwise valid chain.
+            residues = residues[residues["is_standard"]]
 
             # Get c-alphas
             ca_ids = residues["atom_center"]
