@@ -1015,6 +1015,10 @@ def parse_entity(item, mols, mol_dir, ligand_id, is_msa_custom, is_msa_auto):
             symmetric_group = 0
         seq = item[entity_type]["smiles"]
         mol = AllChem.MolFromSmiles(seq)
+        if mol is None:
+            msg = f"Failed to parse SMILES: {seq}"
+            raise ValueError(msg)
+        mol.UpdatePropertyCache(strict=True)
         mol = AllChem.AddHs(mol)
         element_counts = defaultdict(int)
         for i, atom in enumerate(mol.GetAtoms()):
@@ -1893,6 +1897,10 @@ class YamlDesignParser:
                 chain_id = chain["id"]
                 if "smiles" in chain:
                     mol = AllChem.MolFromSmiles(chain["smiles"])
+                    if mol is None:
+                        msg = f"Failed to parse SMILES: {chain['smiles']}"
+                        raise ValueError(msg)
+                    mol.UpdatePropertyCache(strict=True)
                     mol = AllChem.AddHs(mol)
                     element_counts = defaultdict(int)
                     for i, atom in enumerate(mol.GetAtoms()):
