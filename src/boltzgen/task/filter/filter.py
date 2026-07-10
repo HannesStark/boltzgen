@@ -408,7 +408,7 @@ class Filter(Task):
             else:
                 self.df[filter_col] = self.df[feat] >= threshold
 
-            self.df["num_filters_passed"] += self.df[filter_cols].all(axis=1)
+            self.df["num_filters_passed"] += self.df[filter_col].astype(int)
             self.df["pass_filters"] = self.df[filter_cols].all(axis=1)
 
             msg = f"Num designs that pass the {feat} filter with threshold {threshold} where {'lower' if low else 'higher'} is better: {self.df[filter_col].sum()}"
