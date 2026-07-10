@@ -114,6 +114,23 @@ class Predict(Task):
         if self.trainer is None:
             self.trainer = {}
 
+        # bf16-mixed silently runs in bfloat16 on CPU (on CPUs with AVX-512 BF16
+        # support) and isn't reliably supported on MPS either, producing
+        # structures with wrong bond lengths and atom clashes instead of an
+        # error. Force float32 on these accelerators regardless of what the
+        # step config requested. Same bug as jwohlwend/boltz#653.
+        accelerator = self.trainer.get("accelerator")
+        if accelerator in ("cpu", "mps") and self.trainer.get("precision") not in (
+            32,
+            "32",
+            "32-true",
+        ):
+            print(
+                f"Accelerator is {accelerator!r}: forcing precision=32 "
+                "(bf16-mixed silently produces wrong results here)."
+            )
+            self.trainer["precision"] = 32
+
         # Flip some arguments in debug mode
         devices = self.trainer.get("devices", 1)
 
