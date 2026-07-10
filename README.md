@@ -69,6 +69,40 @@ Alternatively, if you prefer to install an editable, locally-managed copy, downl
 ```bash
 pip install -e .
 ```
+
+### 5 - Running on Apple Silicon (MPS)
+
+Every pipeline step config hardcodes `trainer.accelerator: gpu`, so on a Mac you
+need to override it to `mps` for each step that actually runs the model
+(`design`, `inverse_folding`, `design_folding`, `folding`, `affinity` — `analysis`
+and `filtering` are CPU-only and don't need it):
+
+```bash
+boltzgen run example/vanilla_protein/1g13prot.yaml \
+  --output workbench/test_run \
+  --protocol protein-anything \
+  --num_designs 10 \
+  --budget 2 \
+  --config design trainer.accelerator=mps \
+  --config inverse_folding trainer.accelerator=mps \
+  --config design_folding trainer.accelerator=mps \
+  --config folding trainer.accelerator=mps \
+  --config affinity trainer.accelerator=mps
+```
+
+`bf16-mixed` precision is forced to float32 automatically on MPS (and CPU), since
+it silently produces wrong bond lengths on some backends otherwise.
+
+`torch.linalg.svd`, used in the structure alignment step on every diffusion step,
+only got a native MPS kernel in PyTorch nightly (merged after the 2.8 stable
+branch cut) — stable PyTorch transparently round-trips through CPU for it
+instead, which is slower. BoltzGen detects which one you have and picks the
+faster path automatically, so to get it, just install nightly instead of stable
+torch:
+
+```bash
+pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cpu
+```
 </details>
 
 <details>

@@ -1,9 +1,32 @@
 # started from code from https://github.com/lucidrains/alphafold3-pytorch, MIT License, Copyright (c) 2024 Phil Wang
 
+import warnings
+from functools import lru_cache
+
 import einx
 import torch
 import torch.nn.functional as F
 from einops import einsum, rearrange
+
+
+@lru_cache(maxsize=1)
+def _mps_has_native_svd() -> bool:
+    """Whether torch.linalg.svd runs natively on MPS instead of silently
+    falling back to CPU. Landed in PyTorch nightlies after the 2.8 stable
+    branch cut; not in a stable release as of writing (stable still emits
+    a UserWarning and transparently round-trips through CPU). Checked once
+    and cached, since weighted_rigid_align runs on every diffusion step.
+    """
+    if not torch.backends.mps.is_available():
+        return False
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        try:
+            torch.linalg.svd(torch.eye(3, device="mps").unsqueeze(0))
+            torch.mps.synchronize()
+        except UserWarning:
+            return False
+    return True
 
 
 def weighted_rigid_centering(
@@ -80,8 +103,9 @@ def weighted_rigid_align(
     original_dtype = cov_matrix.dtype
     cov_matrix_32 = cov_matrix.to(dtype=torch.float32)
 
-    # move cov_matrix_32 to cpu for mps compatibility
-    if cov_matrix_32.device.type == "mps":
+    # move cov_matrix_32 to cpu for mps compatibility, unless the installed
+    # PyTorch already runs svd natively on MPS (nightly-only for now)
+    if cov_matrix_32.device.type == "mps" and not _mps_has_native_svd():
         cov_matrix_cpu = cov_matrix_32.cpu()
         U, S, V = torch.linalg.svd(cov_matrix_cpu, driver=None)
         U = U.to(cov_matrix_32.device)
