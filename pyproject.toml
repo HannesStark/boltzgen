@@ -14,8 +14,8 @@ readme = { file = "PYPI_DESCRIPTION.md", content-type = "text/markdown" }
 description = "Protein design"
 dependencies = [
     # Add runtime dependencies here
-    "numpy==2.0.2",
-    "numba==0.61.0",
+    "numpy==2.0.2; platform_system != 'Darwin'",
+    "numba==0.61.0; platform_system != 'Darwin'",
     "matplotlib",
     "hydride",
     "biotite",
@@ -33,10 +33,10 @@ dependencies = [
     "einx",
     "einops",
     "mashumaro",
-    "nvidia-ml-py>=12.535.133",
-    "cuequivariance_ops_cu12>=0.5.0",
-    "cuequivariance_ops_torch_cu12>=0.5.0",
-    "cuequivariance_torch>=0.5.0",
+    "nvidia-ml-py>=12.535.133; platform_system != 'Darwin'",
+    "cuequivariance_ops_cu12>=0.5.0; platform_system != 'Darwin'",
+    "cuequivariance_ops_torch_cu12>=0.5.0; platform_system != 'Darwin'",
+    "cuequivariance_torch>=0.5.0; platform_system != 'Darwin'",
     "huggingface_hub",
     "biopython", 
 ]
