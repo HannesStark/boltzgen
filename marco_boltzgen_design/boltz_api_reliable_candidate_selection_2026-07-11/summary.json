@@ -1,0 +1,25 @@
+{
+  "total_candidates": 2200,
+  "unique_sequences": 2200,
+  "tier_counts": {
+    "screen_out": 2060,
+    "A": 21,
+    "B": 113,
+    "A_plus": 6
+  },
+  "source_tier_counts": {
+    "original_1000:screen_out": 938,
+    "original_1000:A": 7,
+    "original_1000:B": 53,
+    "original_1000:A_plus": 2,
+    "diversified_1200:screen_out": 1122,
+    "diversified_1200:B": 60,
+    "diversified_1200:A": 14,
+    "diversified_1200:A_plus": 4
+  },
+  "strict_high_reliability_count": 27,
+  "diverse_selected_count": 24,
+  "median_iptm_all": 0.621383935213089,
+  "median_pae_all": 6.297116041183472,
+  "median_conf_all": 0.17257960885763168
+}
