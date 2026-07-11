@@ -1,0 +1,82 @@
+{
+  "completed_at": "2026-07-11T10:22:09.024Z",
+  "created_at": "2026-07-11T10:11:44.132Z",
+  "data_deleted_at": null,
+  "engine": "boltzprot",
+  "engine_version": "1.0",
+  "error": null,
+  "id": "prot_des_5wyfuMIxE4ZjEkhUIFcD",
+  "idempotency_key": "marco_srcr_diversified_mid_srcr_surface_patch_h048_100",
+  "input": {
+    "binder_specification": {
+      "entities": [
+        {
+          "chain_ids": [
+            "B"
+          ],
+          "modifications": [],
+          "type": "designed_protein",
+          "value": "110..140"
+        }
+      ],
+      "modality": "nanobody",
+      "rules": {
+        "excluded_amino_acids": [
+          "C"
+        ],
+        "excluded_sequence_motifs": [
+          "NXS",
+          "NXT"
+        ],
+        "max_hydrophobic_fraction": 0.48
+      },
+      "type": "no_template"
+    },
+    "idempotency_key": "marco_srcr_diversified_mid_srcr_surface_patch_h048_100",
+    "num_proteins": 100,
+    "target": {
+      "entities": [
+        {
+          "chain_ids": [
+            "A"
+          ],
+          "modifications": [],
+          "type": "protein",
+          "value": "SVSVRIVGSSNRGRAEVYYSGTWGTICDDEWQNSDAIVFCRMLGYSKGRALYKVGAGTGQIWLDNVQCRGTESTLWSCTKNSWGHHDCSHEEDAGVECSV"
+        }
+      ],
+      "epitope_residues": {
+        "A": [
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          57,
+          58,
+          59,
+          60,
+          61
+        ]
+      },
+      "type": "no_template"
+    }
+  },
+  "livemode": true,
+  "pipeline": "boltzprot",
+  "pipeline_version": "1.0",
+  "progress": {
+    "latest_result_id": "pres_FrDOWzPBWkEdBsRklk5W",
+    "num_proteins_generated": 100,
+    "total_proteins_to_generate": 100
+  },
+  "started_at": "2026-07-11T10:11:44.764Z",
+  "status": "succeeded",
+  "stopped_at": null,
+  "workspace_id": "ws_ApKVvOBCaOY90S5F5sXH"
+}
