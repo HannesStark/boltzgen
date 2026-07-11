@@ -1,0 +1,13 @@
+variant,epitope_set,hydrophobicity_cap,run_id,status,num_candidates,num_cifs,strong_candidates,epitope_residues_zero_based
+marco_srcr_diversified_nterm_basic_patch_h036_100,nterm_basic_patch,0.36,prot_des_861DPZFORJErqjwJ3Z72,succeeded,100,100,24,"[4, 5, 6, 8, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21, 22]"
+marco_srcr_diversified_nterm_basic_patch_h042_100,nterm_basic_patch,0.42,prot_des_IemcRs3g0mYMTyax5Mzm,succeeded,100,100,21,"[4, 5, 6, 8, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21, 22]"
+marco_srcr_diversified_nterm_basic_patch_h048_100,nterm_basic_patch,0.48,prot_des_hJIGXtoiNWqIloMhDH96,succeeded,100,100,20,"[4, 5, 6, 8, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21, 22]"
+marco_srcr_diversified_mid_srcr_surface_patch_h036_100,mid_srcr_surface_patch,0.36,prot_des_wNUIam3X4PoUeqRsNkjc,succeeded,100,100,19,"[45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 57, 58, 59, 60, 61]"
+marco_srcr_diversified_mid_srcr_surface_patch_h042_100,mid_srcr_surface_patch,0.42,prot_des_DQ5W08YGbYWEYqLw8Rln,succeeded,100,100,22,"[45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 57, 58, 59, 60, 61]"
+marco_srcr_diversified_mid_srcr_surface_patch_h048_100,mid_srcr_surface_patch,0.48,prot_des_5wyfuMIxE4ZjEkhUIFcD,succeeded,100,100,20,"[45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 57, 58, 59, 60, 61]"
+marco_srcr_diversified_cterm_acidic_patch_h036_100,cterm_acidic_patch,0.36,prot_des_d71Noa1SwYvLbNsWABtn,succeeded,100,100,18,"[76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 91, 94, 96, 99]"
+marco_srcr_diversified_cterm_acidic_patch_h042_100,cterm_acidic_patch,0.42,prot_des_V5Ov7ALpqztSzzD8oFbP,succeeded,100,100,16,"[76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 91, 94, 96, 99]"
+marco_srcr_diversified_cterm_acidic_patch_h048_100,cterm_acidic_patch,0.48,prot_des_sb1kygtxa77XIKUCJsDg,succeeded,100,100,21,"[76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 91, 94, 96, 99]"
+marco_srcr_diversified_broad_original_neighbors_h036_100,broad_original_neighbors,0.36,prot_des_cjHflNF73jUzBWN7wlu5,succeeded,100,100,25,"[5, 6, 8, 10, 12, 13, 15, 18, 19, 20, 48, 49, 50, 52, 53, 96, 97, 99]"
+marco_srcr_diversified_broad_original_neighbors_h042_100,broad_original_neighbors,0.42,prot_des_VhTTjvUf4BbTrevsIIBA,succeeded,100,100,15,"[5, 6, 8, 10, 12, 13, 15, 18, 19, 20, 48, 49, 50, 52, 53, 96, 97, 99]"
+marco_srcr_diversified_broad_original_neighbors_h048_100,broad_original_neighbors,0.48,prot_des_AWhs2uxehxikffHyP1TV,succeeded,100,100,22,"[5, 6, 8, 10, 12, 13, 15, 18, 19, 20, 48, 49, 50, 52, 53, 96, 97, 99]"

@@ -1,0 +1,58 @@
+{
+  "target": {
+    "type": "no_template",
+    "entities": [
+      {
+        "type": "protein",
+        "chain_ids": [
+          "A"
+        ],
+        "value": "SVSVRIVGSSNRGRAEVYYSGTWGTICDDEWQNSDAIVFCRMLGYSKGRALYKVGAGTGQIWLDNVQCRGTESTLWSCTKNSWGHHDCSHEEDAGVECSV"
+      }
+    ],
+    "epitope_residues": {
+      "A": [
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        91,
+        94,
+        96,
+        99
+      ]
+    }
+  },
+  "binder_specification": {
+    "type": "no_template",
+    "modality": "nanobody",
+    "entities": [
+      {
+        "type": "designed_protein",
+        "chain_ids": [
+          "B"
+        ],
+        "value": "110..140"
+      }
+    ],
+    "rules": {
+      "excluded_amino_acids": [
+        "C"
+      ],
+      "excluded_sequence_motifs": [
+        "NXS",
+        "NXT"
+      ],
+      "max_hydrophobic_fraction": 0.48
+    }
+  },
+  "num_proteins": 100
+}
