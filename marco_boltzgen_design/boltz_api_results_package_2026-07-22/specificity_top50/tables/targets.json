@@ -1,0 +1,46 @@
+[
+  {
+    "target_id": "MARCO_SRCR_DESIGN_TARGET",
+    "role": "intended_target",
+    "protein": "MARCO",
+    "uniprot": "Q9UEW3",
+    "domain": "SRCR_design_target",
+    "start": 421,
+    "end": 520,
+    "sequence": "SVSVRIVGSSNRGRAEVYYSGTWGTICDDEWQNSDAIVFCRMLGYSKGRALYKVGAGTGQIWLDNVQCRGTESTLWSCTKNSWGHHDCSHEEDAGVECSV",
+    "source": "UniProt Q9UEW3 residues 421-520, matching the original MARCO design target; annotated SRCR core is 424-519"
+  },
+  {
+    "target_id": "MSR1_SCARA1_SRCR",
+    "role": "off_target",
+    "protein": "MSR1_SCARA1",
+    "uniprot": "P21757",
+    "domain": "SRCR",
+    "start": 350,
+    "end": 450,
+    "sequence": "VRLVGGSGPHEGRVEILHSGQWGTICDDRWEVRVGQVVCRSLGYPGVQAVHKAAHFGQGTGPIWLNEVFCFGRESSIEECKIRQWGTRACSHSEDAGVTCT",
+    "source": "UniProt P21757 annotated SRCR residues 350-450"
+  },
+  {
+    "target_id": "SCARA5_SRCR",
+    "role": "off_target",
+    "protein": "SCARA5",
+    "uniprot": "Q6ZMJ2",
+    "domain": "SRCR",
+    "start": 393,
+    "end": 493,
+    "sequence": "IRLVNGSGPHEGRVEVYHDRRWGTVCDDGWDKKDGDVVCRMLGFRGVEEVYRTARFGQGTGRIWMDDVACKGTEETIFRCSFSKWGVTNCGHAEDASVTCN",
+    "source": "UniProt Q6ZMJ2 annotated SRCR residues 393-493"
+  },
+  {
+    "target_id": "CD163_SRCR3",
+    "role": "off_target",
+    "protein": "CD163",
+    "uniprot": "Q86VB7",
+    "domain": "SRCR3",
+    "start": 266,
+    "end": 366,
+    "sequence": "LRLVDGVTECSGRLEVRFQGEWGTICDDGWDSYDAAVACKQLGCPTAVTAIGRVNASKGFGHIWLDSVSCQGHEPAIWQCKHHEWGKHYCNHNEDAGVTCS",
+    "source": "UniProt Q86VB7 annotated SRCR3 residues 266-366"
+  }
+]
