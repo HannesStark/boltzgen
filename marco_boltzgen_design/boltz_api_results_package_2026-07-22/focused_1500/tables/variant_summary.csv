@@ -1,0 +1,4 @@
+variant,total,A_plus,A,B,strong_loose,strong_total,best_candidate_id,best_iptm,best_min_interaction_pae,best_structure_confidence
+broad_original_neighbors_h036,500,0,3,21,64,88,pres_I45QWRzKrOXi0srlUSJj,0.9087358713150024,1.162045955657959,0.7096344232559204
+nterm_basic_patch_h048,500,1,4,17,66,88,pres_jTG7v5zEhhhpeEHFclpN,0.9356709718704224,0.9267414808273315,0.7178255915641785
+cterm_acidic_patch_h048,500,1,3,25,57,86,pres_dg0cFSW9o5McXscKEzHX,0.9459353685379028,0.8135833144187927,0.8028779029846191
