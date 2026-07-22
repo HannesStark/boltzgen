@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MARCO SRCR Boltz Result Viewer</title>
+    <meta name="description" content="Boltz-style visualization viewer for MARCO SRCR nanobody validation and counter-screening results.">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="rail" aria-label="结果导航">
+        <div class="mark" aria-label="MARCO viewer">B</div>
+        <button class="rail-btn" type="button" title="Overview">▥</button>
+        <button class="rail-btn active" type="button" title="Prediction">▧</button>
+        <button class="rail-btn" type="button" title="Sequences">⌁</button>
+        <button class="rail-btn" type="button" title="Metrics">⌗</button>
+        <button class="rail-btn" type="button" title="Files">▤</button>
+        <div class="rail-spacer"></div>
+        <button class="rail-btn" type="button" title="Settings">⚙</button>
+      </aside>
+
+      <div class="workspace">
+        <header class="result-header">
+          <div class="title-row">
+            <h1 id="runTitle">loading</h1>
+            <span class="status-pill">✓ Succeeded</span>
+          </div>
+          <p class="id-key">Idempotency key: <span id="idempotencyKey">loading</span></p>
+
+          <dl class="run-meta" aria-label="prediction metadata">
+            <div>
+              <dt>Model</dt>
+              <dd><span class="soft-pill">Boltz-2.1</span></dd>
+            </div>
+            <div>
+              <dt>Version</dt>
+              <dd><span class="soft-pill">vv2026-03-01</span></dd>
+            </div>
+            <div>
+              <dt>Workspace</dt>
+              <dd>ws_ApKVvOBCaOY90S5F5sXH</dd>
+            </div>
+            <div>
+              <dt>Created</dt>
+              <dd>2026年7月21日</dd>
+            </div>
+            <div>
+              <dt>Queued</dt>
+              <dd id="queuedTime">37s</dd>
+            </div>
+            <div>
+              <dt>Duration</dt>
+              <dd id="durationTime">19s</dd>
+            </div>
+          </dl>
+        </header>
+
+        <main class="viewer-grid">
+          <section class="side-panel" aria-label="sequence and metrics">
+            <div class="candidate-picker">
+              <label for="candidateSelect">Candidate</label>
+              <select id="candidateSelect"></select>
+            </div>
+
+            <div class="panel-section">
+              <div class="section-title">
+                <span>SEQUENCES (2)</span>
+              </div>
+
+              <article class="sequence-block">
+                <div class="protein-head">
+                  <span class="type-pill">Protein</span>
+                  <span>A</span>
+                  <button class="copy-btn" type="button" data-copy="targetSequence">Copy</button>
+                </div>
+                <h2>Protein <span>A</span></h2>
+                <pre id="targetSequence" class="sequence-text"></pre>
+              </article>
+
+              <article class="sequence-block">
+                <div class="protein-head">
+                  <span class="type-pill">Protein</span>
+                  <span>B</span>
+                  <button class="copy-btn" type="button" data-copy="binderSequence">Copy</button>
+                </div>
+                <h2>Protein <span>B</span></h2>
+                <pre id="binderSequence" class="sequence-text"></pre>
+              </article>
+            </div>
+
+            <div class="panel-section metrics-section">
+              <div class="section-title">
+                <span>METRICS</span>
+              </div>
+              <div id="metricsGrid" class="metrics-grid"></div>
+            </div>
+
+            <div class="panel-section counter-section">
+              <div class="section-title">
+                <span>COUNTER-SCREEN</span>
+              </div>
+              <div id="counterGrid" class="counter-grid"></div>
+            </div>
+          </section>
+
+          <section class="structure-panel" aria-label="structure viewer">
+            <div class="confidence-card">
+              <strong>pLDDT confidence</strong>
+              <div><i class="dot very-high"></i><span>Very high</span><b>&gt; 90</b></div>
+              <div><i class="dot confident"></i><span>Confident</span><b>71-90</b></div>
+              <div><i class="dot low"></i><span>Low</span><b>51-70</b></div>
+              <div><i class="dot very-low"></i><span>Very low</span><b>&lt;= 50</b></div>
+            </div>
+
+            <div class="viewer-tools">
+              <button type="button" title="Color">◌</button>
+              <button type="button" title="Layers">▰</button>
+              <a id="downloadCif" href="#" title="Open CIF">⇩</a>
+            </div>
+
+            <div class="structure-stage">
+              <div id="structureViewer" class="structure-viewer" aria-label="Interactive 3D structure viewer"></div>
+              <div id="viewerStatus" class="viewer-status">Loading candidate CIF...</div>
+            </div>
+
+            <div class="axis-widget" aria-hidden="true">
+              <span class="axis y"></span>
+              <span class="axis x"></span>
+              <span class="axis z"></span>
+            </div>
+          </section>
+        </main>
+
+        <section class="browser-panel" aria-label="candidate browser">
+          <div class="browser-head">
+            <div>
+              <p class="eyebrow">Candidate Panel</p>
+              <h2>30 validated MARCO nanobody candidates</h2>
+            </div>
+            <div class="filters">
+              <label>
+                <span>Group</span>
+                <select id="groupFilter">
+                  <option value="all">All</option>
+                  <option value="primary_validated_selective">Primary</option>
+                  <option value="backup_marco_confident_offtarget_risk">Backup: off-target risk</option>
+                  <option value="backup_lower_validation_confidence">Backup: lower confidence</option>
+                </select>
+              </label>
+              <label>
+                <span>Search</span>
+                <input id="searchBox" type="search" placeholder="candidate id">
+              </label>
+            </div>
+          </div>
+
+          <div class="score-strip" aria-label="panel summary">
+            <div><span>Best ipLDDT</span><strong id="bestIplddt">--</strong></div>
+            <div><span>Best ipTM</span><strong id="bestIptm">--</strong></div>
+            <div><span>Largest margin</span><strong id="bestMargin">--</strong></div>
+            <div><span>No N-glyc motif</span><strong id="motifCount">--</strong></div>
+          </div>
+
+          <div id="candidateRows" class="candidate-rows" aria-live="polite"></div>
+        </section>
+      </div>
+    </div>
+
+    <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+    <script src="data/candidates.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
