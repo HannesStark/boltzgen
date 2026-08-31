@@ -54,6 +54,7 @@ from boltzgen.data.mol import load_canonicals
 from boltzgen.data.parse.schema import YamlDesignParser
 from boltzgen.data.write.mmcif import to_mmcif
 from boltzgen.task.task import Task
+from boltzgen.utils.accelerator import available_device_count, npu_compat_enabled
 from importlib.metadata import PackageNotFoundError, version as pkg_version
 
 ### Paths and constants ####
@@ -908,11 +909,17 @@ class BinderDesignPipeline:
             )
 
         # Handle use_kernels argument
-        device_capability = torch.cuda.get_device_capability()
-        use_kernels = None
+        device_capability = None
         if args.use_kernels == "auto":
-            use_kernels = device_capability[0] >= 8
+            if not npu_compat_enabled() and torch.cuda.is_available():
+                device_capability = torch.cuda.get_device_capability()
+            use_kernels = bool(device_capability and device_capability[0] >= 8)
         elif args.use_kernels == "true":
+            if npu_compat_enabled():
+                raise ValueError(
+                    "cuEquivariance CUDA kernels are unavailable on NPU; "
+                    "use --use_kernels false"
+                )
             use_kernels = True
         elif args.use_kernels == "false":
             use_kernels = False
@@ -928,9 +935,9 @@ class BinderDesignPipeline:
             protocol_config, args.config, step_names
         )
 
-        devices = (
-            args.devices if args.devices is not None else torch.cuda.device_count()
-        )
+        devices = args.devices if args.devices is not None else available_device_count()
+        if devices < 1:
+            raise RuntimeError("No supported accelerator devices are available")
         print(f"Using {devices} devices")
 
         self.steps = []
