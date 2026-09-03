@@ -588,6 +588,13 @@ class Filter(Task):
         )
         print("Files + CSV saved to", self.outdir)
 
+        # Publish the final metrics table at the run root as well, while
+        # preserving the existing final_ranked_designs layout.
+        self.df_div.to_csv(
+            self.outdir.parent / f"final_designs_metrics_{self.budget}.csv",
+            index=False,
+        )
+
         self.df.to_csv(self.outdir / f"all_designs_metrics.csv", index=False)
 
     def optimize_diversity(self):

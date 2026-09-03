@@ -54,7 +54,6 @@ from boltzgen.data.mol import load_canonicals
 from boltzgen.data.parse.schema import YamlDesignParser
 from boltzgen.data.write.mmcif import to_mmcif
 from boltzgen.task.task import Task
-from boltzgen.utils.accelerator import available_device_count, npu_compat_enabled
 from importlib.metadata import PackageNotFoundError, version as pkg_version
 
 ### Paths and constants ####
@@ -846,6 +845,30 @@ class PipelineStep:
         return config
 
 
+def _accelerator_backend():
+    """Return the torch module for the active accelerator, preferring NPU."""
+    try:
+        import torch_npu  # noqa: F401
+    except ImportError:
+        pass
+    if getattr(torch, "npu", None) is not None and torch.npu.is_available():
+        return torch.npu
+    return torch.cuda
+
+
+def _device_capability(backend):
+    """Return a capability tuple without probing CUDA on an NPU runtime."""
+    get_capability = getattr(backend, "get_device_capability", None)
+    if get_capability is not None:
+        try:
+            capability = get_capability()
+        except Exception:
+            capability = None
+        if capability is not None and len(capability) >= 2:
+            return capability
+    return (0, 0)
+
+
 class BinderDesignPipeline:
     """
     The class itself does **not** execute work or write files; instead it builds a
@@ -908,14 +931,13 @@ class BinderDesignPipeline:
                 f"Invalid protocol: {protocol}. Valid protocols: {list(protocol_configs.keys())}"
             )
 
-        # Handle use_kernels argument
-        device_capability = None
+        # Resolve the active accelerator before capability and device probes.
+        backend = _accelerator_backend()
+        device_capability = _device_capability(backend)
         if args.use_kernels == "auto":
-            if not npu_compat_enabled() and torch.cuda.is_available():
-                device_capability = torch.cuda.get_device_capability()
-            use_kernels = bool(device_capability and device_capability[0] >= 8)
+            use_kernels = device_capability[0] >= 8
         elif args.use_kernels == "true":
-            if npu_compat_enabled():
+            if backend is getattr(torch, "npu", None):
                 raise ValueError(
                     "cuEquivariance CUDA kernels are unavailable on NPU; "
                     "use --use_kernels false"
@@ -935,7 +957,7 @@ class BinderDesignPipeline:
             protocol_config, args.config, step_names
         )
 
-        devices = args.devices if args.devices is not None else available_device_count()
+        devices = args.devices if args.devices is not None else backend.device_count()
         if devices < 1:
             raise RuntimeError("No supported accelerator devices are available")
         print(f"Using {devices} devices")
