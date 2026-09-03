@@ -100,7 +100,14 @@ def weighted_rigid_align(
     F = torch.eye(dim, dtype=cov_matrix_32.dtype, device=cov_matrix.device)[
         None
     ].repeat(batch_size, 1, 1)
-    F[:, -1, -1] = torch.det(rot_matrix)
+    # aten::_linalg_det.result is not implemented natively by torch-npu. The
+    # rotation matrices are always 3x3, so use the equivalent closed form.
+    r = rot_matrix
+    F[:, -1, -1] = (
+        r[..., 0, 0] * (r[..., 1, 1] * r[..., 2, 2] - r[..., 1, 2] * r[..., 2, 1])
+        - r[..., 0, 1] * (r[..., 1, 0] * r[..., 2, 2] - r[..., 1, 2] * r[..., 2, 0])
+        + r[..., 0, 2] * (r[..., 1, 0] * r[..., 2, 1] - r[..., 1, 1] * r[..., 2, 0])
+    )
     rot_matrix = einsum(U, F, V, "b i j, b j k, b l k -> b i l")
     rot_matrix = rot_matrix.to(dtype=original_dtype)
 
