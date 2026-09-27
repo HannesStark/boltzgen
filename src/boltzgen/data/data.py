@@ -562,11 +562,11 @@ class Structure(NumpySerializable):
         coords = structure.coords.copy()
         ensemble = structure.ensemble.copy()
 
-        target_chain_idx = np.where(chains["name"] == chain_name)[0]
+        target_chain_idx = np.where(chains["name"] == chain_name)[0].item()
         target_chain = chains[target_chain_idx]
 
         # Absolute residue index in the full `residues` array
-        res_insert_idx = target_chain["res_idx"] + res_idx
+        res_insert_idx = (target_chain["res_idx"] + res_idx).item()
 
         # Absolute atom index in the full `atoms` array
         if res_idx == target_chain["res_num"]:

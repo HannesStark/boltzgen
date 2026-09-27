@@ -1103,7 +1103,7 @@ class Boltz(LightningModule):
         ]
         if len(parameters) == 0:
             return torch.tensor(
-                0.0, device="cuda" if torch.cuda.is_available() else "cpu"
+                0.0, device="cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
             )
         norm = torch.stack(parameters).sum().sqrt()
         return norm
