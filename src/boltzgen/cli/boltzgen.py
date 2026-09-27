@@ -1562,12 +1562,19 @@ def merge_command(args: argparse.Namespace) -> None:
                     metrics_frames.append(pd.DataFrame(updated_rows))
                     merged_count += len(source_mappings)
             else:
-                known_ids = [
-                    (orig, new_id)
-                    for (src, orig), new_id in id_map.items()
-                    if src == root
-                ]
-                for original_id, new_id in known_ids:
+                # No metrics file: take the designs present in this directory. IDs
+                # from other directories cannot be reused, since with
+                # inverse_fold_num_sequences > 1 the inverse-folded designs are named
+                # design_i_j while the backbones here are named design_i.
+                original_ids = sorted(
+                    path.stem
+                    for path in src_dir.glob("*.cif")
+                    if not path.stem.endswith("_native")
+                )
+                for original_id in original_ids:
+                    new_id = id_map.setdefault(
+                        (root, original_id), f"{run_tag}_{original_id}"
+                    )
                     original_file = f"{original_id}.cif"
                     new_file = _make_new_file_name(original_file, new_id)
                     source_mappings.append(

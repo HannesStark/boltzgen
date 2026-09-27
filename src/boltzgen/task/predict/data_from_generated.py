@@ -674,9 +674,25 @@ class FromGeneratedDataModule(pl.LightningDataModule):
             # If all output paths exist, the input path is skipped.
             def output_path_inverse_fold(input_path):
                 assert self.output_dir is not None
+                # With multiplicity > 1 the writer emits one file per sequence, named
+                # `{stem}_{i}` (see DesignWriter), and never a bare `{stem}`. Checking
+                # for `{stem}` alone would never match, so nothing would be skipped,
+                # and it can even match a *different* backbone's output. Inverse
+                # folding always runs with a single diffusion sample, so the file
+                # count per backbone is the multiplicity.
+                multiplicity = getattr(self.cfg, "multiplicity", 1) or 1
+                if multiplicity == 1:
+                    stems = [input_path.stem]
+                else:
+                    num_digits = len(str(multiplicity - 1))
+                    stems = [
+                        f"{input_path.stem}_{i:0{num_digits}d}"
+                        for i in range(multiplicity)
+                    ]
                 return [
-                    self.output_dir / f"{input_path.stem}.cif",
-                    self.output_dir / f"{input_path.stem}.npz",
+                    self.output_dir / f"{stem}{suffix}"
+                    for stem in stems
+                    for suffix in (".cif", ".npz")
                 ]
 
             def output_path_folded(input_path):
