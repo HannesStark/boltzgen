@@ -709,7 +709,7 @@ class Structure(NumpySerializable):
         num_new_atoms = len(structure2.atoms)
         num_new_residues = len(structure2.residues)
 
-        target_chain_idx = np.where(chains["name"] == chain_name)[0]
+        target_chain_idx = np.where(chains["name"] == chain_name)[0].item()
         target_chain = chains[target_chain_idx]
 
         for idx in range(len(chains)):
@@ -720,9 +720,9 @@ class Structure(NumpySerializable):
         ]
 
         # Absolute residue index in the full `residues` array
-        res_insert_idx = target_chain["res_idx"] + target_chain["res_num"]
+        res_insert_idx = (target_chain["res_idx"] + target_chain["res_num"]).item()
 
-        atom_insert_idx = target_chain["atom_idx"] + target_chain["atom_num"]
+        atom_insert_idx = (target_chain["atom_idx"] + target_chain["atom_num"]).item()
 
         insert_atoms = structure2.atoms.copy()
         insert_residues = structure2.residues.copy()
