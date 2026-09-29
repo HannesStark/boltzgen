@@ -14,6 +14,7 @@ import torch
 from omegaconf import OmegaConf, listconfig
 from pytorch_lightning import LightningModule, Trainer
 
+from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.strategies import DDPStrategy
 
 from boltzgen.task.predict.data_from_generated import FromGeneratedDataModule
@@ -24,6 +25,42 @@ from boltzgen.task.predict.writer import (
 from boltzgen.task.task import Task
 from boltzgen.utils.pipeline_progress_bar import PipelineProgressBar
 from boltzgen.model.models.boltz import Boltz
+
+
+class DistributedWriteSync(Callback):
+    """Synchronize ranks at the end of prediction and verify write integrity.
+
+    In multi-GPU runs, rank 0 can finish its predict loop and tear down the
+    process group (including the TCPStore it hosts) while other ranks are
+    still writing their outputs, silently losing designs (#33). The barrier
+    keeps every rank alive until all ranks have finished writing.
+
+    After the barrier, the number of written output files is compared against
+    the number of designs this run was expected to produce, and a loud warning
+    is emitted if any designs are missing instead of failing silently.
+    """
+
+    def __init__(
+        self,
+        writer: Union[DesignWriter, FoldingWriter],
+        expected_count: int,
+    ) -> None:
+        self.writer = writer
+        self.expected_count = expected_count
+
+    def on_predict_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        if trainer.world_size > 1 and torch.distributed.is_initialized():
+            torch.distributed.barrier()
+
+        if trainer.is_global_zero:
+            written = sum(1 for _ in self.writer.outdir.glob("*.npz"))
+            if written < self.expected_count:
+                print(
+                    f"WARNING: silent write loss detected: expected "
+                    f"{self.expected_count} designs, found {written} "
+                    f"({self.expected_count - written} lost). Designs were "
+                    f"processed but not all output files were written to disk."
+                )
 
 
 class Predict(Task):
@@ -178,7 +215,10 @@ class Predict(Task):
         self.lightning_trainer = Trainer(
             default_root_dir=self.output,
             strategy=strategy,
-            callbacks=[self.writer]
+            callbacks=[
+                self.writer,
+                DistributedWriteSync(self.writer, len(self.data.predict_set)),
+            ]
             + (
                 [PipelineProgressBar()]
                 if os.environ.get("BOLTZGEN_PIPELINE_STEP")
