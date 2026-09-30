@@ -562,11 +562,15 @@ class Structure(NumpySerializable):
         coords = structure.coords.copy()
         ensemble = structure.ensemble.copy()
 
-        target_chain_idx = np.where(chains["name"] == chain_name)[0]
+        # `np.where` returns an array of matches; take the single match as a
+        # Python int. Keeping it as a size-1 array makes the derived indices
+        # size-1 arrays too, and numpy >= 2.4 rejects those where a scalar is
+        # expected (e.g. `np.arange`) instead of silently unwrapping them.
+        target_chain_idx = np.where(chains["name"] == chain_name)[0].item()
         target_chain = chains[target_chain_idx]
 
         # Absolute residue index in the full `residues` array
-        res_insert_idx = target_chain["res_idx"] + res_idx
+        res_insert_idx = int(target_chain["res_idx"]) + res_idx
 
         # Absolute atom index in the full `atoms` array
         if res_idx == target_chain["res_num"]:
@@ -709,7 +713,9 @@ class Structure(NumpySerializable):
         num_new_atoms = len(structure2.atoms)
         num_new_residues = len(structure2.residues)
 
-        target_chain_idx = np.where(chains["name"] == chain_name)[0]
+        # See the note in `insert`: keep this a Python int so the derived
+        # indices stay scalars, which numpy >= 2.4 requires.
+        target_chain_idx = np.where(chains["name"] == chain_name)[0].item()
         target_chain = chains[target_chain_idx]
 
         for idx in range(len(chains)):
@@ -720,9 +726,9 @@ class Structure(NumpySerializable):
         ]
 
         # Absolute residue index in the full `residues` array
-        res_insert_idx = target_chain["res_idx"] + target_chain["res_num"]
+        res_insert_idx = int(target_chain["res_idx"]) + int(target_chain["res_num"])
 
-        atom_insert_idx = target_chain["atom_idx"] + target_chain["atom_num"]
+        atom_insert_idx = int(target_chain["atom_idx"]) + int(target_chain["atom_num"])
 
         insert_atoms = structure2.atoms.copy()
         insert_residues = structure2.residues.copy()
