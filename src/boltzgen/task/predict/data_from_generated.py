@@ -769,9 +769,8 @@ class FromGeneratedDataModule(pl.LightningDataModule):
 
         filtered_paths2 = []
         if self.subset_target_ids is not None:
-            subset_ids = [
-                l.strip() for l in open(self.subset_target_ids, "r").readlines()
-            ]
+            with open(self.subset_target_ids, "r") as f:
+                subset_ids = [l.strip() for l in f]
             for path in filtered_paths:
                 if any([sid in str(path) for sid in subset_ids]):
                     filtered_paths2.append(path)
