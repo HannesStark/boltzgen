@@ -14,7 +14,7 @@ import torch
 from omegaconf import OmegaConf, listconfig
 from pytorch_lightning import LightningModule, Trainer
 
-from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.strategies import DDPStrategy, SingleDeviceStrategy
 
 from boltzgen.task.predict.data_from_generated import FromGeneratedDataModule
 from boltzgen.task.predict.writer import (
@@ -174,6 +174,21 @@ class Predict(Task):
                 msg = f"Fewer designs than devices. Setting devices to {devices}."
                 print(msg)
                 self.trainer["devices"] = devices
+
+        # Lightning has no built-in torch-npu accelerator. Route a real Ascend
+        # device explicitly instead of allowing its automatic CPU selection.
+        try:
+            import torch_npu  # noqa: F401
+        except ImportError:
+            torch_npu = None  # type: ignore[assignment]
+
+        if torch_npu is not None and torch.npu.is_available():
+            from boltzgen.task.predict.npu_accelerator import NPUAccelerator
+
+            print("Using NPU device: torch.npu (npu:0, no CPU fallback)")
+            self.trainer["accelerator"] = NPUAccelerator()
+            if not isinstance(strategy, DDPStrategy):
+                strategy = SingleDeviceStrategy(device=torch.device("npu", 0))
 
         self.lightning_trainer = Trainer(
             default_root_dir=self.output,

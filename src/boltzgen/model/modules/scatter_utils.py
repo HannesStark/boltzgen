@@ -127,12 +127,16 @@ def scatter_max(
         expanded_index = expanded_index.unsqueeze(-1)
     expanded_index = expanded_index.expand_as(src)
     
-    # Use scatter_reduce for max operation (PyTorch >= 1.12)
-    if hasattr(out, 'scatter_reduce_'):
-        out.scatter_reduce_(dim, expanded_index, src, reduce='amax', include_self=False)
-    else:
-        # Fallback for older PyTorch versions
-        out.scatter_(dim, expanded_index, src, reduce='max')
+    # aten::scatter_reduce is not implemented natively by torch-npu. Compute
+    # the same grouped maximum from native tensor operations.
+    src_moved = src.movedim(dim, 0)
+    idx_moved = expanded_index.movedim(dim, 0)
+    neg_inf = torch.tensor(float("-inf"), dtype=src.dtype, device=src.device)
+    for group in range(out.shape[dim]):
+        mask = idx_moved == group
+        out.select(dim, group).copy_(
+            torch.where(mask, src_moved, neg_inf).amax(dim=0)
+        )
     
     # Replace -inf with 0 for indices that were never written to
     out = torch.where(torch.isinf(out), torch.zeros_like(out), out)
