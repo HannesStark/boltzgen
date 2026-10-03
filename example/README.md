@@ -13,6 +13,10 @@ After you constructed your `.yaml` file we recommend that you run the `check` co
 
 
 # Example based explanation:
+
+**New:** See [EXAMPLES_GUIDE.md](EXAMPLES_GUIDE.md) for a structured overview of all examples with categories, difficulty ratings, and validation guidance.
+
+
 We provide many example `.yaml` files in the `example/` directory, including:
 
 - [design_spec_showcasing_all_functionalities.yaml](design_spec_showcasing_all_functionalities.yaml)
