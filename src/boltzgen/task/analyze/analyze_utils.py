@@ -663,8 +663,13 @@ def get_delta_sasa(
         [_radius(rn, an, el) for rn, an, el in zip(res, atm, elem)], dtype=float
     )
 
-    
     bound_mask = atom_design_mask | atom_target_mask
+    # biotite's sasa() raises ValueError on an empty atom selection, which
+    # happens whenever the target and/or design chain(s) have no resolved
+    # atoms (e.g. an unresolved target in the input structure).
+    if not bound_mask.any() or not atom_target_mask.any():
+        return float("nan"), float("nan"), float("nan")
+
     atoms_bound = atoms[bound_mask]
     radii_bound = radii[bound_mask]
 
