@@ -264,6 +264,14 @@ class Filter(Task):
                 {
                     "feature": "bb_target_aligned<2.5",
                     "lower_is_better": False,
+                    # bb_target_aligned<2.5 is a boolean column (True/False), read as
+                    # numeric 1/0 by filter_df()'s >= comparison. threshold=1 means
+                    # only True (>=1) survives, symmetric with the has_x filter above
+                    # (a "must be False" boolean using threshold=0, lower_is_better=True).
+                    # Without this key filter_df() raises KeyError: 'threshold' -- this
+                    # flag has never worked (verified against boltzgen 0.3.2 / current
+                    # main, HannesStark/boltzgen).
+                    "threshold": 1,
                 }
             )
         if filter_cysteine:
