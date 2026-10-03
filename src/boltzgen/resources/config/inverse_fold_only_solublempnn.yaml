@@ -1,0 +1,37 @@
+_target_: boltzgen.task.predict.predict_solublempnn.PredictSolubleMPNN
+data:
+  _target_: boltzgen.task.predict.data_from_yaml.FromYamlDataModule
+  cfg:
+    _target_: boltzgen.task.predict.data_from_yaml.DataConfig
+    tokenizer:
+      _target_: boltzgen.data.tokenize.tokenizer.Tokenizer
+      atomize_modified_residues: false
+    featurizer:
+      _target_: boltzgen.data.feature.featurizer.Featurizer
+    moldir: null
+    yaml_path: null
+    backbone_only: true
+    atom14: false
+    atom37: false
+    disulfide_prob: 1.0
+    disulfide_on: true
+  batch_size: 1
+  num_workers: 4
+  pin_memory: true
+writer:
+  _target_: boltzgen.task.predict.writer.DesignWriter
+  output_dir: ${output}
+  res_atoms_only: false
+  atom14: ${data.cfg.atom14}
+  inverse_fold: true
+  write_native: false
+trainer:
+  accelerator: gpu
+  devices: 1
+  precision: 32
+name: inverse_fold_only_solublempnn
+output: null
+checkpoint: null
+matmul_precision: null
+sampling_temperature: 0.1
+inverse_fold_restriction: []
