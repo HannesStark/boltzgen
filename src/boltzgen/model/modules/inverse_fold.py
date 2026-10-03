@@ -470,7 +470,7 @@ class InverseFoldingEncoder(nn.Module):
             dim=-1,
         )
 
-        with torch.autocast("cuda", enabled=False):
+        with torch.autocast(device_type=feats["atom_to_token"].device.type, enabled=False):
             atom_to_token = feats["atom_to_token"].float()
             atom_to_token_mean = atom_to_token / (
                 atom_to_token.sum(dim=1, keepdim=True) + 1e-6
