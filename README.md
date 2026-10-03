@@ -90,6 +90,52 @@ docker build -t boltzgen:weights --build-arg DOWNLOAD_WEIGHTS=true .
 
 
 # Running BoltzGen
+
+SolubleMPNN is the default sequence-redesign model for `boltzgen run` and
+`boltzgen configure` in protein, peptide, antibody, nanobody, and protein-redesign protocols.
+The `protein-small_molecule` protocol always uses BoltzIF:
+
+```bash
+boltzgen run example/vanilla_protein/1g13prot.yaml \
+    --output results/solublempnn --protocol protein-anything \
+    --num_designs 10
+```
+
+Installation stays `pip install boltzgen`: the bundled upstream model uses the
+existing PyTorch and NumPy dependencies. The 6.4 MiB `solublempnn_v_48_020.pt`
+checkpoint downloads automatically from the upstream LigandMPNN server, with a
+pinned SHA-256, into the selected `--cache` directory (or the Hugging Face cache
+under `HF_HOME`). No separate repository checkout or environment is needed.
+For offline use, run `boltzgen download solublempnn` ahead of time or pass
+`--solublempnn_checkpoint /path/to/solublempnn_v_48_020.pt`.
+
+The same backend also supports `--only_inverse_fold`. Sequence counts,
+`--inverse_fold_avoid`, fixed residues, and downstream folding/analysis use the
+existing pipeline. `--solublempnn_sampling_temperature` defaults to `0.1` and
+must be positive. To use BoltzIF instead, pass `--inverse_fold_model boltzif`;
+its checkpoint is controlled by `--inverse_fold_checkpoint`.
+
+SolubleMPNN conditions on protein N/CA/C/O backbone geometry and fixed protein
+sequences. It does not use ligand, nucleic-acid, side-chain, or cyclic-bond
+context; these remain in the output structures for downstream evaluation.
+Because SolubleMPNN ignores the ligand during sequence redesign,
+`protein-small_molecule` requires BoltzIF, including with `--only_inverse_fold`.
+Explicitly selecting `--inverse_fold_model solublempnn` with that protocol
+raises an error before any model downloads or GPU initialization.
+Redesigned positions must be protein residues with complete resolved N/CA/C/O
+backbones; generated `UNK` residues with these atoms are supported. An
+inverse-fold design-mask override can restrict the original
+design region but cannot expand it. This is an alternative sequence model;
+equivalent design quality across BoltzGen protocols has not been established.
+
+Per-residue amino-acid constraints are supported. `--only_inverse_fold` also
+honors YAML `symmetric_group` sequence tying; the existing generated-file
+loader does not restore symmetry groups from CIF/NPZ outputs.
+Tied positions use the intersection of their allowed amino acids;
+incompatible constraints raise an error. As with BoltzIF, a per-position
+constraint that conflicts with all globally allowed residues is relaxed with
+a warning, while global `--inverse_fold_avoid` exclusions remain enforced.
+
 ![alt text](assets/fig1.png)
 
 
@@ -416,7 +462,7 @@ The `boltzgen run` command executes the BoltzGen binder design pipeline. Here ar
 - `design_spec` - Path(s) to design specification YAML file(s), or a directory containing prepared configs
 
 ### General Configuration
-- `--protocol {protein-anything,peptide-anything,protein-small_molecule,nanobody-anything,antibody-anything}` - Protocol to use for the design. This determines default settings and in some cases what steps are run. Default: protein-anything. See [Protocols](#protocols) section for details.
+- `--protocol {protein-anything,peptide-anything,protein-small_molecule,nanobody-anything,antibody-anything,protein-redesign}` - Protocol to use for the design. This determines default settings and in some cases what steps are run. Default: protein-anything. See [Protocols](#protocols) section for details.
 - `--output OUTPUT` - Output directory for pipeline results
 - `--config CONFIG [CONFIG ...]` - Override pipeline step configuration, in format `<step_name> <arg1>=<value1> <arg2>=<value2> ...` (example: `--config folding num_workers=4 trainer.devices=4`). Can be used multiple times.
 - `--devices DEVICES` - Number of devices to use. Default is all devices available.
@@ -436,7 +482,10 @@ The `boltzgen run` command executes the BoltzGen binder design pipeline. Here ar
 ### Inverse Folding
 - `--skip_inverse_folding` - Skip inverse folding step
 - `--inverse_fold_num_sequences INVERSE_FOLD_NUM_SEQUENCES` - Number of sequences per backbone to generate in the inverse fold step. Default: 1
-- `--inverse_fold_checkpoint INVERSE_FOLD_CHECKPOINT` - Path or huggingface repo and filename for the inverse fold checkpoint. Default: `huggingface:boltzgen/boltzgen1_ifold:boltzgen1_ifold.ckpt`
+- `--inverse_fold_model {boltzif,solublempnn}` - Sequence model. Default: BoltzIF for `protein-small_molecule` (required), SolubleMPNN for other protocols.
+- `--solublempnn_checkpoint CHECKPOINT` - Local path or Hugging Face artifact for SolubleMPNN weights. Default: automatically download/cache the upstream `solublempnn_v_48_020.pt` checkpoint.
+- `--solublempnn_sampling_temperature FLOAT` - Finite positive SolubleMPNN sampling temperature. Default: 0.1.
+- `--inverse_fold_checkpoint INVERSE_FOLD_CHECKPOINT` - BoltzIF checkpoint, used for `protein-small_molecule` or with `--inverse_fold_model boltzif`. Default: `huggingface:boltzgen/boltzgen-1:boltzgen1_ifold.ckpt`.
 - `--inverse_fold_avoid INVERSE_FOLD_AVOID` - Disallowed residues as a string of one letter amino acid codes, e.g. 'KEC'. This is implemented at the inverse fold step, so it only affects results if inverse folding is enabled. Default: none for protein design, 'C' for peptide and nanobody design. Pass an empty list if you want Cysteins to be generated if you are using a nanobody or peptide protocol
 - `--only_inverse_fold` - Skip design step and only run inverse folding. Requires a fully specified structure.
 

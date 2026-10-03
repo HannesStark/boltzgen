@@ -52,7 +52,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-boltzgen = ["resources/config/**/*"]
+boltzgen = ["resources/config/**/*", "_vendor/ligandmpnn/LICENSE", "_vendor/ligandmpnn/NOTICE.md"]
 
 [project.scripts]
 boltzgen = "boltzgen.cli.boltzgen:main"
