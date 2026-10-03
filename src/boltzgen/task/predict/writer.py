@@ -69,7 +69,7 @@ class FoldingWriter(BasePredictionWriter):
         np.savez_compressed(self.outdir / f"{batch['id'][0]}.npz", **pred_dict)
 
         # Get best sample
-        confidence = 0.8 * pred_dict["iptm"] + 0.2 * pred_dict["ptm"]
+        confidence = 0.8 * pred_dict["design_to_target_iptm"] + 0.2 * pred_dict["design_ptm"]
         best_idx = np.argmax(confidence)
         best_sample_coords = pred_dict["coords"][best_idx]
 
