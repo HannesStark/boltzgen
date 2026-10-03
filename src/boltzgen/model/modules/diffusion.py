@@ -723,6 +723,11 @@ class AtomDiffusion(Module):
             # fake atom weighting
             fake_atom_mask = feats["fake_atom_mask"]
             fake_atom_weight = (1 - fake_atom_mask) + fake_atom_mask * fake_atom_weight
+            # feats are at the pre-multiplicity batch size; expand to match
+            # denoised_atom_coords etc., which are repeated by `multiplicity`.
+            # With multiplicity == batch_size == 1 this bug is masked by
+            # broadcasting, which is why it was silent.
+            fake_atom_weight = fake_atom_weight.repeat_interleave(multiplicity, 0)
 
             # residue type weighting.
             if residue_type_weight > 0.0:
