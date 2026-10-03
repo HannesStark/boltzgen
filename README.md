@@ -462,7 +462,7 @@ The `boltzgen run` command executes the BoltzGen binder design pipeline. Here ar
 - `design_spec` - Path(s) to design specification YAML file(s), or a directory containing prepared configs
 
 ### General Configuration
-- `--protocol {protein-anything,peptide-anything,protein-small_molecule,nanobody-anything,antibody-anything}` - Protocol to use for the design. This determines default settings and in some cases what steps are run. Default: protein-anything. See [Protocols](#protocols) section for details.
+- `--protocol {protein-anything,peptide-anything,protein-small_molecule,nanobody-anything,antibody-anything,protein-redesign}` - Protocol to use for the design. This determines default settings and in some cases what steps are run. Default: protein-anything. See [Protocols](#protocols) section for details.
 - `--output OUTPUT` - Output directory for pipeline results
 - `--config CONFIG [CONFIG ...]` - Override pipeline step configuration, in format `<step_name> <arg1>=<value1> <arg2>=<value2> ...` (example: `--config folding num_workers=4 trainer.devices=4`). Can be used multiple times.
 - `--devices DEVICES` - Number of devices to use. Default is all devices available.
@@ -482,7 +482,10 @@ The `boltzgen run` command executes the BoltzGen binder design pipeline. Here ar
 ### Inverse Folding
 - `--skip_inverse_folding` - Skip inverse folding step
 - `--inverse_fold_num_sequences INVERSE_FOLD_NUM_SEQUENCES` - Number of sequences per backbone to generate in the inverse fold step. Default: 1
-- `--inverse_fold_checkpoint INVERSE_FOLD_CHECKPOINT` - Path or huggingface repo and filename for the inverse fold checkpoint. Default: `huggingface:boltzgen/boltzgen1_ifold:boltzgen1_ifold.ckpt`
+- `--inverse_fold_model {boltzif,solublempnn}` - Sequence model. Default: BoltzIF for `protein-small_molecule` (required), SolubleMPNN for other protocols.
+- `--solublempnn_checkpoint CHECKPOINT` - Local path or Hugging Face artifact for SolubleMPNN weights. Default: automatically download/cache the upstream `solublempnn_v_48_020.pt` checkpoint.
+- `--solublempnn_sampling_temperature FLOAT` - Finite positive SolubleMPNN sampling temperature. Default: 0.1.
+- `--inverse_fold_checkpoint INVERSE_FOLD_CHECKPOINT` - BoltzIF checkpoint, used for `protein-small_molecule` or with `--inverse_fold_model boltzif`. Default: `huggingface:boltzgen/boltzgen-1:boltzgen1_ifold.ckpt`.
 - `--inverse_fold_avoid INVERSE_FOLD_AVOID` - Disallowed residues as a string of one letter amino acid codes, e.g. 'KEC'. This is implemented at the inverse fold step, so it only affects results if inverse folding is enabled. Default: none for protein design, 'C' for peptide and nanobody design. Pass an empty list if you want Cysteins to be generated if you are using a nanobody or peptide protocol
 - `--only_inverse_fold` - Skip design step and only run inverse folding. Requires a fully specified structure.
 
