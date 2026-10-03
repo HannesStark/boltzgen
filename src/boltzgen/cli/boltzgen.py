@@ -606,7 +606,7 @@ def run_command(args: argparse.Namespace) -> None:
 
 def download_command(args: argparse.Namespace) -> list[Path]:
     """
-    Download **BoltzGen model checkpoints and the molecules directory** (hosted on HuggingFace).
+    Download model checkpoints and molecule data from their configured sources.
 
     Parameters
     ----------
