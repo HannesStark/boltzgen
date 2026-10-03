@@ -22,6 +22,7 @@ from boltzgen.cli.boltzgen import (
     SOLUBLEMPNN_SHA256,
     BinderDesignPipeline,
     build_parser,
+    configure_command,
     get_artifact_path,
 )
 from boltzgen.data import const
@@ -95,6 +96,8 @@ def test_pipeline_selects_model_without_fetching_other_weights(
         monkeypatch.setattr(torch.cuda, "get_device_capability", unexpected_download)
         with pytest.raises(ValueError, match="protein-small_molecule requires BoltzIF"):
             BinderDesignPipeline(args, tmp_path)
+        with pytest.raises(ValueError, match="protein-small_molecule requires BoltzIF"):
+            configure_command(args)
         return
     monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (8, 0))
     monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
@@ -196,8 +199,9 @@ def test_invalid_exclusions_fail_before_loading_weights():
         for value in ("ACDEFGHIKLMNPQRSTVWY", "X")
     ],
 )
+@pytest.mark.parametrize("command_entrypoint", [False, True])
 def test_cli_rejects_invalid_sampling_options_before_device_or_model_access(
-    tmp_path, monkeypatch, option, value, error
+    tmp_path, monkeypatch, option, value, error, command_entrypoint
 ):
     args = build_parser().parse_args(
         [
@@ -217,7 +221,11 @@ def test_cli_rejects_invalid_sampling_options_before_device_or_model_access(
     monkeypatch.setattr("huggingface_hub.hf_hub_download", unexpected_access)
     monkeypatch.setattr(torch.hub, "download_url_to_file", unexpected_access)
     with pytest.raises(ValueError, match=error):
-        BinderDesignPipeline(args, tmp_path)
+        if command_entrypoint:
+            configure_command(args)
+        else:
+            BinderDesignPipeline(args, tmp_path)
+    assert not (tmp_path / "out").exists()
 
 
 @pytest.fixture

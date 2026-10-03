@@ -640,6 +640,41 @@ def download_command(args: argparse.Namespace) -> list[Path]:
     return download_paths
 
 
+def _resolve_inverse_fold_model(args: argparse.Namespace) -> str:
+    """Validate inverse-fold settings before loading any pipeline artifacts."""
+    protocol = args.protocol
+    if protocol not in protocol_configs:
+        raise ValueError(
+            f"Invalid protocol: {protocol}. Valid protocols: {list(protocol_configs.keys())}"
+        )
+
+    inverse_fold_model = args.inverse_fold_model or (
+        "boltzif" if protocol == "protein-small_molecule" else "solublempnn"
+    )
+    if protocol == "protein-small_molecule" and inverse_fold_model != "boltzif":
+        raise ValueError(
+            "protein-small_molecule requires BoltzIF because SolubleMPNN does "
+            "not condition on the ligand. Remove --inverse_fold_model solublempnn "
+            "or select --inverse_fold_model boltzif."
+        )
+    use_solublempnn = inverse_fold_model == "solublempnn"
+    if use_solublempnn and (args.only_inverse_fold or not args.skip_inverse_folding):
+        temperature = args.solublempnn_sampling_temperature
+        if not math.isfinite(temperature) or temperature <= 0:
+            raise ValueError(
+                "SolubleMPNN sampling temperature must be finite and positive"
+            )
+        canonical_letters = {
+            const.prot_token_to_letter[residue] for residue in const.canonical_tokens
+        }
+        if not set(args.inverse_fold_avoid or "") < canonical_letters:
+            raise ValueError(
+                "SolubleMPNN --inverse_fold_avoid must use canonical amino-acid "
+                "letters and leave at least one amino acid allowed"
+            )
+    return inverse_fold_model
+
+
 def configure_command(args: argparse.Namespace) -> None:
     """
     Generate **resolved per-step YAML configuration files** for the binder-design pipeline.
@@ -658,6 +693,7 @@ def configure_command(args: argparse.Namespace) -> None:
     Usually this is executed by `boltzgen run ...` but it can be used like:
         $ boltzgen configure path/to/design.yaml --output out_dir --protocol peptide-anything
     """
+    _resolve_inverse_fold_model(args)
     moldir = get_artifact_path(args, args.moldir, repo_type="dataset")
     mols = load_canonicals(moldir=moldir)
 
@@ -940,38 +976,7 @@ class BinderDesignPipeline:
 
     def __init__(self, args: argparse.Namespace, moldir: Path):
         protocol = args.protocol
-        if protocol not in protocol_configs:
-            raise ValueError(
-                f"Invalid protocol: {protocol}. Valid protocols: {list(protocol_configs.keys())}"
-            )
-
-        inverse_fold_model = args.inverse_fold_model or (
-            "boltzif" if protocol == "protein-small_molecule" else "solublempnn"
-        )
-        if protocol == "protein-small_molecule" and inverse_fold_model != "boltzif":
-            raise ValueError(
-                "protein-small_molecule requires BoltzIF because SolubleMPNN does "
-                "not condition on the ligand. Remove --inverse_fold_model solublempnn "
-                "or select --inverse_fold_model boltzif."
-            )
-        use_solublempnn = inverse_fold_model == "solublempnn"
-        if use_solublempnn and (
-            args.only_inverse_fold or not args.skip_inverse_folding
-        ):
-            temperature = args.solublempnn_sampling_temperature
-            if not math.isfinite(temperature) or temperature <= 0:
-                raise ValueError(
-                    "SolubleMPNN sampling temperature must be finite and positive"
-                )
-            canonical_letters = {
-                const.prot_token_to_letter[residue]
-                for residue in const.canonical_tokens
-            }
-            if not set(args.inverse_fold_avoid or "") < canonical_letters:
-                raise ValueError(
-                    "SolubleMPNN --inverse_fold_avoid must use canonical amino-acid "
-                    "letters and leave at least one amino acid allowed"
-                )
+        use_solublempnn = _resolve_inverse_fold_model(args) == "solublempnn"
 
         # Handle use_kernels argument
         device_capability = torch.cuda.get_device_capability()
