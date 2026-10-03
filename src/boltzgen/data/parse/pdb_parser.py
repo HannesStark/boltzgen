@@ -59,6 +59,18 @@ def parse_pdb(  # noqa: C901, PLR0915, PLR0912
                 sc[i].label_seq = j + 1
                 i += 1
 
+        # Fix: Set label_seq for all subchains in the same entity, not just the first one
+        # This is important when multiple chains (e.g., A, B, C) belong to the same entity
+        for subchain_id in entity.subchains[1:]:  # Skip the first one, already processed
+            subchain = st[0].get_subchain(subchain_id)
+            if subchain is not None:
+                # Use the same alignment result for all subchains in the same entity
+                i = 0
+                for j, align in enumerate(align_result):
+                    if align == "|" and i < len(subchain):
+                        subchain[i].label_seq = j + 1
+                        i += 1
+
     block = st.make_mmcif_block()
 
     structure = mmcif_from_block(
