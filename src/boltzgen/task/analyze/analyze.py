@@ -1327,11 +1327,11 @@ class Analyze(Task):
             )
             nov_csv = Path(design_dir) / f"novelty_per_target_original_{self.name}.csv"
             nov_df.to_csv(nov_csv, index=False, float_format="%.5f")
-            avg_metrics["mean_novelty_per_target_original"] = (
-                nov_df["novelty"].mean().round(5)
+            avg_metrics["mean_novelty_per_target_original"] = round(
+                nov_df["novelty"].mean(), 5
             )
-            avg_metrics["median_novelty_per_target_original"] = (
-                nov_df["novelty"].median().round(5)
+            avg_metrics["median_novelty_per_target_original"] = round(
+                nov_df["novelty"].median(), 5
             )
             metrics_data["nov_df"] = nov_df
 
@@ -1362,8 +1362,8 @@ class Analyze(Task):
             )
             nov_csv = Path(design_dir) / f"novelty_per_target_refolded_{self.name}.csv"
             nov_df_refold.to_csv(nov_csv, index=False, float_format="%.5f")
-            avg_metrics["mean_novelty_per_target_refolded"] = (
-                nov_df_refold["novelty"].mean().round(5)
+            avg_metrics["mean_novelty_per_target_refolded"] = round(
+                nov_df_refold["novelty"].mean(), 5
             )
             avg_metrics["median_novelty_per_target_refolded"] = round(
                 nov_df_refold["novelty"].median(), 5

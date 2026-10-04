@@ -543,7 +543,9 @@ def compute_novelty_foldseek(
     foldseek_binary: str = "/data/rbg/users/hstark/foldseek/bin/foldseek",
 ) -> pd.DataFrame:
     if len(files) == 0:
-        return np.nan
+        return pd.DataFrame(
+            {"query": pd.Series(dtype="object"), "novelty": pd.Series(dtype="float64")}
+        )
 
     aln_tsv = outdir / "aln.tsv"
     tmp_dir = outdir / "tmp"
@@ -571,7 +573,7 @@ def compute_novelty_foldseek(
         names=["query", "target", "alntmscore", "qtmscore", "ttmscore"],
     )
     df["tmscore"] = (df["qtmscore"] + df["ttmscore"]) / 2
-    df = df.groupby("query").max().reset_index()
+    df = df.groupby("query")["tmscore"].max().reset_index()
     queries = [Path(f).stem for f in files]
     df = df.set_index("query").reindex(queries, fill_value=0.0).reset_index()
     df_novelty = df[["query", "tmscore"]].rename(columns={"tmscore": "novelty"})

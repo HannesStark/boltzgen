@@ -342,6 +342,17 @@ class RefoldingValidator(design.DesignValidator):
         self.analyze_task.init_datasets(design_dir)
 
         all_metrics = self.gather_lists(model, self.all_refold_metrics[logname])
+        if not all_metrics:
+            self.all_refold_metrics[logname] = []
+            self.all_refolding_data[logname] = []
+            model.log(f"{logname}/num_targets", 0, prog_bar=False, sync_dist=True)
+            model.log(
+                f"{logname}/one_epoch_end_refolding_dur",
+                time.time() - start,
+                sync_dist=True,
+            )
+            return
+
         df, histograms = self.analyze_task.make_histograms(all_metrics)
         avg_metrics = df.mean(numeric_only=True).round(5).to_dict()
         avg_metrics["num_targets"] = len(all_metrics)
