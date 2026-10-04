@@ -68,9 +68,11 @@ def make_request(
     residues = {}
     for entry, chain in zip(context["chains"], structure.chains, strict=True):
         selected = tokenized.tokens["asym_id"] == chain["asym_id"]
+        # Covalent closure expands chain_design_mask for refolding; it must
+        # not turn a fixed target into a designed scoring partner.
         role = (
             "design"
-            if np.asarray(feat["chain_design_mask"])[selected].any()
+            if np.asarray(feat["design_mask"])[selected].any()
             else "target"
         )
         chain_id = str(chain["name"])

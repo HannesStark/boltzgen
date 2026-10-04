@@ -92,6 +92,7 @@ def test_custom_smiles_request_preserves_atom_identities(parser_and_mols, tmp_pa
             "tokenized": tokenized,
             "source_context": json.dumps(parsed.source_context),
             "chain_design_mask": tokenized.tokens["asym_id"] == 1,
+            "design_mask": tokenized.tokens["asym_id"] == 1,
             "extra_mols": parsed.extra_mols,
             "id": "ligand",
             "path": str(path),
@@ -135,6 +136,7 @@ def test_ccd_lig_is_not_treated_as_custom_smiles(parser_and_mols, tmp_path):
             "tokenized": tokenized,
             "source_context": json.dumps(parsed.source_context),
             "chain_design_mask": tokenized.tokens["asym_id"] == 1,
+            "design_mask": tokenized.tokens["asym_id"] == 1,
             "extra_mols": parsed.extra_mols,
             "id": "ccd",
             "path": str(path),
@@ -729,6 +731,7 @@ def test_redesign_request_accepts_all_designed_chains(
         tokenized=tokenized,
         source_context=json.dumps(parsed.source_context),
         chain_design_mask=np.ones(len(tokenized.tokens), dtype=bool),
+        design_mask=np.ones(len(tokenized.tokens), dtype=bool),
         id="redesign",
         path=str(path),
     )
@@ -902,3 +905,49 @@ def test_shipped_4g37_preserves_complete_deposited_sequence():
     assert sha256(" ".join(sequence).encode()).hexdigest() == (
         "bb1960c8759d16b2122962e79992ac1178f90309e62f5d8eed4544c9d99db06b"
     )
+
+
+def test_covalently_linked_target_remains_a_scoring_partner(parser_and_mols, tmp_path):
+    from boltzgen.data.tokenize.tokenizer import Tokenizer
+    from boltzgen.data.feature.featurizer import Featurizer
+    from boltzgen.task.predict.data_from_generated import FromGeneratedDataset
+    from boltzgen.task.esmfold2.score import make_request
+
+    parser, mols = parser_and_mols
+    parsed = parser.parse_boltzgen_schema(
+        "linked", {"entities": [
+            {"protein": {"id": "A", "sequence": "ACG"}},
+            {"protein": {"id": "B", "sequence": "1C1"}},
+        ], "constraints": [{"bond": {"atom1": ["A", 2, "SG"], "atom2": ["B", 2, "SG"]}}]},
+        mols, tmp_path, tmp_path,
+    )
+    parsed.structure.atoms["coords"] = np.arange(len(parsed.structure.atoms) * 3).reshape(-1, 3) + 1
+    parsed.structure.coords["coords"] = parsed.structure.atoms["coords"]
+    path = tmp_path / "linked.cif"
+    path.write_text(to_mmcif(parsed.structure))
+    tokenized = Tokenizer().tokenize(parsed.structure)
+    design_mask = parsed.design_info.res_design_mask[tokenized.token_to_res]
+    import pickle
+
+    previous = Chem.GetDefaultPickleProperties()
+    try:
+        Chem.SetDefaultPickleProperties(Chem.PropertyPickleOptions.AllProps)
+        for name, molecule in mols.items():
+            (tmp_path / f"{name}.pkl").write_bytes(pickle.dumps(Chem.RemoveHs(molecule)))
+    finally:
+        Chem.SetDefaultPickleProperties(previous)
+    extra_mols = tmp_path / "extra"
+    extra_mols.mkdir()
+    np.savez(path.with_suffix(".npz"), design_mask=design_mask, source_context=json.dumps(parsed.source_context))
+    dataset = FromGeneratedDataset(
+        [path], [path.with_suffix(".npz")], [path], tmp_path, mols,
+        Tokenizer(), Featurizer(), extra_mol_dir=extra_mols, extra_features=["tokenized"],
+    )
+    feat = dataset.getitem_from_paths(path.with_suffix(".npz"), path, path)
+    # Refolding includes the whole linked construct, but only B is designed.
+    assert feat["chain_design_mask"].all()
+    assert not feat["design_mask"][:3].any()
+    request = make_request(feat, {})
+    assert request["design_chains"] == ["B"]
+    assert request["target_chains"] == ["A"]
+    assert request["bonds"] == [["A", 1, "SG", "B", 1, "SG"]]
