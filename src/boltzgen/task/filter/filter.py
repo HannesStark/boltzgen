@@ -107,6 +107,8 @@ class Filter(Task):
     **Filtering.** Each design must pass all hard thresholds (``pass_<feature>_filter``).
     Repeated rules for a feature are combined with AND in its output flag; each
     rule contributes independently to ``num_filters_passed`` and score penalties.
+    Affinity-score penalties multiply nonnegative scores by 0.1 and negative
+    scores by 10, so failures never improve the signed composite score.
     The step also adds convenience columns (e.g., ``filter_rmsd``,
     ``designfolding-filter_rmsd``, signed variants like ``neg_min_design_to_target_pae``).
 
@@ -550,7 +552,11 @@ class Filter(Task):
                 # If this is a "fraction" feature, meaning a res_type fraction filter, only apply the penalty if num_design > 8
                 mask_fail &= self.df["num_design"] > 8
 
-            self.df.loc[mask_fail, "absolute_score"] *= 0.1
+            # Failed rules must worsen signed z-scores, not reward negative ones.
+            scores = self.df.loc[mask_fail, "absolute_score"]
+            self.df.loc[mask_fail, "absolute_score"] = scores * np.where(
+                scores < 0, 10.0, 0.1
+            )
 
 
     def sort_df(self):

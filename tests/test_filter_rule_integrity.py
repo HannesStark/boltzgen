@@ -218,14 +218,21 @@ def test_repeated_feature_counts_flags_ranking_and_penalties(
     assert actual["pass_filters"].tolist() == expected_pass
 
 
+@pytest.mark.parametrize("negative", [False, True])
 def test_fraction_penalties_keep_length_exemption_per_rule(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, negative: bool
 ) -> None:
     monkeypatch.chdir(Path(__file__).resolve().parents[1])
     task = _load_filter(
         tmp_path,
         pd.DataFrame(
-            {"ALA_fraction": [0.0, 0.0, 0.2, np.nan], "num_design": [8, 9, 9, 9]}
+            {
+                "ALA_fraction": [0.0, 0.0, 0.2, np.nan],
+                "num_design": [8, 9, 9, 9],
+                "design_iiptm": 0.1 if negative else 1.0,
+                "design_ptm": 0.1 if negative else 1.0,
+                "min_design_to_target_pae": 20.0 if negative else 1.0,
+            }
         ),
         [
             {"feature": "ALA_fraction", "lower_is_better": False, "threshold": 0.1},
@@ -237,7 +244,43 @@ def test_fraction_penalties_keep_length_exemption_per_rule(
     assert task.df["num_filters_passed"].tolist() == [4, 4, 5, 3]
     assert task.df["pass_ALA_fraction_filter"].tolist() == [False, False, True, False]
     scores = task.df["absolute_score"]
-    np.testing.assert_allclose(scores / scores.iloc[2], [1.0, 0.1, 1.0, 0.01])
+    assert (scores.iloc[2] < 0) == negative
+    penalty = 10.0 if negative else 0.1
+    np.testing.assert_allclose(scores / scores.iloc[2], [1.0, penalty, 1.0, penalty**2])
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_failed_rules_worsen_negative_absolute_scores(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reverse: bool
+) -> None:
+    monkeypatch.chdir(Path(__file__).resolve().parents[1])
+    rules = [
+        {"feature": "x", "lower_is_better": False, "threshold": 0.1},
+        {"feature": "x", "lower_is_better": False, "threshold": 0.4},
+    ]
+    if reverse:
+        rules.reverse()
+    task = _load_filter(
+        tmp_path,
+        pd.DataFrame(
+            {
+                "x": [0.5, 0.25, 0.0] * 2,
+                "design_iiptm": [0.1] * 3 + [1.0] * 3,
+                "design_ptm": [0.1] * 3 + [1.0] * 3,
+                "min_design_to_target_pae": [20.0] * 3 + [1.0] * 3,
+            }
+        ),
+        rules,
+    )
+    task.filter_df()
+    task.absolute_metrics()
+    scores = task.df["absolute_score"]
+    assert scores.iloc[0] < 0 < scores.iloc[3]
+    assert scores.iloc[2] < scores.iloc[1] < scores.iloc[0]
+    assert scores.iloc[5] < scores.iloc[4] < scores.iloc[3]
+    np.testing.assert_allclose(scores.iloc[:3] / scores.iloc[0], [1.0, 10.0, 100.0])
+    np.testing.assert_allclose(scores.iloc[3:] / scores.iloc[3], [1.0, 0.1, 0.01])
+    assert task.df["num_filters_passed"].tolist() == [5, 4, 3] * 2
 
 
 def test_builtin_rules_count_successes_after_failures(tmp_path: Path) -> None:
