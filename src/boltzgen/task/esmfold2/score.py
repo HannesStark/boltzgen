@@ -28,6 +28,29 @@ from boltzgen.task.esmfold2.runtime import resolve_python, worker_command
 logger = logging.getLogger(__name__)
 
 
+def _publish_validated_result(
+    staging_dir: Path,
+    outdir: Path,
+    request_path: Path,
+    staged_request_path: Path,
+    request: dict,
+) -> None:
+    """Publish one result, invalidating any old completion marker first."""
+    design_id = request["design_id"]
+    staged_result_path = staging_dir / f"{design_id}.json"
+    result_path = outdir / f"{design_id}.json"
+    # A crash while replacing artifacts must not leave an old result marker
+    # beside new CIF/NPZ files; readers treat that JSON as the completion proof.
+    result_path.unlink(missing_ok=True)
+    for suffix in ("cif", "npz"):
+        os.replace(
+            staging_dir / f"{design_id}.{suffix}",
+            outdir / f"{design_id}.{suffix}",
+        )
+    os.replace(staged_request_path, request_path)
+    os.replace(staged_result_path, result_path)
+
+
 def validate_context(context: dict | None) -> None:
     """Require trustworthy full source sequences, including for legacy rescoring."""
     if context is None or context.get("version") != 1:
@@ -294,14 +317,13 @@ class ESMFold2Score(Task):
                     validation_errors.append(exc)
                     continue
 
-                # The worker's JSON is its completion marker, so replace it last.
-                for suffix in ("cif", "npz"):
-                    os.replace(
-                        staging_dir / f"{request['design_id']}.{suffix}",
-                        outdir / f"{request['design_id']}.{suffix}",
-                    )
-                os.replace(pending_path, request_path)
-                os.replace(result_path, outdir / f"{request['design_id']}.json")
+                _publish_validated_result(
+                    staging_dir,
+                    outdir,
+                    request_path,
+                    pending_path,
+                    request,
+                )
 
             if any(codes):
                 raise RuntimeError(
