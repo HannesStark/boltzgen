@@ -1,7 +1,7 @@
 """PDB labels must preserve each chain's coverage throughout the input pipeline."""
 
 # Numerical expectations describe the small fixtures directly.
-# ruff: noqa: INP001, CPY001, PLR2004
+# ruff: noqa: INP001, PLR2004
 
 from pathlib import Path
 
