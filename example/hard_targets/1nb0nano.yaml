@@ -7,9 +7,8 @@ entities:
             id: A
   - file:
       path: 
-        - example/nanobody_scaffolds/7eow.yaml
+        - ../nanobody_scaffolds/7eow.yaml
         - ../nanobody_scaffolds/7xl0.yaml
         - ../nanobody_scaffolds/8coh.yaml
         - ../nanobody_scaffolds/8z8v.yaml
-
 
