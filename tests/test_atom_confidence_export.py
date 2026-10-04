@@ -114,6 +114,8 @@ def test_actual_confidence_granularity_survives_cif_export(  # noqa: PLR0915
     output["design_ptm"] = torch.tensor([0.1, 0.9])
     boundary = _InferenceBoundary(output, 2, mask=False)
     boundary.token_level_confidence = token_level
+    boundary.alpha_pae = 0.0
+    boundary.predict_args["keys_dict_out"] = []
     prediction = Boltz.predict_step(boundary, batch)
     assert prediction["token_level_confidence"] == token_level
 

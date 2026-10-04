@@ -210,10 +210,11 @@ class _InferenceBoundary:
         return self.output
 
 
-@pytest.mark.parametrize("keys_dict_out", [None, [], ["plddt"]])
+@pytest.mark.parametrize("keys_dict_out", [None, [], ["plddt"], ["ptm", "iptm"]])
 @pytest.mark.parametrize("mask", [False, True])
+@pytest.mark.parametrize("alpha_pae", [0.0, 1.0])
 def test_default_and_reduced_prediction_keys_preserve_ranking(
-    keys_dict_out: list[str] | None, mask: bool, tmp_path: Path
+    keys_dict_out: list[str] | None, mask: bool, alpha_pae: float, tmp_path: Path
 ) -> None:
     batch = collate([_features(padded=True, missing_atom=False, ligand=False)])
     output = _forward_output(batch, 2)
@@ -232,6 +233,7 @@ def test_default_and_reduced_prediction_keys_preserve_ranking(
         keys_dict_out=keys_dict_out,
     )
     boundary = _InferenceBoundary(output, 2, mask=mask)
+    boundary.alpha_pae = alpha_pae
     boundary.predict_args = task.predict_args
     prediction = Boltz.predict_step(boundary, batch)
     writer.write_on_batch_end(prediction=prediction, batch=batch)
