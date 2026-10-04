@@ -1,5 +1,8 @@
 """Regression coverage for independent hard filters and confidence metric keys."""
 
+# ruff: noqa: INP001
+
+import json
 from itertools import permutations, product
 from pathlib import Path
 
@@ -10,6 +13,15 @@ import torch
 
 from boltzgen.data import const
 from boltzgen.task.analyze.analyze_utils import get_best_folding_sample
+from boltzgen.task.esmfold2.contract import (
+    ESM_VERSION,
+    ESMC_REVISION,
+    MODEL_REVISION,
+    SCORE_DIR,
+    SCORE_KEY,
+    file_sha256,
+    fingerprint,
+)
 from boltzgen.task.filter.filter import Filter
 from boltzgen.task.predict.writer import AffinityWriter
 
@@ -20,6 +32,7 @@ def _load_filter(
     rules: list[dict],
     *,
     filter_target_aligned: bool = False,
+    use_affinity: bool = True,
 ) -> Filter:
     frame = frame.copy()
     defaults = {
@@ -37,9 +50,40 @@ def _load_filter(
     for column, value in defaults.items():
         if column not in frame:
             frame[column] = value
+    if not use_affinity:
+        # Exercise the production provenance check with a complete score record.
+        score_dir = tmp_path / SCORE_DIR
+        score_dir.mkdir(exist_ok=True)
+        frame[SCORE_KEY] = 0.75
+        frame["file_name"] = frame["id"] + ".cif"
+        frame["esmfold2_input_hash"] = ""
+        for index, row in frame.iterrows():
+            design = tmp_path / row["file_name"]
+            design.write_text(f"fixture design {row['id']}")
+            request = {"design_id": row["id"], "design_sha256": file_sha256(design)}
+            input_hash = fingerprint(request)
+            frame.loc[index, "esmfold2_input_hash"] = input_hash
+            metrics = {
+                SCORE_KEY: 0.75,
+                "esmfold2_design_to_target_ipsae": 0.75,
+                "esmfold2_target_to_design_ipsae": 0.75,
+            }
+            result = {
+                "schema_version": 1,
+                "model_revision": MODEL_REVISION,
+                "esmc_revision": ESMC_REVISION,
+                "esm_version": ESM_VERSION,
+                "input_hash": input_hash,
+                "metrics": metrics,
+            }
+            (score_dir / f"{row['id']}.input.json").write_text(json.dumps(request))
+            (score_dir / f"{row['id']}.json").write_text(json.dumps(result))
+            (score_dir / f"{row['id']}.cif").write_text("fixture prediction")
+            np.savez(score_dir / f"{row['id']}.npz", pae=np.zeros((1, 2, 2)))
     frame.to_csv(tmp_path / "aggregate_metrics_test.csv", index=False)
     task = Filter(
         design_dir=str(tmp_path),
+        use_affinity=use_affinity,
         filter_designfolding=False,
         filter_cysteine=False,
         filter_biased=False,
@@ -52,6 +96,8 @@ def _load_filter(
             "plip_hbonds_refolded": None,
             "plip_saltbridge_refolded": None,
             "delta_sasa_refolded": None,
+            "affinity_probability_binary1": None,
+            SCORE_KEY: None,
             "quality": 1,
         },
     )
@@ -60,8 +106,9 @@ def _load_filter(
 
 
 @pytest.mark.parametrize("order", list(permutations(range(3))))
+@pytest.mark.parametrize("use_affinity", [False, True])
 def test_independent_rules_count_and_rank_csv(
-    tmp_path: Path, order: tuple[int, ...]
+    tmp_path: Path, order: tuple[int, ...], use_affinity: bool
 ) -> None:
     truth = np.array(list(product([False, True], repeat=3)))
     frame = pd.DataFrame(
@@ -77,7 +124,9 @@ def test_independent_rules_count_and_rank_csv(
         {"feature": "low", "lower_is_better": True, "threshold": 0.5},
         {"feature": "signed", "lower_is_better": False, "threshold": 0.0},
     ]
-    task = _load_filter(tmp_path, frame, [rules[i] for i in order])
+    task = _load_filter(
+        tmp_path, frame, [rules[i] for i in order], use_affinity=use_affinity
+    )
     task.filter_df()
 
     expected_counts = [int(row.sum()) + 3 for row in truth] + [5]
