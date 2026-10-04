@@ -376,6 +376,26 @@ def test_yaml_homomer_tying_writes_matching_sequences(real_task, tmp_path):
     assert len(sequences) == 2
     assert sequences[0] == sequences[1]
 
+    reloaded_config = OmegaConf.load(CONFIGS / "inverse_fold_solublempnn.yaml")
+    reloaded_config.output = str(tmp_path / "homomer_reloaded")
+    reloaded_config.checkpoint = real_task.checkpoint
+    reloaded_config.data.cfg.moldir = real_task.data.cfg.moldir
+    reloaded_config.data.cfg.num_workers = 0
+    reloaded_config.data.cfg.pin_memory = False
+    reloaded_config.data.design_dir = task.output
+    reloaded_config.trainer.accelerator = "cpu"
+    reloaded_config.trainer.logger = False
+    reloaded_config.trainer.enable_progress_bar = False
+    reloaded = hydra.utils.instantiate(reloaded_config)
+    loaded = next(iter(reloaded.data.predict_dataloader()))
+    assert torch.equal(loaded["symmetric_group"], batch["symmetric_group"])
+    reloaded.run()
+    assert reloaded.writer.failed == 0
+    structure = gemmi.read_structure(str(next(Path(reloaded.output).glob("*.cif"))))
+    sequences = [[residue.name for residue in chain][9:20] for chain in structure[0]]
+    assert len(sequences) == 2
+    assert sequences[0] == sequences[1]
+
 
 def test_memory_failure_skips_one_sample_and_continues(real_task, monkeypatch):
     batch = next(iter(real_task.data.predict_dataloader()))

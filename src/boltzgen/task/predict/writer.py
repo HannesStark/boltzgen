@@ -397,6 +397,7 @@ class DesignWriter(BasePredictionWriter):
                     "design_mask": design_mask[token_mask].cpu().numpy(),
                     "mol_type": sample["mol_type"][token_mask].cpu().numpy(),
                     "ss_type": sample["ss_type"][token_mask].cpu().numpy(),
+                    "symmetric_group": batch["symmetric_group"][0][token_mask].cpu().numpy(),
                     "token_resolved_mask": sample["token_resolved_mask"][token_mask].cpu().numpy(),
                     "binding_type": binding_type[token_mask].cpu().numpy(),
                 }

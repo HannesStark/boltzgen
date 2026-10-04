@@ -343,6 +343,16 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
 
         # Get features
         feat = self.get_feat(generated_path, design_mask, ss_type, binding_type, aa_constraint_mask)
+        if "symmetric_group" in metadata:
+            groups = metadata["symmetric_group"]
+            if (
+                groups.shape != tuple(feat["symmetric_group"].shape)
+                or not np.issubdtype(groups.dtype, np.integer)
+            ):
+                raise ValueError(
+                    "Invalid symmetric_group in NPZ: expected one integer per token"
+                )
+            feat["symmetric_group"] = torch.from_numpy(groups).long()
         feat["source_context"] = (
             str(metadata["source_context"].item())
             if "source_context" in metadata
