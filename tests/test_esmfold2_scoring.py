@@ -203,6 +203,8 @@ def test_ranking_and_tiebreak_follow_esmfold2(tmp_path):
         ("binder", None, None),
         ("redesign", ["A"], "uses every polymer chain"),
         ("bogus", None, "scoring_mode must be"),
+        ("binder", [], "nonempty, unique"),
+        ("binder", ["A", "A"], "nonempty, unique"),
     ],
 )
 def test_configure_validates_settings_before_runtime_setup(

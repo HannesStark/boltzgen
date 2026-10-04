@@ -25,6 +25,12 @@ def validate_scoring_mode(mode: str, target_chains: list[str] | None) -> None:
         raise ValueError(
             "Redesign scoring uses every polymer chain; scoring_target_chains is only for binder scoring"
         )
+    if target_chains is not None and (
+        not target_chains or len(target_chains) != len(set(target_chains))
+    ):
+        raise ValueError(
+            "scoring_target_chains must name nonempty, unique target polymer chains"
+        )
 
 
 def fingerprint(value: dict) -> str:

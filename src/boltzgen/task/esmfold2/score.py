@@ -97,11 +97,7 @@ def make_request(
     candidate = [c for c in chains if c["role"] == "design" and c["mol_type"] != 3]
     target = [c for c in chains if c["role"] == "target" and c["mol_type"] != 3]
     if target_chains is not None:
-        if (
-            not target_chains
-            or len(set(target_chains)) != len(target_chains)
-            or not set(target_chains) <= {c["id"] for c in target}
-        ):
+        if not set(target_chains) <= {c["id"] for c in target}:
             raise ValueError(
                 "scoring_target_chains must name nonempty, unique target polymer chains"
             )
