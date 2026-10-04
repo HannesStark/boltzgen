@@ -364,3 +364,70 @@ def test_yaml_design_mask_survives_mmcif_export(
     assert len(tokens.tokens) == len(reloaded_tokens.tokens) == 10
     assert design_mask.sum() == 5
     np.testing.assert_array_equal(reloaded_tokens.tokens["asym_id"][design_mask], 1)
+
+
+@pytest.mark.parametrize("input_format", ["pdb", "mmcif"])
+@pytest.mark.parametrize("model_counts", [(1, 1), (2, 1), (1, 2), (2, 3)])
+@pytest.mark.parametrize("crop", [False, True])
+def test_yaml_uses_reference_model_before_combining_files(
+    tmp_path: Path,
+    mols: dict[str, Chem.Mol],
+    input_format: str,
+    model_counts: tuple[int, int],
+    crop: bool,
+) -> None:
+    entities = []
+    for chain, count, shift in zip(("A", "B"), model_counts, (0.0, 100.0)):
+        path = write_pdb(
+            tmp_path / f"{chain}.pdb",
+            PROTEIN,
+            {chain: list(range(1, 7))},
+            models=count,
+        )
+        lines = [
+            line[:30] + f"{float(line[30:38]) + shift:8.3f}" + line[38:]
+            if line.startswith("ATOM")
+            else line
+            for line in path.read_text().splitlines()
+        ]
+        path.write_text("\n".join(lines) + "\n")
+        selected_chain = chain
+        if input_format == "mmcif":
+            raw = gemmi.read_structure(str(path))
+            raw.setup_entities()
+            raw.assign_label_seq_id()
+            selected_chain = raw[0][0].get_polymer().subchain_id()
+            path = path.with_suffix(".cif")
+            raw.make_mmcif_document().write_file(str(path))
+        selection = {"id": selected_chain}
+        if crop:
+            selection["res_index"] = "2..5"
+        entities.append(
+            {"file": {"path": str(path), "include": [{"chain": selection}]}}
+        )
+
+    parser = YamlDesignParser(tmp_path)
+    # Repeating the public operation also exercises cached parsed ensembles.
+    for _ in range(2):
+        target = parser.parse_boltzgen_schema(
+            "reference", {"entities": entities}, mols, tmp_path, base_file_path=tmp_path
+        )
+        structure = target.structure
+        assert structure.ensemble.tolist() == [(0, len(structure.atoms))]
+        assert len(structure.coords) == len(structure.atoms)
+        np.testing.assert_allclose(
+            structure.coords["coords"], structure.atoms["coords"]
+        )
+        tokens = Tokenizer().tokenize(structure).tokens
+        first_b_center = tokens["center_coords"][tokens["asym_id"] == 1][0]
+        np.testing.assert_allclose(
+            first_b_center, [100.7 + (3.8 if crop else 0.0), 0.6, 0.0], atol=0.001
+        )
+        reloaded = mmcif_from_block(
+            gemmi.cif.read_string(to_mmcif(structure)).sole_block(),
+            mols,
+            use_assembly=False,
+        )
+        np.testing.assert_allclose(
+            reloaded.data.coords["coords"], structure.coords["coords"], atol=0.001
+        )

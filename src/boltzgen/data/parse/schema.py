@@ -1934,6 +1934,19 @@ class YamlDesignParser:
             self._struct_cache[cache_key] = deepcopy(parsed)
 
         structure = parsed.data
+        # YAML design operations use the reference model. Select it before
+        # cropping or combining files so later models cannot replace other atoms.
+        if len(structure.ensemble) > 1:
+            ensemble = structure.ensemble[:1].copy()
+            start = ensemble["atom_coord_idx"][0]
+            count = ensemble["atom_num"][0]
+            assert count == len(structure.atoms)
+            ensemble["atom_coord_idx"] = 0
+            structure = replace(
+                structure,
+                coords=structure.coords[start : start + count].copy(),
+                ensemble=ensemble,
+            )
         num_res = len(structure.residues)
 
         # Construct include mask from include entries
