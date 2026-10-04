@@ -171,6 +171,12 @@ Only ESMFold2's structural features and the selected ESMC representations are
 cropped. Chains omitted entirely from the modeled complex are not encoded.
 This happens automatically and requires no additional scaffold YAML settings.
 
+An explicit `fuse` operation assembles the selected segments into one physical
+chain. ESMC encodes that assembled sequence, including any inserted linkers,
+and its source positions refer to the assembled construct. Metadata labels this
+as `context_mode: fused_construct`. Cropping without `fuse` keeps the ordinary
+full-source rule above. No additional YAML setting is needed.
+
 To score a different full sequence, provide it as the source input or through
 the full-sequence mapping or context sidecar described below. Selection of
 residues alone never changes the full-sequence context into a shorter molecule.

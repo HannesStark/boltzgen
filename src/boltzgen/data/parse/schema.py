@@ -1761,7 +1761,9 @@ class YamlDesignParser:
                     res_end = chain["res_idx"].item() + chain["res_num"].item()
                     residues = data.residues[res_start:res_end]
                     residue = residues[residues["res_idx"] == r1]
-                    r1 = res_start + residue["res_idx"].item()
+                    r1 = res_start + np.flatnonzero(
+                        residues["res_idx"] == r1
+                    ).item()
 
                     atom_start = residue["atom_idx"].item()
                     atom_end = residue["atom_idx"].item() + residue["atom_num"].item()
@@ -1791,7 +1793,9 @@ class YamlDesignParser:
                     res_end = chain["res_idx"].item() + chain["res_num"].item()
                     residues = data.residues[res_start:res_end]
                     residue = residues[residues["res_idx"] == r2]
-                    r2 = res_start + residue["res_idx"].item()
+                    r2 = res_start + np.flatnonzero(
+                        residues["res_idx"] == r2
+                    ).item()
 
                     atom_start = residue["atom_idx"].item()
                     atom_end = residue["atom_idx"].item() + residue["atom_num"].item()

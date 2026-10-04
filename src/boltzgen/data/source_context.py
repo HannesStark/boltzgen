@@ -172,7 +172,7 @@ def insert(context: dict, chain_id: str, position: int, count: int) -> None:
 
 
 def merge(context: dict, incoming: dict, before: Structure, fusion: str | None) -> dict:
-    """Follow structure concatenation/fusion without inferring sequence from a crop."""
+    """Preserve source context, or assemble the construct explicitly declared by fuse."""
     result = deepcopy(context)
     if fusion is None:
         result["chains"].extend(deepcopy(incoming["chains"]))
@@ -180,18 +180,14 @@ def merge(context: dict, incoming: dict, before: Structure, fusion: str | None) 
     index = before.chains["name"].tolist().index(fusion)
     left = result["chains"][index]
     (right,) = incoming["chains"]
-    if any(c["indices"] != list(range(len(c["residue_names"]))) for c in (left, right)):
-        # A fusion of spatial crops does not specify the omitted sequence of the
-        # resulting physical construct. Preserve that fact instead of inventing it.
-        left["complete"] = False
-        left["reason"] = (
-            "Fusion of cropped chains requires explicit full construct context"
-        )
+    # Unlike spatial selection alone, fuse explicitly joins the selected
+    # segments into one construct. Its ESMC sequence follows that assembly.
     left["residue_names"] = [left["residue_names"][i] for i in left["indices"]] + [
         right["residue_names"][i] for i in right["indices"]
     ]
     left["indices"] = list(range(len(left["residue_names"])))
     left["complete"] = left["complete"] and right["complete"]
+    left["context_mode"] = "fused_construct"
     left["source"] += "+" + right["source"]
     if right.get("replacement_sources"):
         left.setdefault("replacement_sources", []).extend(right["replacement_sources"])

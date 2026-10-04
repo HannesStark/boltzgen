@@ -136,9 +136,9 @@ inverse-fold design-mask override can restrict the original
 design region but cannot expand it. This is an alternative sequence model;
 equivalent design quality across BoltzGen protocols has not been established.
 
-Per-residue amino-acid constraints are supported. `--only_inverse_fold` also
-honors YAML `symmetric_group` sequence tying; the existing generated-file
-loader does not restore symmetry groups from CIF/NPZ outputs.
+Per-residue amino-acid constraints and YAML `symmetric_group` sequence tying
+are supported, both with `--only_inverse_fold` and after backbone generation.
+The generated NPZ metadata preserves symmetry groups when designs are reloaded.
 Tied positions use the intersection of their allowed amino acids;
 incompatible constraints raise an error. As with BoltzIF, a per-position
 constraint that conflicts with all globally allowed residues is relaxed with

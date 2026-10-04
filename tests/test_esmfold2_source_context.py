@@ -791,3 +791,98 @@ def test_symmetric_replacements_share_lengths_in_original_coordinates(
     assert np.array_equal(
         parsed.design_info.res_ss_types[:count], parsed.design_info.res_ss_types[count:]
     )
+
+
+@pytest.mark.parametrize("selection", ["1..3", "1..2,5..6"])
+def test_explicit_fusion_uses_assembled_sequence(parser_and_mols, tmp_path, selection):
+    parser, mols = parser_and_mols
+    source = parser.parse_boltzgen_schema(
+        "source", {"entities": [{"protein": {"id": "A", "sequence": "AGCMEAGCME"}}]},
+        mols, tmp_path, tmp_path,
+    )
+    source.structure.atoms["coords"] = np.arange(len(source.structure.atoms) * 3).reshape(-1, 3) + 1
+    source.structure.coords["coords"] = source.structure.atoms["coords"]
+    path = tmp_path / "source.cif"
+    path.write_text(to_mmcif(source.structure))
+    fragment = {"file": {"path": str(path), "include": [{"chain": {"id": "A", "res_index": selection}}]}}
+    cropped = parser.parse_boltzgen_schema("crop", {"entities": [fragment]}, mols, tmp_path, tmp_path)
+    full_names = source.source_context["chains"][0]["residue_names"]
+    assert cropped.source_context["chains"][0]["residue_names"] == full_names
+    fused = parser.parse_boltzgen_schema(
+        "fusion", {"entities": [fragment, {"protein": {"id": "L", "fuse": "A", "sequence": "GG"}}]},
+        mols, tmp_path, tmp_path,
+    )
+    validate_context(fused.source_context)
+    context = fused.source_context["chains"][0]
+    expected = cropped.structure.residues["name"].tolist() + ["GLY", "GLY"]
+    assert context["residue_names"] == expected == fused.structure.residues["name"].tolist()
+    assert context["indices"] == list(range(len(expected)))
+    assert context["context_mode"] == "fused_construct"
+    # A declared fusion does not make an undeclared/incomplete source trustworthy.
+    incomplete = deepcopy(cropped.source_context)
+    incomplete["chains"][0]["complete"] = False
+    joined = source_context.merge(incomplete, source_context.from_structure(source.structure), cropped.structure, "A")
+    with pytest.raises(ValueError, match="Full sequence is unavailable"):
+        validate_context(joined)
+
+
+def test_fusion_reassembles_source_around_linker(parser_and_mols, tmp_path):
+    parser, mols = parser_and_mols
+    source = parser.parse_boltzgen_schema(
+        "source", {"entities": [{"protein": {"id": "A", "sequence": "AGCMEAGCME"}}]},
+        mols, tmp_path, tmp_path,
+    )
+    source.structure.atoms["coords"] = np.arange(len(source.structure.atoms) * 3).reshape(-1, 3) + 1
+    source.structure.coords["coords"] = source.structure.atoms["coords"]
+    path = tmp_path / "source.cif"
+    path.write_text(to_mmcif(source.structure))
+    entities = [
+        {"file": {"path": str(path), "include": [{"chain": {"id": "A", "res_index": "1..3"}}]}},
+        {"protein": {"id": "L", "fuse": "A", "sequence": "GG"}},
+        {"file": {"path": str(path), "fuse": "A", "include": [{"chain": {"id": "A", "res_index": "4.."}}]}},
+    ]
+    fused = parser.parse_boltzgen_schema("fusion", {"entities": entities}, mols, tmp_path, tmp_path)
+    validate_context(fused.source_context)
+    context = fused.source_context["chains"][0]
+    full = source.source_context["chains"][0]["residue_names"]
+    assert context["residue_names"] == full[:3] + ["GLY", "GLY"] + full[3:]
+    assert context["indices"] == list(range(12))
+    assert context["context_mode"] == "fused_construct"
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_cropped_file_bonds_survive_mmcif_roundtrip(parser_and_mols, tmp_path, reverse):
+    parser, mols = parser_and_mols
+    source = parser.parse_boltzgen_schema(
+        "source", {"entities": [{"protein": {"id": ["A", "B"], "sequence": "AGCGAC"}}]},
+        mols, tmp_path, tmp_path,
+    )
+    source.structure.atoms["coords"] = np.arange(len(source.structure.atoms) * 3).reshape(-1, 3) + 1
+    source.structure.coords["coords"] = source.structure.atoms["coords"]
+    path = tmp_path / "source.cif"
+    path.write_text(to_mmcif(source.structure))
+    endpoints = [["A", 3, "SG"], ["B", 6, "SG"]]
+    if reverse:
+        endpoints.reverse()
+    spec = {"entities": [{"file": {"path": str(path), "include": [
+        {"chain": {"id": "A", "res_index": "3..6"}},
+        {"chain": {"id": "B", "res_index": "5..6"}},
+    ]}}], "constraints": [{"bond": dict(zip(("atom1", "atom2"), endpoints))}]}
+    parsed = parser.parse_boltzgen_schema("crop", spec, mols, tmp_path, tmp_path)
+    assert len(parsed.structure.bonds) == 1
+    bond = parsed.structure.bonds[0]
+    assert {int(bond["res_1"]), int(bond["res_2"])} == {0, 5}
+    for endpoint in (1, 2):
+        residue = parsed.structure.residues[bond[f"res_{endpoint}"]]
+        assert residue["name"] == "CYS"
+        assert residue["atom_idx"] <= bond[f"atom_{endpoint}"] < residue["atom_idx"] + residue["atom_num"]
+    saved = tmp_path / "saved.cif"
+    saved.write_text(to_mmcif(parsed.structure))
+    reloaded = parser.parse_boltzgen_schema(
+        "reloaded", {"entities": [{"file": {"path": str(saved)}}]}, mols, tmp_path, tmp_path,
+    )
+    assert len(reloaded.structure.bonds) == 1
+    restored = reloaded.structure.bonds[0]
+    for endpoint in (1, 2):
+        assert reloaded.structure.residues[restored[f"res_{endpoint}"]]["name"] == "CYS"
+        assert reloaded.structure.atoms[restored[f"atom_{endpoint}"]]["name"] == "SG"
