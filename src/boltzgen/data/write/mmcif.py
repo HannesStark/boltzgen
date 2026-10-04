@@ -312,7 +312,7 @@ def add_boltzgen_metadata(structure, block, old_to_new_chainid):
             )
 
 
-def add_design_cols(structure, block, colors, old_to_new_chainid):
+def add_design_cols(structure, block, colors, old_to_new_chainid: dict[str, str]):
     plddt_loop = block.init_loop(
         "_ma_qa_metric.",
         [
@@ -364,7 +364,7 @@ def add_design_cols(structure, block, colors, old_to_new_chainid):
             )
 
 
-def add_plddt_cols(structure, block, old_to_new_chainid):
+def add_plddt_cols(structure, block, old_to_new_chainid: dict[str, str]):
     plddt_loop = block.init_loop(
         "_ma_qa_metric.",
         [
@@ -419,7 +419,7 @@ def add_plddt_cols(structure, block, old_to_new_chainid):
 
 
 def add_poly_seq_scheme_cols(
-    structure, block, chain_to_entity_id, label_seq_dict, old_to_new_chainid
+    structure, block, chain_to_entity_id, label_seq_dict, old_to_new_chainid: dict[str, str]
 ):
     poly_seq_scheme_cols = [
         "asym_id",
