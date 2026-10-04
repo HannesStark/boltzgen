@@ -2,7 +2,9 @@
 # ruff: noqa: INP001
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import Mock
 
 import gemmi
 import numpy as np
@@ -16,6 +18,7 @@ from boltzgen.model.models.boltz import Boltz
 from boltzgen.model.modules.masker import BoltzMasker
 from boltzgen.task.analyze.analyze_utils import get_best_folding_sample
 from boltzgen.task.predict.data_from_generated import collate
+from boltzgen.task.predict.predict import Predict
 from boltzgen.task.predict.writer import FoldingWriter
 
 
@@ -204,6 +207,114 @@ class _InferenceBoundary:
 
     def __call__(self, *_args: object, **_kwargs: object) -> dict[str, Any]:
         return self.output
+
+
+@pytest.mark.parametrize("keys_dict_out", [None, [], ["plddt"]])
+@pytest.mark.parametrize("mask", [False, True])
+def test_default_and_reduced_prediction_keys_preserve_ranking(
+    keys_dict_out: list[str] | None, mask: bool, tmp_path: Path
+) -> None:
+    batch = collate([_features(padded=True, missing_atom=False, ligand=False)])
+    output = _forward_output(batch, 2)
+    output["design_to_target_iptm"][1] = 0.9
+    output["design_ptm"][1] = 0.8
+    writer = FoldingWriter(str(tmp_path))
+    task = Predict(
+        data=None,
+        writer=writer,
+        checkpoint="unused.ckpt",
+        output=str(tmp_path),
+        name="folding",
+        recycling_steps=0,
+        sampling_steps=2,
+        diffusion_samples=2,
+        keys_dict_out=keys_dict_out,
+    )
+    boundary = _InferenceBoundary(output, 2, mask=mask)
+    boundary.predict_args = task.predict_args
+    prediction = Boltz.predict_step(boundary, batch)
+    writer.write_on_batch_end(prediction=prediction, batch=batch)
+
+    with np.load(writer.outdir / "contract.npz") as archive:
+        selected = get_best_folding_sample(archive)
+    np.testing.assert_array_equal(selected["coords"], output["sample_atom_coords"][1])
+    block = gemmi.cif.read_file(
+        str(writer.refold_cif_dir / "contract.cif")
+    ).sole_block()
+    x = np.array(block.find_values("_atom_site.Cartn_x"), dtype=float)
+    np.testing.assert_allclose(x, output["sample_atom_coords"][1, :8, 0])
+
+
+@pytest.mark.parametrize("status", ["exception", "skip", "success"])
+def test_refolding_validation_stops_after_failed_or_skipped_prediction(
+    status: str, tmp_path: Path
+) -> None:
+    pytest.importorskip(
+        "wandb", reason="Refolding validation uses optional dev dependencies"
+    )
+    from boltzgen.model.validation.refolding import RefoldingValidator  # noqa: PLC0415
+
+    features = _features(padded=False, missing_atom=False, ligand=False)
+    if status != "success":
+        features[status] = True
+    folded_output = _forward_output(collate([features]), 1)
+    boundary = _InferenceBoundary(folded_output, 1, mask=False)
+    validator = object.__new__(RefoldingValidator)
+    validator.dataset_to_logname = {0: "val_monomer"}
+    validator.inverse_fold = True
+    validator.writer = FoldingWriter(design_dir=None)
+    validator.design_val_step = Mock(return_value=True)
+    validator.init_folding_model = Mock()
+    validator.init_affinity_model = Mock()
+    validator.affinity_model = None
+    validator.folding_model = SimpleNamespace(
+        predict_step=lambda batch, batch_idx: Boltz.predict_step(
+            boundary, batch, batch_idx
+        )
+    )
+
+    def set_design_dir(design_dir: str) -> None:
+        validator.design_dir = design_dir
+        validator.writer.init_outdir(design_dir)
+
+    validator.set_design_dir = set_design_dir
+    compute_metrics = Mock(side_effect=StopIteration("analysis reached"))
+    validator.analyze_task = SimpleNamespace(
+        data=SimpleNamespace(
+            predict_set=SimpleNamespace(get_feat=Mock(return_value=features)),
+            transfer_batch_to_device=Mock(),
+        ),
+        compute_metrics=compute_metrics,
+    )
+    model = SimpleNamespace(
+        device=torch.device("cpu"),
+        trainer=SimpleNamespace(default_root_dir=tmp_path, global_rank=0),
+        current_epoch=0,
+        global_step=0,
+        log=Mock(),
+    )
+    args = {
+        "model": model,
+        "batch": {"id": ["contract"]},
+        "out": {"feat_masked": {"design_mask": features["design_mask"].unsqueeze(0)}},
+        "idx_dataset": 0,
+        "dataloader_idx": 0,
+        "n_samples": 1,
+        "batch_idx": 0,
+    }
+    if status == "success":
+        with pytest.raises(StopIteration, match="analysis reached"):
+            validator.process(**args)
+        compute_metrics.assert_called_once()
+        validator.init_affinity_model.assert_called_once()
+        assert (validator.writer.refold_cif_dir / "contract.cif").exists()
+    else:
+        validator.process(**args)
+        compute_metrics.assert_not_called()
+        validator.init_affinity_model.assert_not_called()
+        assert list(validator.writer.outdir.iterdir()) == []
+        assert list(validator.writer.refold_cif_dir.iterdir()) == []
+    assert validator.writer.failed == int(status == "exception")
 
 
 @pytest.mark.parametrize(("samples", "winner"), [(1, 0), (2, 1), (5, 4)])

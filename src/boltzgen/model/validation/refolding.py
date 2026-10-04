@@ -227,6 +227,11 @@ class RefoldingValidator(design.DesignValidator):
 
         start = time.time()
         refolded = self.folding_model.predict_step(batch_gen, batch_idx=batch_idx)
+        # Failed/skipped predict_step results contain a scalar status only.
+        # Let the writer count failures, then avoid analyzing missing outputs.
+        if refolded.get("exception") is True or refolded.get("skip") is True:
+            self.writer.write_on_batch_end(prediction=refolded, batch=batch_gen)
+            return
 
         # Affinity prediction
         self.init_affinity_model(model, logname)

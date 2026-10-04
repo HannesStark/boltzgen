@@ -1344,6 +1344,8 @@ class Boltz(LightningModule):
                     pred_dict["pae"] = out["pae"]
                     pred_dict["ptm"] = out["ptm"]
                     pred_dict["iptm"] = out["iptm"]
+                    pred_dict["design_to_target_iptm"] = out["design_to_target_iptm"]
+                    pred_dict["design_ptm"] = out["design_ptm"]
                     pred_dict["ligand_iptm"] = out["ligand_iptm"]
                     pred_dict["protein_iptm"] = out["protein_iptm"]
                     pred_dict["pair_chains_iptm"] = out["pair_chains_iptm"]
