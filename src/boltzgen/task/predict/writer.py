@@ -114,7 +114,8 @@ class FoldingWriter(BasePredictionWriter):
         structure, _, _ = Structure.from_feat(prediction_out)
         if prediction.get("token_level_confidence", True):
             plddt_atom = (
-                prediction_out["atom_to_token"].float() @ prediction_out["plddt"].float()
+                prediction_out["atom_to_token"].float()
+                @ prediction_out["plddt"].float()
             )
         else:
             plddt_atom = prediction_out["plddt"].float()
