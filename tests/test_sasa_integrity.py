@@ -377,17 +377,20 @@ def test_analysis_matches_complete_chain_sasa(
 
 
 @pytest.mark.parametrize("absent", [(), ("CA",)])
+@pytest.mark.parametrize("distant_design", [False, True])
 def test_symmetric_target_override(
     dataset: FromGeneratedDataset,
     tmp_path: Path,
     analysis_template: Analyze,
     absent: tuple[str, ...],
+    distant_design: bool,
 ) -> None:
+    design_x = 100 if distant_design else 0
     specs = [
-        ResidueSpec("A", "GLY", (0, 0, 0), designed=True),
+        ResidueSpec("A", "GLY", (design_x, 0, 0), designed=True),
         ResidueSpec("A", "ALA", (3, 0, 0), absent=absent),
-        ResidueSpec("B", "GLY", (0, 5, 0), designed=True),
-        ResidueSpec("B", "ALA", (3, 5, 0), absent=absent),
+        ResidueSpec("B", "GLY", (design_x, 5, 0), designed=True),
+        ResidueSpec("B", "ALA", (3, 5, 0)),
     ]
     feat, directory = prepare(dataset, tmp_path / "symmetric", specs)
     metrics, refold = run_analysis(analysis_template, feat, directory, symmetric=True)
@@ -397,7 +400,10 @@ def test_symmetric_target_override(
         # A union of the redesigned GLY and fixed ALA atoms contains every atom
         # once, even when the complete-chain design mask overlaps the target.
         expected = get_delta_sasa(path, target, ~target)
-        assert expected[0] > 0
+        if distant_design:
+            assert expected[0] == 0
+        else:
+            assert expected[0] > 0
         assert metrics[f"delta_sasa_{suffix}"] == pytest.approx(expected[0])
 
 
