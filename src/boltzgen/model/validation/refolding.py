@@ -274,11 +274,17 @@ class RefoldingValidator(design.DesignValidator):
         if logname == "val_ligand" and self.ligand_plip:
             self.analyze_task.noncovalents_original = True
 
-        self.analyze_task.compute_metrics(
+        analyzed_sample_id = self.analyze_task.compute_metrics(
             sample_id=sample_id,
             suffix=Path(f"rank{model.trainer.global_rank}"),
             design_dir=Path(design_dir),
         )
+
+        (Path(design_dir) / const.folding_dirname / f"{sample_id}.npz").unlink(
+            missing_ok=True
+        )
+        if analyzed_sample_id is None:
+            return
 
         data = np.load(self.analyze_task.metrics_dir / f"data_{sample_id}.npz")
         metrics = np.load(self.analyze_task.metrics_dir / f"metrics_{sample_id}.npz")
@@ -289,10 +295,6 @@ class RefoldingValidator(design.DesignValidator):
             k: v.item() if v.shape == () else torch.tensor(v)
             for k, v in metrics.items()
         }
-
-        (Path(design_dir) / const.folding_dirname / f"{sample_id}.npz").unlink(
-            missing_ok=True
-        )
 
         if metrics is not None:
             self.all_refold_metrics[logname].append(metrics)
