@@ -1,4 +1,5 @@
 import json
+from importlib.resources import files
 from boltzgen.utils.quiet import quiet_startup
 
 
@@ -503,8 +504,8 @@ class Filter(Task):
             # These composite calibrations describe Boltz2 interaction metrics;
             # applying them to ESMFold2 ipSAE would imply unmeasured calibration.
             return
-        norm_path = Path("src/boltzgen/resources/metrics_normalization.json")
-        if not norm_path.exists():
+        norm_path = files("boltzgen") / "resources" / "metrics_normalization.json"
+        if not norm_path.is_file():
             return
 
         with norm_path.open("r") as f:

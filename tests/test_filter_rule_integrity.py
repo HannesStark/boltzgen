@@ -159,13 +159,10 @@ def test_independent_rules_count_and_rank_csv(
 @pytest.mark.parametrize("reverse", [False, True])
 def test_repeated_feature_counts_flags_ranking_and_penalties(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     rules: list[tuple[bool, float]],
     passed_rule_counts: list[int],
     reverse: bool,
 ) -> None:
-    # absolute_metrics currently resolves its normalization file from the repo root.
-    monkeypatch.chdir(Path(__file__).resolve().parents[1])
     configured = [
         {"feature": "x", "lower_is_better": low, "threshold": threshold}
         for low, threshold in rules
@@ -220,9 +217,8 @@ def test_repeated_feature_counts_flags_ranking_and_penalties(
 
 @pytest.mark.parametrize("negative", [False, True])
 def test_fraction_penalties_keep_length_exemption_per_rule(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, negative: bool
+    tmp_path: Path, negative: bool
 ) -> None:
-    monkeypatch.chdir(Path(__file__).resolve().parents[1])
     task = _load_filter(
         tmp_path,
         pd.DataFrame(
@@ -251,9 +247,8 @@ def test_fraction_penalties_keep_length_exemption_per_rule(
 
 @pytest.mark.parametrize("reverse", [False, True])
 def test_failed_rules_worsen_negative_absolute_scores(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reverse: bool
+    tmp_path: Path, reverse: bool
 ) -> None:
-    monkeypatch.chdir(Path(__file__).resolve().parents[1])
     rules = [
         {"feature": "x", "lower_is_better": False, "threshold": 0.1},
         {"feature": "x", "lower_is_better": False, "threshold": 0.4},
@@ -281,6 +276,25 @@ def test_failed_rules_worsen_negative_absolute_scores(
     np.testing.assert_allclose(scores.iloc[:3] / scores.iloc[0], [1.0, 10.0, 100.0])
     np.testing.assert_allclose(scores.iloc[3:] / scores.iloc[3], [1.0, 0.1, 0.01])
     assert task.df["num_filters_passed"].tolist() == [5, 4, 3] * 2
+
+
+def test_affinity_scores_available_outside_source_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = _load_filter(
+        tmp_path,
+        pd.DataFrame({"x": [1.0, 0.0]}),
+        [{"feature": "x", "lower_is_better": False, "threshold": 0.5}],
+    )
+    task.filter_df()
+    monkeypatch.chdir(tmp_path)
+    task.absolute_metrics()
+    assert "absolute_score" in task.df
+    assert "structure_confidence" in task.df
+    assert task.df["absolute_score"].iloc[0] > 0
+    np.testing.assert_allclose(
+        task.df["absolute_score"] / task.df["absolute_score"].iloc[0], [1.0, 0.1]
+    )
 
 
 def test_builtin_rules_count_successes_after_failures(tmp_path: Path) -> None:
