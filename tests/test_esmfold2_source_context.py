@@ -886,3 +886,19 @@ def test_cropped_file_bonds_survive_mmcif_roundtrip(parser_and_mols, tmp_path, r
     for endpoint in (1, 2):
         assert reloaded.structure.residues[restored[f"res_{endpoint}"]]["name"] == "CYS"
         assert reloaded.structure.atoms[restored[f"atom_{endpoint}"]]["name"] == "SG"
+
+
+def test_shipped_4g37_preserves_complete_deposited_sequence():
+    from hashlib import sha256
+    from pathlib import Path
+
+    path = Path(__file__).parents[1] / "example/small_molecule_from_file_and_smiles/4g37.pdb"
+    structure = gemmi.read_structure(str(path))
+    structure.setup_entities()
+    sequence = list(structure.entities[0].full_sequence)
+    # PDB SEQRES is fixed-width: stripping its padding corrupts the final row
+    # in Gemmi 0.6.5. This is the deposited 4G37 sequence, including missing residues.
+    assert len(sequence) == 555
+    assert sha256(" ".join(sequence).encode()).hexdigest() == (
+        "bb1960c8759d16b2122962e79992ac1178f90309e62f5d8eed4544c9d99db06b"
+    )
