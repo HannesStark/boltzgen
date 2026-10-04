@@ -1,7 +1,8 @@
 entities:
   - protein:
       id: B
-      sequence: 1..3C1..2C1..3 ###1to3 residues before first CYS, 1to2 residues, second CYS, followed by 1to3 residues
+      # Keep both covalently linked cysteines at the positions used below.
+      sequence: 1C1C1..3
   - file:
       path: 4g37.pdb 
 
@@ -18,7 +19,8 @@ constraints:
     ## constraints from the file.
     # covalent bond between C3 in XLX (from CCD) and SG in chain A of 4g37.pdb
   - bond:
-      atom1: [A, 105, SG]
+      # Residue positions count from the full deposited SEQRES sequence.
+      atom1: [A, 113, SG]
       atom2: [C, 1, C3]
     # additional covalent bond between C11 in XLX (from CCD) and SG in chain B (design)
   - bond:
@@ -27,7 +29,7 @@ constraints:
     ## constraints from the smiles.
   - bond:
     # covalent bond between C1 in D (from smiles) and OG in chain A of 4g37.pdb
-      atom1: [A, 339, OG]
+      atom1: [A, 352, OG]
       atom2: [D, 1, C1]
     # additional covalent bond between C6 in D (from smiles) and SG in chain B (design)
   - bond:

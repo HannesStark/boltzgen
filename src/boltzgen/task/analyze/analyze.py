@@ -51,6 +51,12 @@ from boltzgen.data import const
 from boltzgen.task.task import Task
 from boltzgen.data.data import Structure
 from boltzgen.data.write.mmcif import to_mmcif
+from boltzgen.task.esmfold2.contract import (
+    SCORE_DIR,
+    file_sha256,
+    fingerprint,
+    load_result,
+)
 
 
 class Analyze(Task):
@@ -71,6 +77,7 @@ class Analyze(Task):
         backbone_fold_metrics: bool = False,
         allatom_fold_metrics: bool = True,
         affinity_metrics: bool = False,
+        esmfold2_metrics: bool = False,
         noncovalents_original: bool = False,
         noncovalents_refolded: bool = False,
         diversity_original: bool = False,
@@ -137,6 +144,7 @@ class Analyze(Task):
         self.compute_lddts = compute_lddts
         self.run_clustering = run_clustering
         self.affinity_metrics = affinity_metrics
+        self.esmfold2_metrics = esmfold2_metrics
         self.fold_metrics = backbone_fold_metrics or allatom_fold_metrics
         self.backbone_fold_metrics = backbone_fold_metrics
         self.allatom_fold_metrics = allatom_fold_metrics
@@ -361,7 +369,12 @@ class Analyze(Task):
             df = self.run_foldseek_clustering(df)
         # Write individual metrics to disk
         csv_path = Path(self.design_dir) / f"aggregate_metrics_{self.name}.csv"
-        df.to_csv(csv_path, float_format="%.5f", index=False)
+        # Polymer score provenance is checked at full precision by filtering.
+        df.to_csv(
+            csv_path,
+            float_format="%.17g" if self.esmfold2_metrics else "%.5f",
+            index=False,
+        )
 
         # Store ca coords and seq in a pickle file for later usage in e.g. diversity aware filtering
         data_rows = []
@@ -566,6 +579,22 @@ class Analyze(Task):
             "designed_sequence": design_seq,
             "designed_chain_sequence": design_chain_seq,
         }
+
+        if self.esmfold2_metrics:
+            import json
+
+            score_dir = self.design_dir / SCORE_DIR
+            request = json.loads((score_dir / f"{feat['id']}.input.json").read_text())
+            if request["design_sha256"] != file_sha256(path):
+                raise ValueError(
+                    f"ESMFold2 input for {path} is stale; rerun esmfold2_scoring"
+                )
+            result = load_result(score_dir / f"{feat['id']}.json", fingerprint(request))
+            metrics.update(result["metrics"])
+            metrics["esmfold2_input_hash"] = result["input_hash"]
+            metrics["esmfold2_selected_sample"] = result["selected_sample"]
+            if result.get("scoring_mode") == "redesign":
+                metrics["esmfold2_score_metric"] = result["score_metric"]
 
         # Add per-chain sequences to csv when designing multiple chains
         design_token_indices = torch.where(feat["design_mask"].bool() & feat["token_pad_mask"].bool())[0]

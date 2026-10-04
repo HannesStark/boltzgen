@@ -1,0 +1,35 @@
+_target_: boltzgen.task.esmfold2.score.ESMFold2Score
+
+design_dir: null
+python: null
+devices: 1
+reuse: false
+source_context_dir: null
+scoring_target_chains: null
+scoring_mode: binder
+num_loops: 20
+sampling_steps: 200
+diffusion_samples: 5
+lm_dropout: 0.3
+seed: 0
+
+data:
+  _target_: boltzgen.task.predict.data_from_generated.FromGeneratedDataModule
+  design_dir: ${design_dir}
+  return_native: false
+  target_templates: false
+  fail_if_no_designs: true
+  extra_features: [tokenized]
+  cfg:
+    _target_: boltzgen.task.predict.data_from_generated.DataConfig
+    tokenizer:
+      _target_: boltzgen.data.tokenize.tokenizer.Tokenizer
+      atomize_modified_residues: false
+    featurizer:
+      _target_: boltzgen.data.feature.featurizer.Featurizer
+    moldir: null
+    num_targets: null
+    samples_per_target: 1000000000000000
+    batch_size: 1
+    num_workers: 0
+    pin_memory: false

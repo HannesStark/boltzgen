@@ -4,6 +4,7 @@ Set BOLTZGEN_TEST_MOLDIR and BOLTZGEN_TEST_SOLUBLEMPNN_CHECKPOINT to run the
 CPU integration tests without network access during pytest.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -24,6 +25,8 @@ from boltzgen.cli.boltzgen import (
     build_parser,
     configure_command,
     get_artifact_path,
+    protocol_configs,
+    run_command,
 )
 from boltzgen.data import const
 from boltzgen.model.modules.masker import BoltzMasker
@@ -32,6 +35,57 @@ from boltzgen.task.predict.writer import DesignWriter
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIGS = ROOT / "src/boltzgen/resources/config"
+
+
+@pytest.mark.parametrize("target_kind,target_sequence", [("protein", "AGCAAGCA"), ("rna", "ACGUACGU")])
+def test_symmetry_metadata_follows_design_only_crop(tmp_path, target_kind, target_sequence):
+    from types import SimpleNamespace
+
+    from boltzgen.data.feature.featurizer import Featurizer
+    from boltzgen.data.mol import load_canonicals
+    from boltzgen.data.tokenize.tokenizer import Tokenizer
+    from boltzgen.task.predict.data_from_generated import FromGeneratedDataset
+    from boltzgen.task.predict.data_from_yaml import PredictionDataset, collate
+
+    moldir = os.environ.get("BOLTZGEN_TEST_MOLDIR")
+    if moldir is None:
+        pytest.skip("Set BOLTZGEN_TEST_MOLDIR")
+    specification = tmp_path / "input.yaml"
+    specification.write_text(
+        "entities:\n"
+        "  - protein: {id: [A, B], sequence: 6, symmetric_group: 1}\n"
+        f"  - {target_kind}: {{id: R, sequence: {target_sequence}}}\n"
+    )
+    canonicals = load_canonicals(Path(moldir))
+    config = SimpleNamespace(
+        yaml_path=str(specification), tokenizer=Tokenizer(),
+        featurizer=Featurizer(), multiplicity=1,
+    )
+    batch = collate([PredictionDataset(config, canonicals.copy(), moldir, atom14=False)[0]])
+    prediction = dict(batch)
+    prediction["coords"] = torch.arange(batch["coords"][:, 0].numel(), dtype=torch.float32).reshape_as(batch["coords"][:, 0]) + 1
+    prediction["exception"] = False
+    output = tmp_path / "generated"
+    writer = DesignWriter(str(output), res_atoms_only=False, atom14=False)
+    writer.write_on_batch_end(prediction=prediction, batch=batch, sample_id="symmetry")
+    assert writer.failed == 0
+    source = output / "symmetry_0.cif"
+    reader = FromGeneratedDataset(
+        [source], [source.with_suffix(".npz")], [source], moldir, canonicals,
+        Tokenizer(), Featurizer(), extra_mol_dir=output / const.molecules_dirname,
+        return_designfolding=True, design=False,
+    )
+    features = reader[0]
+    assert len(features["symmetric_group"]) == len(features["design_mask"]) == 12
+    assert (features["symmetric_group"] == 1).all()
+    assert (features["mol_type"] == const.chain_type_ids["PROTEIN"]).all()
+
+    with np.load(source.with_suffix(".npz")) as archive:
+        metadata = {key: archive[key] for key in archive.files if key != "symmetric_group"}
+    np.savez_compressed(source.with_suffix(".npz"), **metadata)
+    legacy = reader[0]
+    assert len(legacy["symmetric_group"]) == 12
+    assert (legacy["symmetric_group"] == 0).all()
 
 
 @pytest.mark.parametrize("only", [False, True])
@@ -135,6 +189,44 @@ def test_pipeline_selects_model_without_fetching_other_weights(
     else:
         assert config.data.skip_existing
         assert config.data.skip_existing_kind == "inverse_fold"
+
+
+@pytest.mark.parametrize("protocol", sorted(protocol_configs))
+@pytest.mark.parametrize("command", ["configure", "run"])
+def test_only_inverse_fold_cannot_skip_inverse_folding_early(
+    tmp_path, monkeypatch, protocol, command
+):
+    from boltzgen.cli import boltzgen as cli
+
+    args = build_parser().parse_args(
+        [
+            command,
+            "input.yaml",
+            "--output",
+            str(tmp_path / "out"),
+            "--protocol",
+            protocol,
+            "--only_inverse_fold",
+            "--skip_inverse_folding",
+        ]
+    )
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Conflicting inverse-fold flags must fail before setup")
+
+    monkeypatch.setattr(cli, "get_artifact_path", unexpected)
+    monkeypatch.setattr(cli, "load_canonicals", unexpected)
+    monkeypatch.setattr(cli, "check_design_specs", unexpected)
+    monkeypatch.setattr(torch.cuda, "get_device_capability", unexpected)
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        if command == "run":
+            run_command(args)
+        else:
+            configure_command(args)
+    with pytest.raises(ValueError, match="cannot be combined"):
+        BinderDesignPipeline(args, tmp_path)
+    assert not args.output.exists()
 
 
 def test_solublempnn_download_cache_and_force(tmp_path, monkeypatch):
@@ -375,6 +467,26 @@ def test_yaml_homomer_tying_writes_matching_sequences(real_task, tmp_path):
     assert len(sequences) == 2
     assert sequences[0] == sequences[1]
 
+    reloaded_config = OmegaConf.load(CONFIGS / "inverse_fold_solublempnn.yaml")
+    reloaded_config.output = str(tmp_path / "homomer_reloaded")
+    reloaded_config.checkpoint = real_task.checkpoint
+    reloaded_config.data.cfg.moldir = real_task.data.cfg.moldir
+    reloaded_config.data.cfg.num_workers = 0
+    reloaded_config.data.cfg.pin_memory = False
+    reloaded_config.data.design_dir = task.output
+    reloaded_config.trainer.accelerator = "cpu"
+    reloaded_config.trainer.logger = False
+    reloaded_config.trainer.enable_progress_bar = False
+    reloaded = hydra.utils.instantiate(reloaded_config)
+    loaded = next(iter(reloaded.data.predict_dataloader()))
+    assert torch.equal(loaded["symmetric_group"], batch["symmetric_group"])
+    reloaded.run()
+    assert reloaded.writer.failed == 0
+    structure = gemmi.read_structure(str(next(Path(reloaded.output).glob("*.cif"))))
+    sequences = [[residue.name for residue in chain][9:20] for chain in structure[0]]
+    assert len(sequences) == 2
+    assert sequences[0] == sequences[1]
+
 
 def test_memory_failure_skips_one_sample_and_continues(real_task, monkeypatch):
     batch = next(iter(real_task.data.predict_dataloader()))
@@ -472,6 +584,9 @@ def test_generated_unknown_backbone_is_redesigned(real_task, tmp_path):
 @pytest.mark.parametrize("real_task", [None, "RPB"], indirect=True)
 def test_real_weights_write_and_reload_for_downstream_folding(real_task, tmp_path):
     """Exercise parser -> featurizer -> sampler -> CIF/NPZ writer -> fold loader."""
+    original = json.loads(
+        next(iter(real_task.data.predict_dataloader()))["source_context"][0]
+    )
     real_task.run()
     assert real_task.writer.failed == 0
     output = Path(real_task.output)
@@ -513,12 +628,28 @@ def test_real_weights_write_and_reload_for_downstream_folding(real_task, tmp_pat
     ).all()
     with np.load(next(output.glob("*.npz"))) as metadata:
         assert metadata["design_mask"].sum() == int(designed.sum())
+        first_context = json.loads(str(metadata["source_context"].item()))
         expected_ligand_tokens = (
             metadata["mol_type"] == const.chain_type_ids["NONPOLYMER"]
         ).sum()
     assert (
         batch["mol_type"] == const.chain_type_ids["NONPOLYMER"]
     ).sum() == expected_ligand_tokens
+    final_context = json.loads(batch["source_context"][0])
+    protein = original["chains"][0]
+    assert len(protein["residue_names"]) > len(protein["indices"])
+    design_positions = designed[0, :len(protein["indices"])].nonzero().flatten().tolist()
+    for context, identity in [(first_context, "ALA"), (final_context, "GLY")]:
+        for index, (before, after) in enumerate(zip(
+            original["chains"], context["chains"], strict=True
+        )):
+            assert after["indices"] == before["indices"]
+            expected_names = before["residue_names"].copy()
+            if index == 0:
+                for position in design_positions:
+                    expected_names[before["indices"][position]] = identity
+            assert after["residue_names"] == expected_names
+            assert after["complete"] == before["complete"]
     if expected_ligand_tokens:
         # Check ligand identity and its pose relative to the protein backbone
         # across serialization and a second inverse-folding pass.

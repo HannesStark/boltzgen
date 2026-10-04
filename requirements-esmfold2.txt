@@ -1,0 +1,5 @@
+# Maintainer inputs for the automatically provisioned ESMFold2 runtime.
+# Regenerate the packaged lock with:
+# uv pip compile requirements-esmfold2.txt --python-version 3.12 --universal --no-annotate --no-header -o src/boltzgen/resources/runtime/esmfold2.txt
+esm==3.4.1.post1
+numpy==2.0.2
