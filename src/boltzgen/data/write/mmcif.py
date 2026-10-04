@@ -419,7 +419,11 @@ def add_plddt_cols(structure, block, old_to_new_chainid: dict[str, str]):
 
 
 def add_poly_seq_scheme_cols(
-    structure, block, chain_to_entity_id, label_seq_dict, old_to_new_chainid: dict[str, str]
+    structure,
+    block,
+    chain_to_entity_id,
+    label_seq_dict,
+    old_to_new_chainid: dict[str, str],
 ):
     poly_seq_scheme_cols = [
         "asym_id",
