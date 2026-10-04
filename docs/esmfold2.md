@@ -8,6 +8,10 @@ affinity pipeline and ranking. Protocol selection is explicit: a ligand-only
 target in an `*-anything` protocol raises an error directing you to
 `protein-small_molecule`.
 
+A polymer chain with residues selected for design belongs to the binder;
+fixed polymer chains are target partners. A covalent link does not change
+those roles, even when the linked chains are refolded together.
+
 ESMFold2 replaces the interface iPTM and minimum-interface-PAE ranking terms,
 including the ranking tie-breaker. Binder pTM, physical metrics, diversity
 selection, and Boltz2 complex/binder-only structural checks remain in use.
@@ -201,8 +205,8 @@ entities:
       sequence: 60
 ```
 
-The declared sequence must match those input residues. Fusing spatial crops
-without declaring the full resulting construct is also insufficient context.
+The declared sequence must match those input residues. The same full-source
+sequence requirement applies to input files used by `fuse`.
 Use complete construct inputs or provide an explicit context sidecar.
 
 Old generated folders lack this information. Regenerate from the original
