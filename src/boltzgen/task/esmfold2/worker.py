@@ -259,7 +259,7 @@ def lm_dropout_context(model, probability: float):
 
 
 def run_request(model, builder, request: dict, output: Path, device: str) -> None:
-    """Run full-context ESMC, crop structural inputs, and choose highest ipSAE."""
+    """Run full-context ESMC, crop inputs, and select the highest protocol score."""
     full, full_infos = prepare_request(request, builder)
     cropped, infos, selected, audit = crop_features(full, full_infos, request["chains"])
     representatives = polymer_representatives(cropped, infos)

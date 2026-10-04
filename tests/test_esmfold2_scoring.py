@@ -460,6 +460,19 @@ def test_redesign_provenance_ranking_and_monomer_metric(tmp_path, metric):
     assert task.metrics == {REDESIGN_SCORE_KEY: 1}
     result_path = directory / "high.json"
     result = json.loads(result_path.read_text())
+    csv_path = tmp_path / "aggregate_metrics_analyze.csv"
+    other_metric = "esmfold2_ptm" if metric == SCORE_KEY else SCORE_KEY
+    rows[1]["esmfold2_score_metric"] = other_metric
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+    with pytest.raises(ValueError, match="metric is stale"):
+        task.load_dataframe()
+    mixed_result = dict(result, score_metric=other_metric)
+    mixed_result["metrics"] = {REDESIGN_SCORE_KEY: 0.9, other_metric: 0.9}
+    result_path.write_text(json.dumps(mixed_result))
+    with pytest.raises(ValueError, match="separate campaigns"):
+        task.load_dataframe()
+    rows[1]["esmfold2_score_metric"] = metric
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
     result["metrics"][REDESIGN_SCORE_KEY] = 0.5
     result_path.write_text(json.dumps(result))
     with pytest.raises(ValueError, match="Inconsistent"):

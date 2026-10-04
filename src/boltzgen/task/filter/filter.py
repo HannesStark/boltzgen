@@ -113,7 +113,7 @@ class Filter(Task):
     are pushed down), then divide by the metric’s *inverse-importance* weight.
     The **worst** (max) scaled rank across metrics becomes the design’s
     quality key. The Top set is the best `budget` designs by this key (tie-broken
-    by iPTM).
+    by the ESMFold2 score for polymer protocols, or iPTM for affinity).
 
     **Diversity.** A lazy-greedy selection chooses `div_budget` designs maximizing:
     ``(1 - alpha) * quality + alpha * (1 - seq_identity)``.
@@ -904,13 +904,17 @@ class Filter(Task):
                 "min_interaction_pae",
             }
             summary_metrics = [self.esmfold2_score_key] + [
-                k for k in summary_metrics if k not in interface_columns
+                k for k in summary_metrics
+                if k not in interface_columns and k != self.esmfold2_score_key
             ]
             hist_metrics = [self.esmfold2_score_key] + [
-                k for k in hist_metrics if k not in interface_columns
+                k for k in hist_metrics
+                if k not in interface_columns and k != self.esmfold2_score_key
             ]
             extra_pairs = [("num_design", self.esmfold2_score_key)] + [
-                p for p in extra_pairs if not set(p) & interface_columns
+                p for p in extra_pairs
+                if not set(p) & interface_columns
+                and p != ("num_design", self.esmfold2_score_key)
             ]
 
         avail = [m for m in summary_metrics if m in self.df.columns]
@@ -1019,7 +1023,8 @@ class Filter(Task):
 
         intro_text = text
         if self.use_esmfold2:
-            intro_text = intro_text.replace("such as iPTM", "such as ESMFold2 ipSAE")
+            score_label = "ESMFold2 ipSAE or pTM" if self.esmfold2_redesign else "ESMFold2 ipSAE"
+            intro_text = intro_text.replace("such as iPTM", f"such as {score_label}")
             csv_expl_rows.insert(
                 2,
                 [
@@ -1029,20 +1034,16 @@ class Filter(Task):
                     "ESMFold2 2021: minimum directional ipSAE, PAE <10 Å; best of five samples by default (higher = better)",
                 ],
             )
-            csv_expl_rows.insert(
-                3,
-                [
-                    "esmfold2_design_to_target_ipsae",
-                    "Directional ipSAE, designed polymer toward the selected target",
-                ],
-            )
-            csv_expl_rows.insert(
-                4,
-                [
-                    "esmfold2_target_to_design_ipsae",
-                    "Directional ipSAE, selected target toward the designed polymer",
-                ],
-            )
+            if self.esmfold2_redesign:
+                csv_expl_rows.insert(
+                    3,
+                    ["esmfold2_score_metric", "Metric used: weakest chain-versus-rest ipSAE, or native ESMFold2 pTM for monomers"],
+                )
+            else:
+                csv_expl_rows[3:3] = [
+                    ["esmfold2_design_to_target_ipsae", "Directional ipSAE, designed polymer toward the selected target"],
+                    ["esmfold2_target_to_design_ipsae", "Directional ipSAE, selected target toward the designed polymer"],
+                ]
 
         return (
             hist_metrics,
