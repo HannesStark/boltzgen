@@ -61,6 +61,18 @@ class FoldingWriter(BasePredictionWriter):
         sample_id: str = None,
     ) -> None:
         """Write the predictions to disk."""
+        exception = prediction.get("exception", False)
+        if isinstance(exception, list):
+            exception = exception[0]
+        if exception:
+            self.failed += 1
+            return
+        skip = prediction.get("skip", False)
+        if isinstance(skip, list):
+            skip = skip[0]
+        if skip:
+            return
+
         pred_dict = {}
         for key, value in prediction.items():
             # check object is tensor
@@ -68,15 +80,20 @@ class FoldingWriter(BasePredictionWriter):
                 pred_dict[key] = value.cpu().numpy()
         np.savez_compressed(self.outdir / f"{batch['id'][0]}.npz", **pred_dict)
 
-        # Get best sample
-        confidence = 0.8 * pred_dict["iptm"] + 0.2 * pred_dict["ptm"]
+        # Match the sample selected by analyze_utils.get_best_folding_sample.
+        confidence = (
+            0.8 * pred_dict["design_to_target_iptm"] + 0.2 * pred_dict["design_ptm"]
+        )
         best_idx = np.argmax(confidence)
-        best_sample_coords = pred_dict["coords"][best_idx]
 
         prediction_out = {}
         for k in prediction:
-            if k == "coords":
-                prediction_out[k] = torch.from_numpy(best_sample_coords)
+            # Coordinates and pLDDT have a sample axis; structure features have
+            # a batch axis and are shared by all samples of this input.
+            if k in ("coords", "plddt"):
+                prediction_out[k] = prediction[k][best_idx]
+            elif k in ("exception", "skip"):
+                continue
             else:
                 prediction_out[k] = prediction[k][0]
 
@@ -90,14 +107,6 @@ class FoldingWriter(BasePredictionWriter):
         )
         cif_text = to_mmcif(structure)
         open(self.refold_cif_dir / f"{batch['id'][0]}.cif", "w").write(cif_text)
-
-        # Failed prediction handling
-        if isinstance(prediction["exception"], bool):
-            if prediction["exception"]:
-                self.failed += 1
-        elif isinstance(prediction["exception"], list):
-            if prediction["exception"][0]:
-                self.failed += 1
 
     def on_predict_epoch_end(
         self,
