@@ -148,8 +148,6 @@ class FoldingWriter(BasePredictionWriter):
             # check object is tensor
             if key in const.eval_keys:
                 pred_dict[key] = value.cpu().numpy()
-        np.savez_compressed(self.outdir / f"{batch['id'][0]}.npz", **pred_dict)
-
         # Match the sample selected by analyze_utils.get_best_folding_sample.
         confidence = (
             0.8 * pred_dict["design_to_target_iptm"] + 0.2 * pred_dict["design_ptm"]
@@ -180,7 +178,13 @@ class FoldingWriter(BasePredictionWriter):
             plddt_atom[prediction_out["atom_pad_mask"].bool()].float().cpu().numpy()
         )
         cif_text = to_mmcif(structure)
-        open(self.refold_cif_dir / f"{batch['id'][0]}.cif", "w").write(cif_text)
+        # Publish the complete archive last. An interrupted overwrite must not
+        # leave an old completion marker paired with a new or partial CIF.
+        archive_path = self.outdir / f"{batch['id'][0]}.npz"
+        archive_path.unlink(missing_ok=True)
+        with open(self.refold_cif_dir / f"{batch['id'][0]}.cif", "w") as cif_file:
+            cif_file.write(cif_text)
+        _write_npz_atomically(archive_path, **pred_dict)
 
     def on_predict_epoch_end(
         self,
