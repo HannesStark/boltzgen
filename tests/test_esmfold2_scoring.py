@@ -197,13 +197,31 @@ def test_ranking_and_tiebreak_follow_esmfold2(tmp_path):
 
 
 @pytest.mark.parametrize("reuse", [False, True])
-def test_configure_defers_runtime_setup_for_reuse(monkeypatch, tmp_path, reuse):
+@pytest.mark.parametrize(
+    "scoring_mode,target_chains,error",
+    [
+        ("binder", None, None),
+        ("redesign", ["A"], "uses every polymer chain"),
+        ("bogus", None, "scoring_mode must be"),
+    ],
+)
+def test_configure_validates_settings_before_runtime_setup(
+    monkeypatch, tmp_path, reuse, scoring_mode, target_chains, error
+):
     from types import SimpleNamespace
     from omegaconf import OmegaConf
     from boltzgen.cli import boltzgen as cli
     from boltzgen.task.esmfold2 import runtime
+    from boltzgen.task.esmfold2.score import ESMFold2Score
 
-    config = OmegaConf.create({"python": None, "reuse": reuse})
+    config = OmegaConf.create(
+        dict(
+            python=None,
+            reuse=reuse,
+            scoring_mode=scoring_mode,
+            scoring_target_chains=target_chains,
+        )
+    )
     step = SimpleNamespace(
         name="esmfold2_scoring", check=lambda: None, get_config=lambda: config
     )
@@ -222,6 +240,19 @@ def test_configure_defers_runtime_setup_for_reuse(monkeypatch, tmp_path, reuse):
         ["configure", "input.yaml", "--output", str(tmp_path / "result")]
         + (["--reuse"] if reuse else [])
     )
+    if error is not None:
+        with pytest.raises(ValueError, match=error):
+            ESMFold2Score(
+                data=None,
+                design_dir=tmp_path,
+                scoring_mode=scoring_mode,
+                scoring_target_chains=target_chains,
+            )
+        with pytest.raises(ValueError, match=error):
+            cli.configure_command(args)
+        assert calls == []
+        assert not (args.output / "config/esmfold2_scoring.yaml").exists()
+        return
     cli.configure_command(args)
     assert calls == ([] if reuse else [(None, {"require_cuda": True})])
     assert (args.output / "config/esmfold2_scoring.yaml").is_file()

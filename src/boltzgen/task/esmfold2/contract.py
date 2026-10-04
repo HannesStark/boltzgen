@@ -17,6 +17,16 @@ PTM_KEY = "esmfold2_ptm"
 SCHEMA_VERSION = 1
 
 
+def validate_scoring_mode(mode: str, target_chains: list[str] | None) -> None:
+    """Reject incompatible scoring settings before any inference work."""
+    if mode not in ("binder", "redesign"):
+        raise ValueError("scoring_mode must be binder or redesign")
+    if mode == "redesign" and target_chains is not None:
+        raise ValueError(
+            "Redesign scoring uses every polymer chain; scoring_target_chains is only for binder scoring"
+        )
+
+
 def fingerprint(value: dict) -> str:
     """Hash the complete input, molecular context, and inference settings."""
     return hashlib.sha256(

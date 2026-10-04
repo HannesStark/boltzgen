@@ -20,7 +20,9 @@ or more polymer chains, score each chain against all other polymer chains using
 minimum directional ipSAE, then take the weakest chain-versus-rest score. The
 best of the five samples maximizes that weakest score. Ligands remain folding
 context and never become an ipSAE partner. If any polymer is RNA/DNA, these
-pooled chain-versus-rest interfaces use the 2 Å d0 floor.
+pooled chain-versus-rest interfaces use the 2 Å d0 floor. Scores from these
+mixed-polymer campaigns should not be compared directly with protein-only scores
+that use a different normalization.
 
 With one polymer chain, there is no polymer interface: select the sample with
 highest native ESMFold2 pTM instead. This remains the native whole-model pTM,
@@ -262,7 +264,7 @@ ESMCFOLD_CCD_PATH=/path/to/ccd.pkl PYTHONPATH=src \
   .venv-esmfold2/bin/python -m pytest tests/test_esmfold2_inputs.py
 ```
 
-The latter tests require pytest and `gemmi==0.6.5` in the ESM test environment
+The latter tests require pytest and `gemmi>=0.6.5` in the ESM test environment
 (Gemmi is only needed there to check exported files against BoltzGen's reader).
 They exercise actual
 ESMFold2 feature construction without downloading model weights. A model-boundary

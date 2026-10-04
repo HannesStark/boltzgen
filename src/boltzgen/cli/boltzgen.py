@@ -727,12 +727,19 @@ def configure_command(args: argparse.Namespace) -> None:
     # Check that tasks can be instantiated
     for step in pipeline.steps:
         step.check()
-        if step.name == "esmfold2_scoring" and not step.get_config().reuse:
+        if step.name == "esmfold2_scoring":
+            from boltzgen.task.esmfold2.contract import validate_scoring_mode
             from boltzgen.task.esmfold2.runtime import resolve_python
 
+            esm_config = step.get_config()
+            validate_scoring_mode(
+                esm_config.get("scoring_mode", "binder"),
+                esm_config.get("scoring_target_chains"),
+            )
             # Reuse can finish entirely from saved scores. Provision that run's
             # runtime only if the scoring task finds work still to compute.
-            resolve_python(step.get_config().python, require_cuda=True)
+            if not esm_config.reuse:
+                resolve_python(esm_config.python, require_cuda=True)
 
     # Make the config subdir in output
     config_dir = output_dir / "config"

@@ -18,6 +18,7 @@ from boltzgen.task.esmfold2.contract import (
     file_sha256,
     fingerprint,
     load_result,
+    validate_scoring_mode,
 )
 from boltzgen.task.task import Task
 from boltzgen.task.esmfold2.runtime import resolve_python, worker_command
@@ -54,12 +55,7 @@ def make_request(
     scoring_mode: str = "binder",
 ) -> dict:
     """Translate actual sampled/generated identities; never reparse a stochastic YAML."""
-    if scoring_mode not in ("binder", "redesign"):
-        raise ValueError("scoring_mode must be binder or redesign")
-    if scoring_mode == "redesign" and target_chains is not None:
-        raise ValueError(
-            "Redesign scoring uses every polymer chain; scoring_target_chains is only for binder scoring"
-        )
+    validate_scoring_mode(scoring_mode, target_chains)
     structure = feat["str_gen"]
     tokenized = feat["tokenized"]
     if context is None:
@@ -199,8 +195,7 @@ class ESMFold2Score(Task):
         self.source_context_dir = (
             Path(source_context_dir) if source_context_dir else None
         )
-        if scoring_mode not in ("binder", "redesign"):
-            raise ValueError("scoring_mode must be binder or redesign")
+        validate_scoring_mode(scoring_mode, scoring_target_chains)
         self.scoring_mode = scoring_mode
         self.target_chains = (
             list(scoring_target_chains) if scoring_target_chains is not None else None
