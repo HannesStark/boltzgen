@@ -431,3 +431,183 @@ def test_yaml_uses_reference_model_before_combining_files(
         np.testing.assert_allclose(
             reloaded.data.coords["coords"], structure.coords["coords"], atol=0.001
         )
+
+
+@pytest.mark.parametrize("chain", ["A", "B"])
+@pytest.mark.parametrize(
+    ("coordinates", "seqres"),
+    [
+        (PROTEIN, ["VAL", *PROTEIN[1:]]),
+        (PROTEIN, [*PROTEIN[:2], "VAL", *PROTEIN[3:]]),
+        (PROTEIN, [*PROTEIN[:-1], "VAL"]),
+        (
+            ["ALA", "GLY", "GLY", "GLY", "GLY", "GLY"],
+            ["ALA", "SER", "GLY", "GLY", "GLY", "GLY"],
+        ),
+        (PROTEIN, PROTEIN[1:]),
+        (PROTEIN, [*PROTEIN[:2], *PROTEIN[3:]]),
+        (PROTEIN, PROTEIN[:-1]),
+    ],
+    ids=[
+        "first_mismatch",
+        "middle_mismatch",
+        "last_mismatch",
+        "silent_shift",
+        "first_insertion",
+        "middle_insertion",
+        "last_insertion",
+    ],
+)
+def test_inconsistent_seqres_fails_before_assigning_wrong_labels(
+    tmp_path: Path,
+    mols: dict[str, Chem.Mol],
+    chain: str,
+    coordinates: list[str],
+    seqres: list[str],
+) -> None:
+    """Invalid SEQRES must not silently shift or drop coordinate residues."""
+    path = write_pdb(
+        tmp_path / "inconsistent.pdb",
+        coordinates,
+        {"A": list(range(1, 7)), "B": list(range(1, 7))},
+    )
+    lines = path.read_text().splitlines()
+    names = " ".join(f"{name:>3}" for name in seqres)
+    path.write_text(
+        "\n".join(
+            f"SEQRES   1 {chain} {len(seqres):4d}  {names}"
+            if line.startswith("SEQRES") and line[11] == chain
+            else line
+            for line in lines
+        )
+        + "\n"
+    )
+    with pytest.raises(ValueError, match=rf"subchain {chain}.*SEQRES"):
+        parse_pdb(path, mols=mols, use_assembly=False)
+
+
+@pytest.mark.parametrize("input_format", ["pdb", "mmcif"])
+@pytest.mark.parametrize(
+    ("positions", "selection", "expected_a"),
+    [
+        ([3, 4], "1..2", []),
+        ([3, 4], "5..6", []),
+        ([3, 4], "1..4", [3, 4]),
+        ([1, 6], "1..6", [1, 2, 3, 4, 5, 6]),
+    ],
+    ids=["unresolved_leading", "unresolved_trailing", "partial", "internal_gap"],
+)
+def test_yaml_removes_only_unresolved_chain_ends(
+    tmp_path: Path,
+    mols: dict[str, Chem.Mol],
+    input_format: str,
+    positions: list[int],
+    selection: str,
+    expected_a: list[int],
+) -> None:
+    """An entirely unresolved selection is empty; internal gaps stay in place."""
+    path = write_pdb(
+        tmp_path / "missing.pdb", PROTEIN, {"A": positions, "B": list(range(1, 7))}
+    )
+    chain_ids = ["A", "B"]
+    if input_format == "mmcif":
+        raw = gemmi.read_structure(str(path))
+        raw.setup_entities()
+        raw.assign_label_seq_id()
+        chain_ids = [chain.get_polymer().subchain_id() for chain in raw[0]]
+        path = path.with_suffix(".cif")
+        raw.make_mmcif_document().write_file(str(path))
+    definition = {
+        "entities": [
+            {
+                "file": {
+                    "path": str(path),
+                    "include": [
+                        {"chain": {"id": chain_ids[0], "res_index": selection}},
+                        {"chain": {"id": chain_ids[1]}},
+                    ],
+                    "design": [{"chain": {"id": chain_ids[0]}}],
+                }
+            }
+        ]
+    }
+    parser = YamlDesignParser(tmp_path)
+    for _ in range(2):
+        target = parser.parse_boltzgen_schema(
+            "missing", definition, mols, tmp_path, base_file_path=tmp_path
+        )
+        structure = target.structure
+        assert structure.chains["name"].tolist() == (
+            chain_ids if expected_a else chain_ids[1:]
+        )
+        assert len(structure.residues) == len(expected_a) + 6
+        assert target.design_info.res_design_mask.sum() == len(expected_a)
+        assert structure.residues["res_idx"][: len(expected_a)].tolist() == [
+            position - 1 for position in expected_a
+        ]
+        assert structure.residues["is_present"][: len(expected_a)].tolist() == [
+            position in positions for position in expected_a
+        ]
+        tokens = Tokenizer().tokenize(structure).tokens
+        assert len(tokens) == len(expected_a) + 6
+        np.testing.assert_allclose(tokens["center_coords"][-6:, 1], 15.6, atol=0.001)
+
+
+@pytest.mark.parametrize("selection", ["1..2", "5..6"])
+def test_yaml_reports_empty_selection(
+    tmp_path: Path, mols: dict[str, Chem.Mol], selection: str
+) -> None:
+    """Removing every unresolved selection gives a useful input error."""
+    path = write_pdb(tmp_path / "empty.pdb", PROTEIN, {"A": [3, 4]})
+    definition = {
+        "entities": [
+            {
+                "file": {
+                    "path": str(path),
+                    "include": [{"chain": {"id": "A", "res_index": selection}}],
+                }
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match=r"No residues remain.*empty\.pdb"):
+        YamlDesignParser(tmp_path).parse_boltzgen_schema(
+            "empty", definition, mols, tmp_path, base_file_path=tmp_path
+        )
+
+
+@pytest.mark.parametrize("second_selection", ["1..4", "3..6", "5..8", "1,3,5,7"])
+def test_equal_sequences_with_different_indices_survive_export(
+    tmp_path: Path,
+    mols: dict[str, Chem.Mol],
+    second_selection: str,
+) -> None:
+    """Identical cropped sequences may still need different entity label indices."""
+    entities = []
+    for chain, selection in [("A", "1..4"), ("B", second_selection)]:
+        path = write_pdb(
+            tmp_path / f"{chain}.pdb", ["GLY"] * 8, {chain: list(range(1, 9))}
+        )
+        entities.append(
+            {
+                "file": {
+                    "path": str(path),
+                    "include": [{"chain": {"id": chain, "res_index": selection}}],
+                }
+            }
+        )
+    target = YamlDesignParser(tmp_path).parse_boltzgen_schema(
+        "indices", {"entities": entities}, mols, tmp_path, base_file_path=tmp_path
+    )
+    original = target.structure
+    block = gemmi.cif.read_string(to_mmcif(original)).sole_block()
+    reloaded = mmcif_from_block(block, mols, use_assembly=False).data
+    assert reloaded.residues["is_present"].all()
+    np.testing.assert_array_equal(
+        reloaded.residues["res_idx"], original.residues["res_idx"]
+    )
+    np.testing.assert_array_equal(reloaded.residues["name"], original.residues["name"])
+    np.testing.assert_allclose(
+        reloaded.coords["coords"], original.coords["coords"], atol=0.001
+    )
+    entity_ids = set(block.find_values("_entity_poly_seq.entity_id"))
+    assert len(entity_ids) == (1 if second_selection == "1..4" else 2)

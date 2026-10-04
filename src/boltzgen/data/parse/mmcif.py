@@ -913,9 +913,9 @@ def parse_mmcif(  # noqa: C901, PLR0915, PLR0912
         Path to the MMCIF file.
 
     use_original_res_idx : bool
-        Uses the res_idx for the res_idx in the Residues in the returned structure
-        that was in the mmcif file for each residue instead of using the index in the
-        seqres that is obtained after aligning the seqres to the sequence of amino acids from the present residues.
+        Retained for compatibility. Polymer residue indices use zero-based
+        label_seq_id positions for both values; author numbering is stored in
+        auth_idx.
 
     Returns
     -------
@@ -958,7 +958,9 @@ def mmcif_from_block(  # noqa: C901, PLR0915, PLR0912
         Gemmi Block.
 
     use_original_res_idx : bool
-        Uses the res_idx for the res_idx in the Residues in the returned structure that was in the mmcif file for each residue instead of using the index in the seqres that is obtained after aligning the seqres to the sequence of amino acids from the present residues.
+        Retained for compatibility. Polymer residue indices use zero-based
+        label_seq_id positions for both values; author numbering is stored in
+        auth_idx.
 
     Returns
     -------

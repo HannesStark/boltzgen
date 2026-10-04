@@ -64,6 +64,15 @@ def parse_pdb(  # noqa: C901, PLR0915, PLR0912
                 gemmi.AlignmentScoring(),
             ).match_string
 
+            # The label loop supports missing coordinates, but every observed
+            # residue must match SEQRES. Otherwise it shifts or drops residues.
+            if align_result.count("|") != len(sc):
+                msg = (
+                    f"PDB polymer subchain {sc[0].subchain} in {path} has "
+                    "coordinate residues that do not match SEQRES."
+                )
+                raise ValueError(msg)
+
             i = 0
             for j, align in enumerate(align_result):
                 if align == "|":

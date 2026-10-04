@@ -58,7 +58,7 @@ def to_mmcif(
     model = _create_gemmi_model(1)
 
     chain_to_entity_id = {}
-    sequence_to_entity_id = {}
+    entity_key_to_id = {}
     entity_counter = 1
     chain_names = [re.sub(r"\d+", "", c["name"]) for c in structure.chains]
     chain_id_pool = list(reversed(string.ascii_uppercase)) + list(
@@ -83,10 +83,16 @@ def to_mmcif(
             chain["res_idx"] : chain["res_idx"] + chain["res_num"]
         ]
 
-        sequence = "".join([res["name"].item() for res in residues])
         chain_type = chain["mol_type"].item()
-        if sequence not in sequence_to_entity_id:
-            sequence_to_entity_id[sequence] = str(entity_counter)
+        # An entity shares both residue identities and label_seq_id positions.
+        # Equal cropped sequences can have different original residue indices.
+        entity_key = (
+            chain_type,
+            tuple(residues["name"].tolist()),
+            tuple(residues["res_idx"].tolist()),
+        )
+        if entity_key not in entity_key_to_id:
+            entity_key_to_id[entity_key] = str(entity_counter)
 
             entity = gemmi.Entity(str(entity_counter))
 
@@ -107,7 +113,7 @@ def to_mmcif(
             gemmi_struct.entities.append(entity)
             entity_counter += 1
 
-        chain_to_entity_id[new_chainid] = sequence_to_entity_id[sequence]
+        chain_to_entity_id[new_chainid] = entity_key_to_id[entity_key]
 
     label_seq_dict = defaultdict(list)
     for chain in structure.chains:

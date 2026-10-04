@@ -2072,11 +2072,11 @@ class YamlDesignParser:
                 chain_res = structure.residues[chain_start:chain_end]
                 included_res = chain_res[chain_include_mask]
                 is_present = included_res["is_present"]
-                first_true = np.argmax(is_present)
-                last_true = len(is_present) - 1 - np.argmax(is_present[::-1])
-                included_missing_mask = np.ones_like(is_present, dtype=bool)
-                included_missing_mask[:first_true] = False
-                included_missing_mask[last_true + 1 :] = False
+                included_missing_mask = np.zeros_like(is_present, dtype=bool)
+                if is_present.any():
+                    first_true = np.argmax(is_present)
+                    last_true = len(is_present) - 1 - np.argmax(is_present[::-1])
+                    included_missing_mask[first_true : last_true + 1] = True
 
                 # Print a message if there are any trailing or leading missing residues.
                 if (~included_missing_mask).sum() > 0:
@@ -2360,6 +2360,9 @@ class YamlDesignParser:
         fss_type = fss_type[include_mask].astype(np.int32)
 
         # Apply mask to structrue
+        if not include_mask.any():
+            msg = f"No residues remain after applying selections to {path}."
+            raise ValueError(msg)
         if not all(include_mask):
             new_structure = Structure.extract_residues(
                 structure, include_mask.astype(bool), res_reindex=False
