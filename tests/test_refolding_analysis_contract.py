@@ -10,16 +10,24 @@ from unittest.mock import Mock
 import pytest
 import torch
 from test_atom_confidence_export import _real_confidence_features
-from test_folding_export_consistency import _forward_output, _InferenceBoundary
+from test_folding_export_consistency import (
+    _features,
+    _forward_output,
+    _InferenceBoundary,
+)
 
+from boltzgen.data.data import Structure
 from boltzgen.model.models.boltz import Boltz
+from boltzgen.task.analyze import analyze_utils
 from boltzgen.task.analyze.analyze import Analyze
 from boltzgen.task.predict.writer import AffinityWriter, FoldingWriter
 
 
 @pytest.mark.parametrize("affinity_status", ["exception", "skip", "success"])
+@pytest.mark.parametrize("novelty", [False, True])
 def test_validator_honors_real_analysis_return_and_cleanup(  # noqa: PLR0915
     affinity_status: str,
+    novelty: bool,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -32,6 +40,20 @@ def test_validator_honors_real_analysis_return_and_cleanup(  # noqa: PLR0915
     # FromGenerated.get_feat supplies bool design masks to analysis.
     features["design_mask"] = torch.ones_like(features["design_mask"], dtype=torch.bool)
     features["chain_design_mask"] = features["design_mask"].clone()
+    if novelty:
+        features["str_gen"], _, _ = Structure.from_feat(
+            _features(padded=False, missing_atom=False, ligand=False)
+        )
+
+    def run_foldseek(command: list[str], *, check: bool) -> None:
+        assert check
+        queries = sorted(Path(command[2]).glob("*.pdb"))
+        assert queries
+        Path(command[4]).write_text(
+            "".join(f"{path.stem}\ttarget\t0.5\t0.8\t0.6\n" for path in queries)
+        )
+
+    monkeypatch.setattr(analyze_utils.subprocess, "run", run_foldseek)
 
     def get_feat(path: Path, design_mask: torch.Tensor | None = None) -> dict[str, Any]:  # noqa: ARG001
         feat = dict(features)
@@ -62,6 +84,10 @@ def test_validator_honors_real_analysis_return_and_cleanup(  # noqa: PLR0915
             allatom_fold_metrics=True,
             affinity_metrics=True,
             compute_lddts=False,
+            novelty_original=novelty,
+            novelty_refolded=novelty,
+            novelty_per_target_original=novelty,
+            novelty_per_target_refolded=novelty,
         )
     analysis_returns = []
     real_compute_metrics = analyzer.compute_metrics
@@ -137,3 +163,7 @@ def test_validator_honors_real_analysis_return_and_cleanup(  # noqa: PLR0915
             == 1.25  # noqa: PLR2004
         )
         assert validator.all_refolding_data["val_monomer"][0]["sample_id"] == sample_id
+        if novelty:
+            metrics, _ = analyzer.compute_novelty(suffix=Path("rank0"))
+            assert len(metrics) == 6  # noqa: PLR2004
+            assert all(value == pytest.approx(0.7) for value in metrics.values())

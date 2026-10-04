@@ -1038,8 +1038,12 @@ class Analyze(Task):
                 metrics["native_rmsd_bb_refolded"] = bb_refold_target_rmsd.item()
 
             # Save the refolded structure of the design to a pdb file if novelty computation needs to be run on it later.
+            des_refold_pdb_dir = self.des_refold_pdb_dir
+            if suffix is not None:
+                des_refold_pdb_dir = des_refold_pdb_dir / suffix
+                des_refold_pdb_dir.mkdir(exist_ok=True, parents=True)
             des_refold_pdb_path = (
-                self.des_refold_pdb_dir / f"{feat['id']}_des_refold.pdb"
+                des_refold_pdb_dir / f"{feat['id']}_des_refold.pdb"
             )
             des_refold_cif_path = des_refold_pdb_path.with_suffix(".cif")
             if self.novelty_refolded or self.novelty_per_target_refolded:
