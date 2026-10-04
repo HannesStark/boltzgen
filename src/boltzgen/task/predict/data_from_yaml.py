@@ -1,4 +1,6 @@
+from collections import Counter
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import re
 from typing import Dict, List, Optional, Union
@@ -53,6 +55,58 @@ class Dataset:
     multiplicity: int = 1
 
 
+def _completed_sample_prefix(
+    yaml_paths: List[str] | str,
+    output_dir: Path,
+    multiplicity: int,
+    diffusion_samples: int,
+) -> int:
+    """Count the contiguous completed sample batches shared by every input."""
+    if isinstance(yaml_paths, (str, Path)):
+        yaml_paths = [yaml_paths]
+    if (
+        not yaml_paths
+        or multiplicity < 1
+        or diffusion_samples < 1
+        or not output_dir.is_dir()
+    ):
+        return 0
+
+    input_stems = [Path(path).stem for path in yaml_paths]
+    input_stem_set = set(input_stems)
+
+    def completed_output_indices(paths: List[Path]) -> dict[str, set[int]]:
+        indices = {stem: set() for stem in input_stems}
+        for path in paths:
+            if not path.is_file() or not path.with_suffix(".npz").is_file():
+                continue
+            output_stem = path.stem
+            if output_stem in input_stem_set:
+                # A single-output run writes the basename with no numeric suffix.
+                indices[output_stem].add(0)
+                continue
+            source_stem, separator, sample = output_stem.rpartition("_")
+            if separator and source_stem in input_stem_set and sample.isdigit():
+                # Padding width can change when a reused run requests more outputs.
+                indices[source_stem].add(int(sample))
+        return indices
+
+    completed_indices = completed_output_indices(list(output_dir.glob("*.cif")))
+
+    # The writer numbers samples as sample_idx * diffusion_samples + n. A
+    # common prefix is required because the dataloader advances all YAML inputs
+    # together; skipping beyond a hole would silently drop an unfinished design.
+    completed = 0
+    for sample_idx in range(multiplicity):
+        for input_stem in input_stems:
+            for n in range(diffusion_samples):
+                global_idx = sample_idx * diffusion_samples + n
+                if global_idx not in completed_indices[input_stem]:
+                    return completed
+        completed += 1
+    return completed
+
+
 def collate(data: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
     """Collate the data.
 
@@ -96,6 +150,7 @@ def collate(data: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
             "structure_bonds",
             "extra_mols",
             "data_sample_idx",
+            "source_context",
         ]:
             # Check if all have the same shape
             shape = values[0].shape
@@ -147,6 +202,13 @@ class PredictionDataset(torch.utils.data.Dataset):
         path = dataset.yaml_path
         self.yaml_paths = [path] if isinstance(path, str) else path
 
+        stem_counts = Counter(Path(path).stem for path in self.yaml_paths)
+        duplicates = sorted(stem for stem, count in stem_counts.items() if count > 1)
+        if duplicates:
+            raise ValueError(
+                "Design input filenames must have unique stems; repeated: "
+                + ", ".join(duplicates)
+            )
         for path in self.yaml_paths:
             filename = Path(path).name
             if re.search(r"_\d+\.yaml$", filename):
@@ -283,6 +345,7 @@ class PredictionDataset(torch.utils.data.Dataset):
 
         # set chain_design_mask
         features["chain_design_mask"] = torch.from_numpy(chain_design_mask)
+        features["source_context"] = json.dumps(parsed.source_context)
 
         # Compute template features
         templates_features = load_dummy_templates(
@@ -336,22 +399,17 @@ class FromYamlDataModule(pl.LightningDataModule):
 
         if cfg.skip_existing and cfg.output_dir is not None:
             design_dir = Path(cfg.output_dir)
-            max_idx: int = -1
-            if design_dir.exists():
-                pattern = re.compile(r"_(\d+)(?:\.[^.]+)$")
-                max_idx = max(
-                    (
-                        int(m.group(1))
-                        for fp in design_dir.iterdir()
-                        if fp.suffix in {".cif", ".pdb"}
-                        and not any(s in fp.name for s in ("_native.cif", "_metadata.npz"))
-                        for m in [pattern.search(fp.name)]
-                        if m
-                    ),
-                    default=-1,
-                )
-            n_samples = getattr(cfg, "diffusion_samples", 1)
-            cfg.skip_offset = (max_idx // max(n_samples, 1)) + 1 if max_idx >= 0 else 0
+            yaml_paths = (
+                [cfg.yaml_path]
+                if isinstance(cfg.yaml_path, (str, Path))
+                else cfg.yaml_path
+            )
+            cfg.skip_offset = _completed_sample_prefix(
+                yaml_paths,
+                design_dir,
+                cfg.multiplicity,
+                getattr(cfg, "diffusion_samples", 1),
+            )
             
         self.cfg = cfg
         self.batch_size = batch_size
@@ -444,6 +502,7 @@ class FromYamlDataModule(pl.LightningDataModule):
                 "structure_bonds",
                 "extra_mols",
                 "data_sample_idx",
+                "source_context",
             ]:
                 batch[key] = batch[key].to(device)
         return batch

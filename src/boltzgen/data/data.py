@@ -727,11 +727,15 @@ class Structure(NumpySerializable):
         insert_atoms = structure2.atoms.copy()
         insert_residues = structure2.residues.copy()
         insert_coords = structure2.coords.copy()
+        res_index_offset = 0
+        if res_reindex and num_new_residues:
+            # Crops can retain leading offsets and internal residue-index gaps.
+            # Append after the last retained index, rather than the residue count.
+            last_res_idx = residues["res_idx"][res_insert_idx[0] - 1]
+            res_index_offset = int(last_res_idx) + 1 - int(insert_residues["res_idx"][0])
         for residue in insert_residues:
             if res_reindex:
-                residue["res_idx"] += (
-                    target_chain["res_num"] - structure2.residues["res_idx"][0]
-                )
+                residue["res_idx"] += res_index_offset
             residue["atom_idx"] += atom_insert_idx
             residue["atom_center"] += atom_insert_idx
             residue["atom_disto"] += atom_insert_idx
@@ -1992,6 +1996,7 @@ class Target:
     sequences: Optional[dict[str, str]] = None
     templates: Optional[dict[str, Structure]] = None
     extra_mols: Optional[dict[str, Mol]] = None
+    source_context: Optional[dict] = None
 
 
 @dataclass(frozen=True, slots=True)
