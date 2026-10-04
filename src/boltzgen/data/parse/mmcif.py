@@ -703,7 +703,7 @@ def parse_polymer(  # noqa: C901, PLR0915, PLR0912
             res_idx = res.label_seq - 1  # convert to 0 indexing
         else:
             auth_idx = None
-            res_idx = j
+            res_idx = j - 1
 
         # Map MSE to MET, put the selenium atom in the sulphur column
         if res_name == "MSE":
@@ -1001,18 +1001,20 @@ def mmcif_from_block(  # noqa: C901, PLR0915, PLR0912
     # Load structure object
     structure = gemmi.make_structure_from_block(block)
 
-    # Clean up the structure
     structure.merge_chain_parts()
-    structure.remove_waters()
-    structure.remove_hydrogens()
-    structure.remove_alternative_conformations()
-    structure.remove_empty_chains()
 
-    # Expand assembly 1
+    # Expand before removing waters: assembly generators may reference their
+    # subchains, which Gemmi 0.7 requires to exist during expansion.
     if use_assembly and structure.assemblies:
         how = gemmi.HowToNameCopiedChain.AddNumber
         assembly_name = structure.assemblies[0].name
         structure.transform_to_assembly(assembly_name, how=how)
+
+    # Clean up the structure
+    structure.remove_waters()
+    structure.remove_hydrogens()
+    structure.remove_alternative_conformations()
+    structure.remove_empty_chains()
 
     # Parse entities
     # Create mapping from subchain id to entity
