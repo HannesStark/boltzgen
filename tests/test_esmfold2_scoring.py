@@ -524,3 +524,142 @@ def test_redesign_ipsae_uses_nucleic_acid_floor_and_disconnected_chains():
     pae[2, :2] = pae[:2, 2] = 20
     scores = score_chain_vs_rest(pae, reps, dict.fromkeys(reps, 0))
     assert min(value[SCORE_KEY] for value in scores.values()) == 0
+
+
+@pytest.mark.parametrize("failure", ["runtime", "worker"])
+def test_failed_rescore_preserves_published_cache_until_valid_result(
+    tmp_path, monkeypatch, failure
+):
+    from types import SimpleNamespace
+
+    from boltzgen.task.esmfold2 import score as score_module
+    from boltzgen.task.esmfold2.contract import (
+        SCORE_DIR,
+        file_sha256,
+    )
+    from boltzgen.task.esmfold2.score import ESMFold2Score
+
+    class Dataset:
+        def __init__(self, design):
+            self.generated_paths = [design]
+            self.metadata_paths = [tmp_path / "metadata.npz"]
+            self.native_paths = [None]
+
+        def getitem_from_paths(self, metadata, path, native):
+            return object()
+
+    design = tmp_path / "candidate.cif"
+    design.write_text("candidate structure")
+    score_dir = tmp_path / SCORE_DIR
+    score_dir.mkdir()
+    old_request = {
+        "design_id": "candidate",
+        "design_sha256": file_sha256(design),
+        "options": {"sampling_steps": 200},
+    }
+    new_request = {
+        "design_id": "candidate",
+        "design_sha256": file_sha256(design),
+        "options": {"sampling_steps": 201},
+    }
+    request_path = score_dir / "candidate.input.json"
+    request_path.write_text(json.dumps(old_request, indent=2) + "\n")
+    metrics = score_interface(np.zeros((2, 2)), [0], [1])
+    cached_result = {
+        "schema_version": 1,
+        "model_revision": MODEL_REVISION,
+        "esmc_revision": ESMC_REVISION,
+        "esm_version": ESM_VERSION,
+        "input_hash": fingerprint(old_request),
+        "metrics": metrics,
+    }
+    result_path = score_dir / "candidate.json"
+    result_path.write_text(json.dumps(cached_result))
+    (score_dir / "candidate.cif").write_text("old structure")
+    (score_dir / "candidate.npz").write_bytes(b"old PAE")
+    score_task = ESMFold2Score(
+        data=SimpleNamespace(predict_set=Dataset(design)),
+        design_dir=str(tmp_path),
+        reuse=True,
+        sampling_steps=201,
+    )
+    monkeypatch.setattr(score_module, "make_request", lambda *args, **kwargs: new_request)
+
+    def snapshot():
+        return {path.name: path.read_bytes() for path in score_dir.iterdir() if path.is_file()}
+
+    before = snapshot()
+    if failure == "runtime":
+        def fail_runtime(*args, **kwargs):
+            raise RuntimeError("offline runtime unavailable")
+
+        monkeypatch.setattr(score_module, "resolve_python", fail_runtime)
+        with pytest.raises(RuntimeError, match="offline runtime unavailable"):
+            score_task.run()
+    else:
+        class FailedWorker:
+            def wait(self):
+                return 1
+
+            def poll(self):
+                return 1
+
+            def terminate(self):
+                raise AssertionError("completed failed worker should not be terminated")
+
+        def fail_worker(command, **kwargs):
+            manifest = Path(command[-3])
+            staged_request = Path(json.loads(manifest.read_text())[0])
+            assert staged_request.parent.name.startswith(".esmfold2-stage-")
+            assert staged_request != request_path
+            (staged_request.parent / "candidate.cif").write_text("partial replacement")
+            (staged_request.parent / "candidate.npz").write_bytes(b"partial PAE")
+            return FailedWorker()
+
+        monkeypatch.setattr(score_module, "resolve_python", lambda *args, **kwargs: "/fake/python")
+        monkeypatch.setattr(score_module.subprocess, "Popen", fail_worker)
+        with pytest.raises(RuntimeError, match=r"worker exit codes \[1\]"):
+            score_task.run()
+
+    assert snapshot() == before
+    assert list(score_dir.glob(".esmfold2-stage-*")) == []
+    assert load_result(result_path, fingerprint(old_request)) == cached_result
+
+    # A successful worker publishes the staged files and new request atomically
+    # with respect to the completion marker, replacing the stale cache.
+    class SuccessfulWorker:
+        def wait(self):
+            return 0
+
+        def poll(self):
+            return 0
+
+        def terminate(self):
+            raise AssertionError("successful worker should not be terminated")
+
+    def succeed_worker(command, **kwargs):
+        manifest = Path(command[-3])
+        staged_request = Path(json.loads(manifest.read_text())[0])
+        staged_dir = staged_request.parent
+        assert staged_dir.name.startswith(".esmfold2-stage-")
+        result = {
+            "schema_version": 1,
+            "model_revision": MODEL_REVISION,
+            "esmc_revision": ESMC_REVISION,
+            "esm_version": ESM_VERSION,
+            "input_hash": fingerprint(new_request),
+            "metrics": metrics,
+        }
+        (staged_dir / "candidate.cif").write_text("new structure")
+        (staged_dir / "candidate.npz").write_bytes(b"new PAE")
+        (staged_dir / "candidate.json").write_text(json.dumps(result))
+        return SuccessfulWorker()
+
+    monkeypatch.setattr(score_module, "resolve_python", lambda *args, **kwargs: "/fake/python")
+    monkeypatch.setattr(score_module.subprocess, "Popen", succeed_worker)
+    score_task.run()
+    assert json.loads(request_path.read_text()) == new_request
+    assert load_result(result_path, fingerprint(new_request))["input_hash"] == fingerprint(new_request)
+    assert (score_dir / "candidate.cif").read_text() == "new structure"
+    assert (score_dir / "candidate.npz").read_bytes() == b"new PAE"
+    assert list(score_dir.glob(".esmfold2-stage-*")) == []

@@ -2,8 +2,10 @@
 
 import json
 import logging
+import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 import numpy as np
 from rdkit import Chem
@@ -215,7 +217,7 @@ class ESMFold2Score(Task):
         outdir = self.design_dir / SCORE_DIR
         outdir.mkdir(parents=True, exist_ok=True)
         dataset = self.data.predict_set
-        requests = []
+        requests: list[tuple[Path, dict]] = []
         for path, metadata, native in zip(
             dataset.generated_paths,
             dataset.metadata_paths,
@@ -243,34 +245,65 @@ class ESMFold2Score(Task):
                 else:
                     continue
             request_path = outdir / f"{path.stem}.input.json"
-            request_path.write_text(
-                json.dumps(request, indent=2, allow_nan=False) + "\n"
-            )
-            requests.append(str(request_path))
+            requests.append((request_path, request))
         if not requests:
             return
-        # One long-lived model per visible GPU; each candidate stays on one GPU.
+        # Resolve first so an offline cache miss cannot replace valid prior
+        # artifacts. Workers write into an isolated staging directory; publish a
+        # design's request only after its complete result validates.
         python = resolve_python(self.python)
         workers = []
-        try:
-            for index in range(min(self.devices, len(requests))):
-                manifest = outdir / f"worker_{index}.json"
-                manifest.write_text(json.dumps(requests[index :: self.devices]))
-                workers.append(
-                    subprocess.Popen(
-                        worker_command(python, manifest, f"cuda:{index}"),
-                    )
+        with tempfile.TemporaryDirectory(prefix=".esmfold2-stage-", dir=outdir) as temp:
+            staging_dir = Path(temp)
+            pending_requests: list[tuple[Path, Path, dict]] = []
+            for request_path, request in requests:
+                pending_path = staging_dir / request_path.name
+                pending_path.write_text(
+                    json.dumps(request, indent=2, allow_nan=False) + "\n"
                 )
-            codes = [worker.wait() for worker in workers]
+                pending_requests.append((request_path, pending_path, request))
+
+            try:
+                for index in range(min(self.devices, len(pending_requests))):
+                    manifest = staging_dir / f"worker_{index}.json"
+                    worker_requests = [
+                        str(pending_path)
+                        for _, pending_path, _ in pending_requests[index :: self.devices]
+                    ]
+                    manifest.write_text(json.dumps(worker_requests))
+                    workers.append(
+                        subprocess.Popen(
+                            worker_command(python, manifest, f"cuda:{index}"),
+                        )
+                    )
+                codes = [worker.wait() for worker in workers]
+            finally:
+                for worker in workers:
+                    if worker.poll() is None:
+                        worker.terminate()
+                        worker.wait()
+
+            validation_errors = []
+            for request_path, pending_path, request in pending_requests:
+                result_path = staging_dir / f"{request['design_id']}.json"
+                try:
+                    load_result(result_path, fingerprint(request))
+                except (OSError, ValueError) as exc:
+                    validation_errors.append(exc)
+                    continue
+
+                # The worker's JSON is its completion marker, so replace it last.
+                for suffix in ("cif", "npz"):
+                    os.replace(
+                        staging_dir / f"{request['design_id']}.{suffix}",
+                        outdir / f"{request['design_id']}.{suffix}",
+                    )
+                os.replace(pending_path, request_path)
+                os.replace(result_path, outdir / f"{request['design_id']}.json")
+
             if any(codes):
                 raise RuntimeError(
                     f"ESMFold2 scoring failed (worker exit codes {codes}); see preceding error. No Boltz2 score fallback is used."
                 )
-        finally:
-            for worker in workers:
-                if worker.poll() is None:
-                    worker.terminate()
-                    worker.wait()
-        for path in requests:
-            request = json.loads(Path(path).read_text())
-            load_result(outdir / f"{request['design_id']}.json", fingerprint(request))
+            if validation_errors:
+                raise validation_errors[0]
