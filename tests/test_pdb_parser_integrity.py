@@ -611,3 +611,141 @@ def test_equal_sequences_with_different_indices_survive_export(
     )
     entity_ids = set(block.find_values("_entity_poly_seq.entity_id"))
     assert len(entity_ids) == (1 if second_selection == "1..4" else 2)
+
+
+@pytest.mark.parametrize("chain_names", [("A", "B"), ("A1", "A2")])
+@pytest.mark.parametrize("design_coloring", [False, True])
+def test_export_annotations_use_actual_renamed_chain_ids(
+    tmp_path: Path,
+    mols: dict[str, Chem.Mol],
+    chain_names: tuple[str, str],
+    design_coloring: bool,
+) -> None:
+    """Sequence and confidence annotations must reference the emitted atom chains."""
+    entities = []
+    for chain, selection in zip(chain_names, ["1..4", "3..6"]):
+        path = write_pdb(
+            tmp_path / f"{chain}.pdb", ["GLY"] * 6, {"A": list(range(1, 7))}
+        )
+        raw = gemmi.read_structure(str(path))
+        raw.setup_entities()
+        raw.assign_label_seq_id()
+        raw[0][0].name = chain
+        for residue in raw[0][0]:
+            residue.subchain = chain
+        raw.entities[0].subchains = [chain]
+        path = path.with_suffix(".cif")
+        raw.make_mmcif_document().write_file(str(path))
+        entities.append(
+            {
+                "file": {
+                    "path": str(path),
+                    "include": [{"chain": {"id": chain, "res_index": selection}}],
+                }
+            }
+        )
+    target = YamlDesignParser(tmp_path).parse_boltzgen_schema(
+        "renamed", {"entities": entities}, mols, tmp_path, base_file_path=tmp_path
+    )
+    structure = target.structure
+    assert structure.chains["name"].tolist() == list(chain_names)
+    block = gemmi.cif.read_string(
+        to_mmcif(
+            structure,
+            plddt_cols=not design_coloring,
+            design_coloring=design_coloring,
+            color_features=np.linspace(0.1, 0.8, len(structure.residues)),
+        )
+    ).sole_block()
+    atom_keys = set(
+        zip(
+            block.find_values("_atom_site.label_asym_id"),
+            block.find_values("_atom_site.label_seq_id"),
+        )
+    )
+    scheme_keys = list(
+        zip(
+            block.find_values("_pdbx_poly_seq_scheme.asym_id"),
+            block.find_values("_pdbx_poly_seq_scheme.seq_id"),
+        )
+    )
+    qa_keys = list(
+        zip(
+            block.find_values("_ma_qa_metric_local.label_asym_id"),
+            block.find_values("_ma_qa_metric_local.label_seq_id"),
+        )
+    )
+    assert len(scheme_keys) == len(set(scheme_keys)) == len(atom_keys) == 8
+    assert set(scheme_keys) == atom_keys
+    assert len(qa_keys) == len(set(qa_keys)) == 8
+    assert set(qa_keys) == atom_keys
+    chain_entities = dict(
+        zip(
+            block.find_values("_struct_asym.id"),
+            block.find_values("_struct_asym.entity_id"),
+        )
+    )
+    for row in block.find(
+        "_pdbx_poly_seq_scheme.", ["asym_id", "entity_id", "pdb_strand_id"]
+    ):
+        assert row[1] == chain_entities[row[0]]
+        assert row[2] == row[0]
+    reloaded = mmcif_from_block(block, mols, use_assembly=False).data
+    assert reloaded.residues["is_present"].all()
+    np.testing.assert_allclose(
+        reloaded.coords["coords"], structure.coords["coords"], atol=0.001
+    )
+
+
+@pytest.mark.parametrize("metadata", [False, True])
+@pytest.mark.parametrize("reset_indices", [False, True])
+@pytest.mark.parametrize("explicit_second_msa", [False, True])
+def test_removed_chain_does_not_leave_metadata_for_later_files(
+    tmp_path: Path,
+    mols: dict[str, Chem.Mol],
+    metadata: bool,
+    reset_indices: bool,
+    explicit_second_msa: bool,
+) -> None:
+    """Dropped chains must not reserve MSA names or break index-reset requests."""
+    first = write_pdb(
+        tmp_path / "first.pdb", PROTEIN, {"A": [3, 4], "B": list(range(1, 7))}
+    )
+    second = write_pdb(tmp_path / "second.pdb", PROTEIN, {"A": list(range(1, 7))})
+    selection = {"id": "A", "res_index": "1..2"}
+    if metadata:
+        selection.update({"msa": 0, "symmetric_group": 2})
+    first_spec = {
+        "path": str(first),
+        "include": [{"chain": selection}, {"chain": {"id": "B"}}],
+    }
+    if reset_indices:
+        first_spec["reset_res_index"] = [{"chain": {"id": "A"}}, {"chain": {"id": "B"}}]
+    second_selection = {"id": "A"}
+    if explicit_second_msa:
+        second_selection["msa"] = 0
+    definition = {
+        "entities": [
+            {"file": first_spec},
+            {
+                "file": {
+                    "path": str(second),
+                    "include": [{"chain": second_selection}],
+                    "msa": -1,
+                }
+            },
+        ]
+    }
+    parser = YamlDesignParser(tmp_path)
+    for _ in range(2):
+        target = parser.parse_boltzgen_schema(
+            "metadata", definition, mols, tmp_path, base_file_path=tmp_path
+        )
+        assert target.structure.chains["name"].tolist() == ["B", "A"]
+        assert target.structure.residues["is_present"].all()
+        assert target.structure.chains["symmetric_group"].tolist() == [0, 0]
+        msa_ids = {chain.chain_name: chain.msa_id for chain in target.record.chains}
+        assert msa_ids["A"] == (0 if explicit_second_msa else -1)
+        np.testing.assert_array_equal(
+            target.structure.residues["res_idx"], list(range(6)) * 2
+        )

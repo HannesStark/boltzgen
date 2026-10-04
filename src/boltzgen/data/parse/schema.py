@@ -2425,6 +2425,11 @@ class YamlDesignParser:
                     msg = f"Misspecified chain in reset_res_index with missing 'id' for file with path {path}."
                     raise ValueError(msg)
                 chain_id = chain["id"]
+                if chain_id not in structure.chains["name"]:
+                    msg = f"Specified chain id {chain_id} not in file {path}."
+                    raise ValueError(msg)
+                if chain_id not in new_structure.chains["name"]:
+                    continue
                 chain_idx = np.where(chain_id == new_structure.chains["name"])[0].item()
                 struct_chain = new_structure.chains[chain_idx]
                 new_structure.residues[
@@ -2439,6 +2444,18 @@ class YamlDesignParser:
             fuse_info["fuse"] = True
         else:
             fuse_info["fuse"] = False
+
+        retained_chains = set(new_structure.chains["name"])
+        file_chain_to_msa = {
+            chain_id: msa
+            for chain_id, msa in file_chain_to_msa.items()
+            if chain_id in retained_chains
+        }
+        file_chain_symmetric_group = {
+            chain_id: group
+            for chain_id, group in file_chain_symmetric_group.items()
+            if chain_id in retained_chains
+        }
 
         return (
             new_structure,
