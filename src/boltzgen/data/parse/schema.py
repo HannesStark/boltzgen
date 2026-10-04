@@ -17,6 +17,7 @@ from scipy.spatial.distance import cdist
 import yaml
 
 from boltzgen.data import const
+from boltzgen.data import source_context as source_context_utils
 from boltzgen.data.mol import load_molecules
 from boltzgen.data.parse.mmcif import parse_mmcif
 from boltzgen.data.data import (
@@ -287,6 +288,8 @@ def get_mol(ccd: str, mols: dict, moldir: str) -> Mol:
 ####################################################################################################
 
 yaml_keys = [
+    "full_sequences",
+    "source_res_indices",
     "entities",
     "protein",
     "dna",
@@ -1409,6 +1412,7 @@ class YamlDesignParser:
 
         while True:
             data = Structure.empty_protein(0)
+            source_context = {"version": 1, "chains": []}
 
             chain_to_idx = {}
 
@@ -1594,6 +1598,7 @@ class YamlDesignParser:
                         coords=coords,
                         ensemble=ensemble,
                     )
+                    incoming_context = source_context_utils.from_structure(new_data)
                     new_structure_groups = np.zeros(
                         len(new_data.residues), dtype=np.int32
                     )
@@ -1604,12 +1609,21 @@ class YamlDesignParser:
                         [res_design_mask, new_res_design_mask]
                     )
                     if fuse_info["fuse"]:
+                        source_context = source_context_utils.merge(
+                            source_context,
+                            incoming_context,
+                            data,
+                            fuse_info["target_id"],
+                        )
                         data = Structure.fuse(
                             data, new_data, fuse_info["target_id"], res_reindex=True
                         )
                         msg = f"fused chain{fuse_info['target_id']} with chain{new_data.chains[0]['name']}"
                         self.log_once(msg)
                     else:
+                        source_context = source_context_utils.merge(
+                            source_context, incoming_context, data, None
+                        )
                         data, renaming = Structure.concatenate(
                             data, new_data, return_renaming=True
                         )
@@ -1641,6 +1655,7 @@ class YamlDesignParser:
                         new_extra_mols,
                         file_msa_flag,
                         ligand_id,
+                        incoming_context,
                     ) = self.parse_file(item, mols, mol_dir, ligand_id, base_file_path)
                     # Apply symmetric_group to chains from file
                     for chain_id, sym_group in file_chain_symmetric_group.items():
@@ -1651,12 +1666,18 @@ class YamlDesignParser:
                             fuse_info["target_id"] = total_renaming[
                                 fuse_info["target_id"]
                             ]
+                        source_context = source_context_utils.merge(
+                            source_context, incoming_context, data, fuse_info["target_id"]
+                        )
                         data = Structure.fuse(
                             data, new_data, fuse_info["target_id"], res_reindex=True
                         )
                         msg = f"\nFused chain{fuse_info['target_id']} with chain{new_data.chains[0]['name']}."
                         self.log_once(msg)
                     else:
+                        source_context = source_context_utils.merge(
+                            source_context, incoming_context, data, None
+                        )
                         data, renaming = Structure.concatenate(
                             data, new_data, return_renaming=True
                         )
@@ -1740,7 +1761,9 @@ class YamlDesignParser:
                     res_end = chain["res_idx"].item() + chain["res_num"].item()
                     residues = data.residues[res_start:res_end]
                     residue = residues[residues["res_idx"] == r1]
-                    r1 = res_start + residue["res_idx"].item()
+                    r1 = res_start + np.flatnonzero(
+                        residues["res_idx"] == r1
+                    ).item()
 
                     atom_start = residue["atom_idx"].item()
                     atom_end = residue["atom_idx"].item() + residue["atom_num"].item()
@@ -1770,7 +1793,9 @@ class YamlDesignParser:
                     res_end = chain["res_idx"].item() + chain["res_num"].item()
                     residues = data.residues[res_start:res_end]
                     residue = residues[residues["res_idx"] == r2]
-                    r2 = res_start + residue["res_idx"].item()
+                    r2 = res_start + np.flatnonzero(
+                        residues["res_idx"] == r2
+                    ).item()
 
                     atom_start = residue["atom_idx"].item()
                     atom_end = residue["atom_idx"].item() + residue["atom_num"].item()
@@ -1809,6 +1834,12 @@ class YamlDesignParser:
             atoms = data.atoms[res["atom_idx"] : res["atom_idx"] + res["atom_num"]]
             atom_idx = res["atom_idx"] + np.where(atoms["name"] == aidx)[0].item()
             data.atoms["is_present"][atom_idx] = False
+            chain_index = data.chains["name"].tolist().index(cidx)
+            context_entry = source_context["chains"][chain_index]
+            residue_offset = np.where(residues["res_idx"] == ridx)[0].item()
+            context_entry.setdefault("omitted_atoms", []).append(
+                [context_entry["indices"][residue_offset], aidx]
+            )
 
         # Create metadata
         struct_info = StructureInfo(num_chains=len(data.chains))
@@ -1847,6 +1878,7 @@ class YamlDesignParser:
             structure=data,
             design_info=design_info,
             extra_mols=extra_mols,
+            source_context=source_context,
         )
 
     def parse_file(self, item, mols, mol_dir, ligand_id, base_file_path=Path(".")):
@@ -1934,6 +1966,9 @@ class YamlDesignParser:
             self._struct_cache[cache_key] = deepcopy(parsed)
 
         structure = parsed.data
+        source_context = source_context_utils.from_file(
+            structure, path, file.get("full_sequences")
+        )
         num_res = len(structure.residues)
 
         # Construct include mask from include entries
@@ -2039,7 +2074,7 @@ class YamlDesignParser:
 
                 # Set exclude_mask values to 0
                 if "res_index" not in chain:
-                    include_mask[c_start:c_end] = 0
+                    exclude_mask[c_start:c_end] = 0
                 else:
                     indices = parse_range(chain["res_index"], c_start, c_end)
                     exclude_mask[indices] = 0
@@ -2261,9 +2296,12 @@ class YamlDesignParser:
                         fss_type[indices] = const.ss_type_ids["SHEET"]
 
         # Parse and apply design insertions
-        # First pass: collect insertions and coordinate lengths for symmetric chains
+        replacement_labels = source_context_utils.replacement_labels(
+            structure, ~exclude_mask.astype(bool), new_design_mask
+        )
+        replaced_mask = np.zeros(num_res, dtype=bool)
         if design_insertions is not None:
-            num_inserted = defaultdict(int)
+            inserted_positions = defaultdict(list)
             # Group insertions by (symmetric_group, res_index) to coordinate variable lengths
             symmetric_length_cache = {}  # (sym_group, res_index) -> sampled_length
 
@@ -2276,8 +2314,11 @@ class YamlDesignParser:
                     msg = f"Misspecified insertion in design_insertions with missing 'res_index' for file with path {path}."
                     raise ValueError(msg)
                 chain_id = insertion["id"]
-                res_index = insertion["res_index"] - 1  # 1 index input to 0 indexed
-                res_index += num_inserted[chain_id]
+                original_index = insertion["res_index"] - 1
+                res_index = original_index + sum(
+                    count for position, count in inserted_positions[chain_id]
+                    if position <= original_index
+                )
                 ss_insert_type = insertion.get("secondary_structure", "UNSPECIFIED")
 
                 num_residues_spec = insertion["num_residues"]
@@ -2288,7 +2329,7 @@ class YamlDesignParser:
 
                 # If chain has symmetric_group > 0, coordinate length with other symmetric chains
                 if chain_sym_group > 0:
-                    cache_key = (chain_sym_group, res_index, str(num_residues_spec))
+                    cache_key = (chain_sym_group, original_index, str(num_residues_spec))
                     if cache_key in symmetric_length_cache:
                         num_residues = symmetric_length_cache[cache_key]
                     else:
@@ -2299,7 +2340,7 @@ class YamlDesignParser:
 
                 # We add +1 because the parse_range function is usually used for indexing where we then convert the 1 based inputs to 0 indexing
                 num_residues += 1
-                num_inserted[chain_id] += num_residues
+                inserted_positions[chain_id].append((original_index, num_residues))
 
                 if chain_id not in structure.chains["name"]:
                     msg = f"Specified chain id {chain_id} not in file {path}."
@@ -2308,7 +2349,18 @@ class YamlDesignParser:
                 target_chain = structure.chains[structure.chains["name"] == chain_id]
                 res_insert_idx = target_chain["res_idx"] + res_index
 
+                # An insertion anywhere inside an eligible exclusion replaces
+                # that whole original interval. Inserted residues have no label,
+                # so later insertions cannot turn a crop into another interval.
+                if 0 <= res_index < target_chain["res_num"].item():
+                    label = replacement_labels[res_insert_idx].item()
+                    if label >= 0:
+                        replaced_mask |= replacement_labels == label
+
                 # Insert into structure
+                source_context_utils.insert(
+                    source_context, chain_id, res_index, num_residues
+                )
                 structure = Structure.insert(
                     structure, chain_id, res_idx=res_index, num_residues=num_residues
                 )
@@ -2316,6 +2368,12 @@ class YamlDesignParser:
                 # Insert into design specifications
                 include_mask = np.insert(
                     include_mask, res_insert_idx, np.ones(num_residues)
+                )
+                replacement_labels = np.insert(
+                    replacement_labels, res_insert_idx, np.full(num_residues, -1)
+                )
+                replaced_mask = np.insert(
+                    replaced_mask, res_insert_idx, np.zeros(num_residues, dtype=bool)
                 )
                 new_groups = np.insert(
                     new_groups, res_insert_idx, np.zeros(num_residues)
@@ -2333,6 +2391,11 @@ class YamlDesignParser:
                     res_insert_idx,
                     np.ones(num_residues) * const.ss_type_ids[ss_insert_type],
                 )
+
+        source_context = source_context_utils.select(
+            source_context, structure, include_mask.astype(bool),
+            replaced=replaced_mask,
+        )
 
         # Apply mask to new structure groups. Update structure_groups by concatenating existing and new one
         new_groups = new_groups[include_mask].astype(np.int32)
@@ -2436,4 +2499,5 @@ class YamlDesignParser:
             extra_mols,
             file_msa_flag,
             ligand_id,
+            source_context,
         )

@@ -1,5 +1,8 @@
+import os
 import pickle
+import json
 from pathlib import Path
+import tempfile
 from typing import Dict, List
 
 import numpy as np
@@ -10,6 +13,7 @@ from torch import Tensor
 from tqdm import tqdm
 
 from boltzgen.data import const
+from boltzgen.data.source_context import update_designed
 from boltzgen.data.data import (
     Structure,
     convert_ccd,
@@ -23,6 +27,59 @@ from boltzgen.data.write.mmcif import to_mmcif
 from boltzgen.data.write.pdb import to_pdb
 from boltzgen.model.loss.diffusion import weighted_rigid_align
 from boltzgen.model.modules.masker import BoltzMasker
+
+
+def _existing_output_alias(
+    output_dir: Path, source_stem: str, sample_index: int, file_suffix: str
+) -> tuple[str | None, bool]:
+    """Find an output using this sample index despite changed zero padding."""
+    output_stems = {
+        path.stem
+        for path in output_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in {".cif", ".npz"}
+    }
+    matches = []
+    for output_stem in output_stems:
+        normalized_stem = output_stem
+        if file_suffix and normalized_stem.endswith(file_suffix):
+            normalized_stem = normalized_stem[: -len(file_suffix)]
+        if normalized_stem == source_stem:
+            output_index = 0
+        else:
+            prefix = f"{source_stem}_"
+            sample = (
+                normalized_stem[len(prefix) :]
+                if normalized_stem.startswith(prefix)
+                else ""
+            )
+            if not sample.isdigit():
+                continue
+            output_index = int(sample)
+        if output_index == sample_index:
+            matches.append(output_stem)
+
+    for output_stem in sorted(matches):
+        if (
+            (output_dir / f"{output_stem}.cif").is_file()
+            and (output_dir / f"{output_stem}.npz").is_file()
+        ):
+            return output_stem, True
+    return (sorted(matches)[0], False) if matches else (None, False)
+
+
+def _write_npz_atomically(path: str | Path, **arrays) -> None:
+    path = Path(path)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            np.savez_compressed(temporary_file, **arrays)
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 class FoldingWriter(BasePredictionWriter):
@@ -235,7 +292,50 @@ class DesignWriter(BasePredictionWriter):
                     pickle.dump(v, f)
 
         # write samples to disk
+        cfg = getattr(getattr(trainer, "datamodule", None), "cfg", None)
         for n in range(n_samples):
+            if sample_id is not None:
+                file_name = f"{sample_id}_{n}{self.file_suffix}"
+            else:
+                stem = str(batch["id"][0])
+                multiplicity = getattr(cfg, "multiplicity", 1)
+                total_files = multiplicity * n_samples
+                sample_idx = (
+                    int(batch["data_sample_idx"][0])
+                    if "data_sample_idx" in batch
+                    else 0
+                )
+                global_idx = sample_idx * n_samples + n
+
+                if total_files > 1:
+                    num_digits = len(str(total_files - 1))
+                    file_name = (
+                        f"{stem}_{global_idx:0{num_digits}d}{self.file_suffix}"
+                    )
+                else:
+                    file_name = f"{stem}{self.file_suffix}"
+
+            native_path = f"{self.outdir}/{file_name}_native.cif"
+            gen_path = f"{self.outdir}/{file_name}.cif"
+            metadata_path = f"{self.outdir}/{file_name}.npz"
+            if getattr(cfg, "skip_existing", False):
+                output_dir = Path(self.outdir)
+                if sample_id is None:
+                    alias, complete = _existing_output_alias(
+                        output_dir, stem, global_idx, self.file_suffix
+                    )
+                    if complete:
+                        continue
+                    if alias is not None:
+                        file_name = alias
+                        native_path = f"{self.outdir}/{file_name}_native.cif"
+                        gen_path = f"{self.outdir}/{file_name}.cif"
+                        metadata_path = f"{self.outdir}/{file_name}.npz"
+                elif Path(gen_path).is_file() and Path(metadata_path).is_file():
+                    continue
+            # NPZ is the completion marker for the CIF/metadata pair.
+            Path(metadata_path).unlink(missing_ok=True)
+
             # get structure for all generated coords
             sample, native = {}, {}
 
@@ -284,31 +384,6 @@ class DesignWriter(BasePredictionWriter):
             try:
                 structure, _, _ = Structure.from_feat(sample)
                 str_native, _, _ = Structure.from_feat(native)
-
-                # write structure to cif
-                if sample_id is not None:
-                    file_name = f"{sample_id}_{n}{self.file_suffix}"
-                else:
-                    stem = str(batch["id"][0])
-                    multiplicity = getattr(trainer.datamodule.cfg, "multiplicity", 1)
-                    total_files = multiplicity * n_samples
-                    sample_idx = (
-                        int(batch["data_sample_idx"][0])
-                        if "data_sample_idx" in batch
-                        else 0
-                    )
-                    global_idx = sample_idx * n_samples + n
-
-                    if total_files > 1:
-                        num_digits = len(str(total_files - 1))
-                        file_name = (
-                            f"{stem}_{global_idx:0{num_digits}d}{self.file_suffix}"
-                        )
-                    else:
-                        file_name = f"{stem}{self.file_suffix}"
-
-                native_path = f"{self.outdir}/{file_name}_native.cif"
-                gen_path = f"{self.outdir}/{file_name}.cif"
 
                 # design mask bfactor
                 design_mask = batch["design_mask"][0].float()
@@ -382,14 +457,19 @@ class DesignWriter(BasePredictionWriter):
                 )
 
                 # Write metadata
-                metadata_path = f"{self.outdir}/{file_name}.npz"
                 token_mask = sample["token_pad_mask"].bool()
+
+                context = json.loads(batch.get("source_context", ["null"])[0])
+                if context is not None:
+                    context = update_designed(context, structure)
 
                 # Build metadata dict with required fields
                 metadata_dict = {
+                    "source_context": np.asarray(json.dumps(context)),
                     "design_mask": design_mask[token_mask].cpu().numpy(),
                     "mol_type": sample["mol_type"][token_mask].cpu().numpy(),
                     "ss_type": sample["ss_type"][token_mask].cpu().numpy(),
+                    "symmetric_group": batch["symmetric_group"][0][token_mask].cpu().numpy(),
                     "token_resolved_mask": sample["token_resolved_mask"][token_mask].cpu().numpy(),
                     "binding_type": binding_type[token_mask].cpu().numpy(),
                 }
@@ -407,7 +487,7 @@ class DesignWriter(BasePredictionWriter):
                     if aa_mask.any():  # Only save if there are actual constraints
                         metadata_dict["aa_constraint_mask"] = aa_mask[token_mask].cpu().numpy()
 
-                np.savez_compressed(metadata_path, **metadata_dict)
+                _write_npz_atomically(metadata_path, **metadata_dict)
 
                 # Write trajectories
                 if self.save_traj:
