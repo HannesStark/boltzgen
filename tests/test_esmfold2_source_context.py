@@ -829,6 +829,94 @@ def test_explicit_fusion_uses_assembled_sequence(parser_and_mols, tmp_path, sele
         validate_context(joined)
 
 
+@pytest.mark.parametrize("selection", ["1..3", "3..5", "1,3,5"])
+@pytest.mark.parametrize("atom14", [False, True])
+@pytest.mark.parametrize("inverse_fold", [False, True])
+def test_cropped_fusion_survives_writer_and_generated_reader(
+    parser_and_mols, tmp_path, selection, atom14, inverse_fold
+):
+    from types import SimpleNamespace
+    import pickle
+    import torch
+    import yaml
+    from boltzgen.data import const
+    from boltzgen.data.feature.featurizer import Featurizer
+    from boltzgen.data.tokenize.tokenizer import Tokenizer
+    from boltzgen.task.predict.data_from_yaml import PredictionDataset, collate
+    from boltzgen.task.predict.data_from_generated import FromGeneratedDataset
+    from boltzgen.task.predict.writer import DesignWriter
+    from boltzgen.task.esmfold2.score import make_request
+
+    parser, mols = parser_and_mols
+    mols = {name: Chem.RemoveHs(mol) for name, mol in mols.items()}
+    previous = Chem.GetDefaultPickleProperties()
+    try:
+        Chem.SetDefaultPickleProperties(Chem.PropertyPickleOptions.AllProps)
+        for name, mol in mols.items():
+            (tmp_path / f"{name}.pkl").write_bytes(pickle.dumps(mol))
+    finally:
+        Chem.SetDefaultPickleProperties(previous)
+    source = parser.parse_boltzgen_schema(
+        "source", {"entities": [{"protein": {"id": "A", "sequence": "AGCAG"}}]},
+        mols, tmp_path, tmp_path,
+    )
+    source.structure.atoms["coords"] = np.arange(len(source.structure.atoms) * 3).reshape(-1, 3) + 1
+    source.structure.coords["coords"] = source.structure.atoms["coords"]
+    path = tmp_path / "source.cif"
+    path.write_text(to_mmcif(source.structure))
+    fragment = {"file": {"path": str(path), "include": [{"chain": {"id": "A", "res_index": selection}}]}}
+    cropped = parser.parse_boltzgen_schema("crop", {"entities": [fragment]}, mols, tmp_path, tmp_path)
+    # Ordinary crops keep their original indices and complete source sequence.
+    assert cropped.source_context["chains"][0]["residue_names"] == source.structure.residues["name"].tolist()
+    original_indices = cropped.structure.residues["res_idx"].tolist()
+    expected = cropped.structure.residues["name"].tolist() + ["GLY", "GLY", "ALA", "CYS"]
+    spec = tmp_path / "fusion.yaml"
+    spec.write_text(yaml.safe_dump({"entities": [
+        fragment,
+        {"protein": {"id": "L", "fuse": "A", "sequence": "GG"}},
+        {"file": {"path": str(path), "fuse": "A", "include": [{"chain": {"id": "A", "res_index": "1,3"}}]}},
+        {"protein": {"id": "B", "sequence": "3"}},
+    ]}))
+    config = SimpleNamespace(yaml_path=str(spec), tokenizer=Tokenizer(), featurizer=Featurizer(), multiplicity=1)
+    features = PredictionDataset(config, mols, str(tmp_path), atom14=atom14)[0]
+    indices = features["residue_index"][features["asym_id"] == 0].tolist()
+    assert indices[:len(original_indices)] == original_indices
+    # Repeated fusion must append after the last actual index, including gaps.
+    last = original_indices[-1]
+    assert indices == original_indices + [last + 1, last + 2, last + 3, last + 5]
+    assert len(set(indices)) == len(expected)
+    batch = collate([features])
+    prediction = dict(batch)
+    prediction["coords"] = torch.arange(batch["coords"][:, 0].numel(), dtype=torch.float32).reshape_as(batch["coords"][:, 0]) + 1
+    if atom14:
+        # Encode GLY with all ten unused atom slots placed on its backbone O.
+        atom_design_mask = batch["design_mask"][0].bool()[batch["atom_to_token"][0].int().argmax(-1)]
+        atom_design_mask &= batch["atom_pad_mask"][0].bool()
+        coords = prediction["coords"][0, atom_design_mask].reshape(-1, 14, 3)
+        coords[:, 4:] = coords[:, 3:4]
+        prediction["coords"][0, atom_design_mask] = coords.reshape(-1, 3)
+    prediction["exception"] = False
+    generated = tmp_path / "generated"
+    writer = DesignWriter(str(generated), res_atoms_only=False, atom14=atom14, inverse_fold=inverse_fold)
+    writer.write_on_batch_end(prediction=prediction, batch=batch, sample_id="fusion")
+    output = generated / "fusion_0.cif"
+    assert writer.failed == 0
+    assert output.with_suffix(".npz").is_file()
+    feat = FromGeneratedDataset(
+        [output], [output.with_suffix(".npz")], [output], tmp_path, mols,
+        Tokenizer(), Featurizer(), extra_mol_dir=generated / const.molecules_dirname,
+        extra_features=["tokenized"],
+    )[0]
+    request = make_request(feat, {})
+    target, binder = request["chains"]
+    assert target["residue_names"] == expected
+    assert target["indices"] == list(range(len(expected)))
+    assert target["context_mode"] == "fused_construct"
+    assert binder["residue_names"] == ["GLY"] * 3
+    assert request["design_chains"] == ["B"]
+    assert request["target_chains"] == ["A"]
+
+
 def test_fusion_reassembles_source_around_linker(parser_and_mols, tmp_path):
     parser, mols = parser_and_mols
     source = parser.parse_boltzgen_schema(
