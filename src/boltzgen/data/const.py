@@ -3475,7 +3475,6 @@ eval_keys_confidence = [
     "design_ipsae_min",
     "design_to_target_ipsae",
     "target_to_design_ipsae",
-    "ligand_iptm",
     "complex_plddt",
     "complex_iplddt",
     "complex_pde",
