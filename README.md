@@ -15,6 +15,14 @@ In an environment with python >=3.11:
 pip install boltzgen
 ```
 
+Polymer binder protocols score interfaces with the full ESMFold2 2021 checkpoint
+and ipSAE. BoltzGen prepares its cached runtime automatically on first use; no
+extra install command or interpreter flag is needed. See [ESMFold2 scoring](docs/esmfold2.md)
+for GPU requirements, cropped targets, and existing designs. The
+`protein-small_molecule` protocol continues to use Boltz2 affinity.
+`protein-redesign` uses the weakest chain-versus-rest ESMFold2 ipSAE, or
+ESMFold2 pTM for single-chain redesigns.
+
 <details>
   <summary style="font-size: 1.3em; font-weight: 600;">
     Click for detailed installation instructions
@@ -128,9 +136,9 @@ inverse-fold design-mask override can restrict the original
 design region but cannot expand it. This is an alternative sequence model;
 equivalent design quality across BoltzGen protocols has not been established.
 
-Per-residue amino-acid constraints are supported. `--only_inverse_fold` also
-honors YAML `symmetric_group` sequence tying; the existing generated-file
-loader does not restore symmetry groups from CIF/NPZ outputs.
+Per-residue amino-acid constraints and YAML `symmetric_group` sequence tying
+are supported, both with `--only_inverse_fold` and after backbone generation.
+The generated NPZ metadata preserves symmetry groups when designs are reloaded.
 Tied positions use the intersection of their allowed amino acids;
 incompatible constraints raise an error. As with BoltzIF, a per-position
 constraint that conflicts with all globally allowed residues is relaxed with
@@ -140,7 +148,7 @@ a warning, while global `--inverse_fold_avoid` exclusions remain enforced.
 
 
 `boltzgen run` takes a [design specification](#how-to-make-a-design-specification-yaml) `.yaml` and produces a set of ranked designs.\
-⚠️ it downloads models (~6GB) to `~/.cache`. This can by changed by passing `--cache YOUR_PATH` or by setting `$HF_HOME`.\
+⚠️ Boltz models need about 6 GB. Polymer scoring additionally downloads about 27 GB of ESM weights and a 6 GB isolated runtime on first use. ESMFold2 requires a CUDA 13 compatible NVIDIA driver. `--cache` controls Boltz downloads; `HF_HOME` controls ESM weights and `UV_CACHE_DIR` controls the isolated runtime. All use standard user caches by default. See [installation and caching details](docs/esmfold2.md#installation-and-use).\
 ⚠️ If your run is ever interrupted, you can restart it with `--reuse`. No progress is lost.
 
 
@@ -509,13 +517,13 @@ The `boltzgen run` command executes the BoltzGen binder design pipeline. Here ar
 ### Model and Data Download Options
 - `--force_download` - Force a (re)-download of models and data.
 - `--models_token MODELS_TOKEN` - Secret token to use for our models hosting service (Hugging Face). Default: `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`
-- `--cache CACHE` - Directory where downloaded models will be stored. Default: `~/.cache`
+- `--cache CACHE` - Directory for Boltz models and data. Default: `~/.cache`. ESM checkpoints use `HF_HOME`/`HF_HUB_CACHE`; the ESM runtime uses `UV_CACHE_DIR`.
 
 ## `boltzgen download`
 
 The `boltzgen download` command downloads model weights and data artifacts needed for BoltzGen. In most cases you don't need to use `boltzgen download`, since `boltzgen run` will download what is needed automatically.
 
-Downloaded weights and datasets are stored in `~/.cache` by default but this can be changed by specifying `--cache`.
+Downloaded Boltz weights and datasets are stored in `~/.cache` by default but this can be changed by specifying `--cache`. ESMFold2 weights and runtime use the separate caches described in [the ESMFold2 installation guide](docs/esmfold2.md#installation-and-use).
 
 ### Example
 
@@ -535,7 +543,7 @@ boltzgen download [-h] [--force_download] [--models_token MODELS_TOKEN] [--cache
 ### Options
 - `--force_download` - Force a (re)-download of models and data.
 - `--models_token MODELS_TOKEN` - Secret token to use for our models hosting service. Not usually required.
-- `--cache CACHE` - Directory where downloaded models will be stored. Default: `~/.cache`
+- `--cache CACHE` - Directory for Boltz models and data. Default: `~/.cache`. ESM checkpoints use `HF_HOME`/`HF_HUB_CACHE`; the ESM runtime uses `UV_CACHE_DIR`.
 
 ## `boltzgen configure`
 For more control over your design process, you can separate the configuration generation from execution:

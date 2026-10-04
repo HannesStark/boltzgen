@@ -414,6 +414,14 @@ def test_yaml_uses_reference_model_before_combining_files(
         )
         structure = target.structure
         assert structure.ensemble.tolist() == [(0, len(structure.atoms))]
+        contexts = target.source_context["chains"]
+        assert [entry["source_chain"] for entry in contexts] == (
+            structure.chains["name"].tolist()
+        )
+        for entry in contexts:
+            assert entry["complete"]
+            assert entry["residue_names"] == PROTEIN
+            assert entry["indices"] == list(range(1, 5) if crop else range(6))
         assert len(structure.coords) == len(structure.atoms)
         np.testing.assert_allclose(
             structure.coords["coords"], structure.atoms["coords"]
@@ -539,6 +547,14 @@ def test_yaml_removes_only_unresolved_chain_ends(
         structure = target.structure
         assert structure.chains["name"].tolist() == (
             chain_ids if expected_a else chain_ids[1:]
+        )
+        contexts = target.source_context["chains"]
+        assert [entry["source_chain"] for entry in contexts] == (
+            structure.chains["name"].tolist()
+        )
+        assert all(entry["residue_names"] == PROTEIN for entry in contexts)
+        assert contexts[0]["indices"] == (
+            [position - 1 for position in expected_a] if expected_a else list(range(6))
         )
         assert len(structure.residues) == len(expected_a) + 6
         assert target.design_info.res_design_mask.sum() == len(expected_a)
@@ -742,6 +758,10 @@ def test_removed_chain_does_not_leave_metadata_for_later_files(
             "metadata", definition, mols, tmp_path, base_file_path=tmp_path
         )
         assert target.structure.chains["name"].tolist() == ["B", "A"]
+        contexts = target.source_context["chains"]
+        assert [entry["source_chain"] for entry in contexts] == ["B", "A"]
+        assert all(entry["residue_names"] == PROTEIN for entry in contexts)
+        assert all(entry["indices"] == list(range(6)) for entry in contexts)
         assert target.structure.residues["is_present"].all()
         assert target.structure.chains["symmetric_group"].tolist() == [0, 0]
         msa_ids = {chain.chain_name: chain.msa_id for chain in target.record.chains}

@@ -24,5 +24,4 @@ entities:
         - group:
             visibility: 1
             id: A
-            res_index: 12..118, 243..291
-        
+            res_index: 12..118,243..291

@@ -28,6 +28,14 @@ from boltzgen.task.filter.seqplot_utils import (
     plot_seq_liabilities,
 )
 from boltzgen.task.task import Task
+from boltzgen.task.esmfold2.contract import (
+    SCORE_KEY,
+    REDESIGN_SCORE_KEY,
+    SCORE_DIR,
+    file_sha256,
+    fingerprint,
+    load_result,
+)
 
 
 class Filter(Task):
@@ -105,7 +113,7 @@ class Filter(Task):
     are pushed down), then divide by the metric’s *inverse-importance* weight.
     The **worst** (max) scaled rank across metrics becomes the design’s
     quality key. The Top set is the best `budget` designs by this key (tie-broken
-    by iPTM).
+    by the ESMFold2 score for polymer protocols, or iPTM for affinity).
 
     **Diversity.** A lazy-greedy selection chooses `div_budget` designs maximizing:
     ``(1 - alpha) * quality + alpha * (1 - seq_identity)``.
@@ -153,6 +161,7 @@ class Filter(Task):
         top_budget: int = 10,
         outdir: str = None,
         use_affinity: bool = False,  # This changes the filtering metrics to metrics more amenable to small molecule binder design
+        esmfold2_redesign: bool = False,
         filter_cysteine: bool = True,  # This filters out all designs that have designed cysteins in them (prespecified cysteins in the design are not counted)
         from_inverse_folded: bool = True,  # This makes it so that we use the backbone refolding rmsd instead of the all-atom RMSD
         filter_designfolding: bool = True,  # Additionally filter based on the RMSD from refolding the design in isolation. This makes sure the design has the same shape with and without the target being present.
@@ -178,6 +187,11 @@ class Filter(Task):
         self.design_dir = Path(design_dir)
         self.top_budget = top_budget
         self.use_affinity = use_affinity
+        self.use_esmfold2 = not use_affinity
+        if esmfold2_redesign and use_affinity:
+            raise ValueError("ESMFold2 redesign scoring cannot use Boltz affinity")
+        self.esmfold2_redesign = esmfold2_redesign
+        self.esmfold2_score_key = REDESIGN_SCORE_KEY if esmfold2_redesign else SCORE_KEY
         self.filter_cysteine = filter_cysteine
         self.from_inverse_folded = from_inverse_folded
         self.filter_bindingsite = filter_bindingsite
@@ -220,6 +234,11 @@ class Filter(Task):
                 if from_inverse_folded
                 else "delta_sasa_original": 2,
             }
+
+        else:
+            del self.metrics["design_to_target_iptm"]
+            del self.metrics["neg_min_design_to_target_pae"]
+            self.metrics[self.esmfold2_score_key] = 1
 
         # override metrics
         if not metrics_override is None:
@@ -360,6 +379,44 @@ class Filter(Task):
 
         self.df_in = df_in.copy()
         df = df_in.copy()
+        if self.use_esmfold2:
+            import json
+
+            if self.esmfold2_score_key not in df or "esmfold2_input_hash" not in df:
+                raise ValueError(
+                    "Missing ESMFold2 scores; run esmfold2_scoring and analysis before filtering"
+                )
+            score_metrics = set()
+            for _, row in df.iterrows():
+                score_dir = self.design_dir / SCORE_DIR
+                request = json.loads(
+                    (score_dir / f"{row['id']}.input.json").read_text()
+                )
+                result = load_result(
+                    score_dir / f"{row['id']}.json", fingerprint(request)
+                )
+                expected_mode = "redesign" if self.esmfold2_redesign else "binder"
+                if any(value.get("scoring_mode", "binder") != expected_mode for value in (request, result)):
+                    raise ValueError("ESMFold2 scoring mode does not match this filtering protocol")
+                if self.esmfold2_redesign:
+                    if row.get("esmfold2_score_metric") != result["score_metric"]:
+                        raise ValueError("Aggregated ESMFold2 metric is stale; rerun analysis")
+                    score_metrics.add(result["score_metric"])
+                if row["esmfold2_input_hash"] != result["input_hash"] or not np.isclose(
+                    row[self.esmfold2_score_key], result["metrics"][self.esmfold2_score_key], rtol=0, atol=1e-12
+                ):
+                    raise ValueError(
+                        "Aggregated ESMFold2 scores are stale; rerun analysis"
+                    )
+                if request["design_sha256"] != file_sha256(
+                    self.design_dir / row["file_name"]
+                ):
+                    raise ValueError(
+                        "Design changed after ESMFold2 scoring; rerun esmfold2_scoring and analysis"
+                    )
+
+            if len(score_metrics) > 1:
+                raise ValueError("Rank monomer pTM and multichain ipSAE redesigns in separate campaigns")
 
         if self.from_inverse_folded:
             df["filter_rmsd"] = df["bb_rmsd"]
@@ -423,6 +480,10 @@ class Filter(Task):
         print("\n")
 
     def absolute_metrics(self):
+        if not self.use_affinity:
+            # These composite calibrations describe Boltz2 interaction metrics;
+            # applying them to ESMFold2 ipSAE would imply unmeasured calibration.
+            return
         norm_path = Path("src/boltzgen/resources/metrics_normalization.json")
         if not norm_path.exists():
             return
@@ -509,9 +570,13 @@ class Filter(Task):
         self.df = self.df.sort_values(
             by=[
                 "secondary_rank",
-                "design_to_target_iptm"
-                if "design_to_target_iptm" in self.df
-                else "design_iptm",
+                self.esmfold2_score_key
+                if self.use_esmfold2
+                else (
+                    "design_to_target_iptm"
+                    if "design_to_target_iptm" in self.df
+                    else "design_iptm"
+                ),
             ],
             ascending=[True, False],
         )
@@ -526,6 +591,11 @@ class Filter(Task):
             "designed_sequence",
             "designed_chain_sequence",
             "num_design",
+            self.esmfold2_score_key,
+            "esmfold2_score_metric",
+            "esmfold2_ptm",
+            "esmfold2_design_to_target_ipsae",
+            "esmfold2_target_to_design_ipsae",
             "affinity_probability_binary1",
             "design_to_target_iptm"
             if "design_to_target_iptm" in self.df
@@ -823,6 +893,29 @@ class Filter(Task):
         if self.use_affinity:
             summary_metrics.insert(2, "affinity_probability_binary1")
             hist_metrics.insert(2, "affinity_probability_binary1")
+        else:
+            # Keep legacy Boltz confidence columns in the CSV for diagnostics,
+            # but present the score that actually selects polymer binders.
+            interface_columns = {
+                "design_iptm",
+                "design_to_target_iptm",
+                "design_iiptm",
+                "min_design_to_target_pae",
+                "min_interaction_pae",
+            }
+            summary_metrics = [self.esmfold2_score_key] + [
+                k for k in summary_metrics
+                if k not in interface_columns and k != self.esmfold2_score_key
+            ]
+            hist_metrics = [self.esmfold2_score_key] + [
+                k for k in hist_metrics
+                if k not in interface_columns and k != self.esmfold2_score_key
+            ]
+            extra_pairs = [("num_design", self.esmfold2_score_key)] + [
+                p for p in extra_pairs
+                if not set(p) & interface_columns
+                and p != ("num_design", self.esmfold2_score_key)
+            ]
 
         avail = [m for m in summary_metrics if m in self.df.columns]
         base_rows = [
@@ -929,6 +1022,28 @@ class Filter(Task):
         ]
 
         intro_text = text
+        if self.use_esmfold2:
+            score_label = "ESMFold2 ipSAE or pTM" if self.esmfold2_redesign else "ESMFold2 ipSAE"
+            intro_text = intro_text.replace("such as iPTM", f"such as {score_label}")
+            csv_expl_rows.insert(
+                2,
+                [
+                    self.esmfold2_score_key,
+                    "ESMFold2 2021 redesign: weakest chain-versus-rest ipSAE; native pTM for monomers (higher = better)"
+                    if self.esmfold2_redesign else
+                    "ESMFold2 2021: minimum directional ipSAE, PAE <10 Å; best of five samples by default (higher = better)",
+                ],
+            )
+            if self.esmfold2_redesign:
+                csv_expl_rows.insert(
+                    3,
+                    ["esmfold2_score_metric", "Metric used: weakest chain-versus-rest ipSAE, or native ESMFold2 pTM for monomers"],
+                )
+            else:
+                csv_expl_rows[3:3] = [
+                    ["esmfold2_design_to_target_ipsae", "Directional ipSAE, designed polymer toward the selected target"],
+                    ["esmfold2_target_to_design_ipsae", "Directional ipSAE, selected target toward the designed polymer"],
+                ]
 
         return (
             hist_metrics,
