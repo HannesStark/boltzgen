@@ -324,6 +324,17 @@ CASES = {
         ResidueSpec("A", "ALA", (8, 0, 0), absent=("CA",)),
         ResidueSpec("B", "GLY", (11, 1, 0)),
     ],
+    "missing_target_ca": [
+        ResidueSpec("A", "GLY", (0, 0, 0), designed=True),
+        ResidueSpec("A", "ALA", (8, 0, 0)),
+        ResidueSpec("B", "GLY", (11, 1, 0), absent=("CA",)),
+    ],
+    "mixed_target_resolution": [
+        ResidueSpec("A", "GLY", (0, 0, 0), designed=True),
+        ResidueSpec("A", "ALA", (8, 0, 0)),
+        ResidueSpec("B", "GLY", (11, 1, 0), absent=("CA",)),
+        ResidueSpec("B", "ALA", (8, -3, 0)),
+    ],
     "absent_scaffold": [
         ResidueSpec("A", "GLY", (0, 0, 0), designed=True),
         ResidueSpec("A", "ALA", (8, 0, 0), absent=tuple(const.ref_atoms["ALA"])),
@@ -365,14 +376,18 @@ def test_analysis_matches_complete_chain_sasa(
         assert metrics["delta_sasa_original"] != metrics["delta_sasa_refolded"]
 
 
+@pytest.mark.parametrize("absent", [(), ("CA",)])
 def test_symmetric_target_override(
-    dataset: FromGeneratedDataset, tmp_path: Path, analysis_template: Analyze
+    dataset: FromGeneratedDataset,
+    tmp_path: Path,
+    analysis_template: Analyze,
+    absent: tuple[str, ...],
 ) -> None:
     specs = [
         ResidueSpec("A", "GLY", (0, 0, 0), designed=True),
-        ResidueSpec("A", "ALA", (3, 0, 0)),
+        ResidueSpec("A", "ALA", (3, 0, 0), absent=absent),
         ResidueSpec("B", "GLY", (0, 5, 0), designed=True),
-        ResidueSpec("B", "ALA", (3, 5, 0)),
+        ResidueSpec("B", "ALA", (3, 5, 0), absent=absent),
     ]
     feat, directory = prepare(dataset, tmp_path / "symmetric", specs)
     metrics, refold = run_analysis(analysis_template, feat, directory, symmetric=True)

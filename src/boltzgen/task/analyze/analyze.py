@@ -637,9 +637,10 @@ class Analyze(Task):
         # For symmetric designs where all chains have designed residues, use design_mask
         # instead of chain_design_mask so "target" = non-designed residues (not empty)
         if self.use_design_mask_for_target:
-            target_resolved_mask = (~design_mask) & feat["token_resolved_mask"].bool()
+            target_mask = ~design_mask
         else:
-            target_resolved_mask = (~chain_design_mask) & feat["token_resolved_mask"].bool()
+            target_mask = ~chain_design_mask
+        target_resolved_mask = target_mask & feat["token_resolved_mask"].bool()
         atom_design_resolved_mask = (
             (feat["atom_to_token"].float() @ design_resolved_mask.unsqueeze(-1).float())
             .bool()
@@ -651,7 +652,13 @@ class Analyze(Task):
             .squeeze()
         )
         atom_resolved_mask = feat["atom_resolved_mask"]
-        resolved_atoms_target_mask = atom_target_resolved_mask[atom_resolved_mask]
+        # SASA uses every present atom even when its representative is absent.
+        atom_target_mask = (
+            (feat["atom_to_token"].float() @ target_mask.unsqueeze(-1).float())
+            .bool()
+            .squeeze()
+        )
+        resolved_atoms_target_mask = atom_target_mask[atom_resolved_mask]
         atom_chain_mask = (
             (
                 feat["atom_to_token"].float()
