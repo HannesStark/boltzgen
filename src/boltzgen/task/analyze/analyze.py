@@ -622,7 +622,6 @@ class Analyze(Task):
             .squeeze()
         )
         atom_resolved_mask = feat["atom_resolved_mask"]
-        resolved_atoms_design_mask = atom_design_resolved_mask[atom_resolved_mask]
         resolved_atoms_target_mask = atom_target_resolved_mask[atom_resolved_mask]
         atom_chain_mask = (
             (
@@ -632,6 +631,9 @@ class Analyze(Task):
             .bool()
             .squeeze()
         )
+        # Interface SASA includes fixed scaffold atoms and covalently attached
+        # components of every designed chain, not just redesigned residues.
+        resolved_atoms_chain_mask = atom_chain_mask[atom_resolved_mask]
 
         # Get masks for native structure
         if self.native:
@@ -711,7 +713,7 @@ class Analyze(Task):
             ) = get_delta_sasa(
                 path,
                 atom_target_mask=resolved_atoms_target_mask,
-                atom_design_mask=resolved_atoms_design_mask,
+                atom_design_mask=resolved_atoms_chain_mask,
             )
             metrics["delta_sasa_original"] = delta_sasa_orig
             metrics["design_sasa_unbound_original"] = design_sasa_unbound
@@ -1095,7 +1097,7 @@ class Analyze(Task):
                 ) = get_delta_sasa(
                     cif_path_refolded,
                     atom_target_mask=resolved_atoms_target_mask,
-                    atom_design_mask=resolved_atoms_design_mask,
+                    atom_design_mask=resolved_atoms_chain_mask,
                 )
 
                 metrics["delta_sasa_refolded"] = delta_sasa_refolded
