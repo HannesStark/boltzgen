@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import re
 from typing import Dict, List, Optional, Union
@@ -96,6 +97,7 @@ def collate(data: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
             "structure_bonds",
             "extra_mols",
             "data_sample_idx",
+            "source_context",
         ]:
             # Check if all have the same shape
             shape = values[0].shape
@@ -283,6 +285,7 @@ class PredictionDataset(torch.utils.data.Dataset):
 
         # set chain_design_mask
         features["chain_design_mask"] = torch.from_numpy(chain_design_mask)
+        features["source_context"] = json.dumps(parsed.source_context)
 
         # Compute template features
         templates_features = load_dummy_templates(
@@ -444,6 +447,7 @@ class FromYamlDataModule(pl.LightningDataModule):
                 "structure_bonds",
                 "extra_mols",
                 "data_sample_idx",
+                "source_context",
             ]:
                 batch[key] = batch[key].to(device)
         return batch

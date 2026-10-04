@@ -1,4 +1,5 @@
 import pickle
+import json
 from pathlib import Path
 from typing import Dict, List
 
@@ -10,6 +11,7 @@ from torch import Tensor
 from tqdm import tqdm
 
 from boltzgen.data import const
+from boltzgen.data.source_context import update_designed
 from boltzgen.data.data import (
     Structure,
     convert_ccd,
@@ -385,8 +387,13 @@ class DesignWriter(BasePredictionWriter):
                 metadata_path = f"{self.outdir}/{file_name}.npz"
                 token_mask = sample["token_pad_mask"].bool()
 
+                context = json.loads(batch.get("source_context", ["null"])[0])
+                if context is not None:
+                    context = update_designed(context, structure)
+
                 # Build metadata dict with required fields
                 metadata_dict = {
+                    "source_context": np.asarray(json.dumps(context)),
                     "design_mask": design_mask[token_mask].cpu().numpy(),
                     "mol_type": sample["mol_type"][token_mask].cpu().numpy(),
                     "ss_type": sample["ss_type"][token_mask].cpu().numpy(),

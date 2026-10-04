@@ -73,6 +73,7 @@ step_names = [
     "design_folding",
     "folding",
     "affinity",
+    "esmfold2_scoring",
     "analysis",
     "filtering",
 ]
@@ -102,13 +103,15 @@ protocol_configs = {
         "filtering": ["filter_cysteine=true"],
     },
     "protein-redesign": {
+        "esmfold2_scoring": ["scoring_mode=redesign"],
         # For redesigning/optimizing existing proteins (e.g., symmetric dimers)
         # where all chains may have designed residues. Skips design_folding and
         # uses design_mask (not chain_design_mask) for target/template definition.
         "folding": ["data.design_mask_templates=true"],
         "analysis": ["use_design_mask_for_target=true"],
         "filtering": [
-            "metrics_override={design_to_target_iptm: null, neg_min_design_to_target_pae: null, design_ptm: null, plip_hbonds_refolded: null, plip_saltbridge_refolded: null, delta_sasa_refolded: null, plip_hbonds: null, plip_saltbridge: null, delta_sasa_original: null, design_residue_iptm: 1, iptm: 2, ptm: 3, neg_filter_rmsd_design: 4}",
+            "esmfold2_redesign=true",
+            "metrics_override={design_ptm: null, plip_hbonds_refolded: null, plip_saltbridge_refolded: null, delta_sasa_refolded: null, plip_hbonds: null, plip_saltbridge: null, delta_sasa_original: null, esmfold2_score: 1, neg_filter_rmsd_design: 4}",
         ],
     },
 }
@@ -310,6 +313,11 @@ def add_configure_arguments(
     # Folding and affinity prediction configuration options
     p = parser.add_argument_group("folding and affinity prediction")
     p.add_argument(
+        "--esmfold2_python",
+        default=os.environ.get("BOLTZGEN_ESMFOLD2_PYTHON"),
+        help="Optional ESMFold2 interpreter override. By default BoltzGen prepares its runtime automatically.",
+    )
+    p.add_argument(
         "--folding_checkpoint",
         type=str,
         help="Path to the folding checkpoint. Default: %(default)s",
@@ -391,7 +399,8 @@ def add_models_download_options(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--cache",
         type=Path,
-        help="Directory where downloaded models will be stored. Default: ~/.cache",
+        help="Directory for Boltz models and data. Default: ~/.cache. "
+        "ESM checkpoints use HF_HOME/HF_HUB_CACHE; the ESM runtime uses UV_CACHE_DIR.",
         default=None,
     )
 
@@ -687,8 +696,9 @@ def configure_command(args: argparse.Namespace) -> None:
     * `<output_dir>/config/<step>.yaml` — fully resolved config for each pipeline step.
     * `<output_dir>/steps.yaml` — manifest of steps and config file paths.
 
-    This stage does **not execute** any model code; it only prepares the YAMLs used by
-    `execute_command(...)`.
+    This stage prepares the YAMLs used by `execute_command(...)`. Fresh polymer
+    runs also prepare the isolated ESM runtime and check CUDA availability;
+    they do not load model weights or run inference here.
 
     Usually this is executed by `boltzgen run ...` but it can be used like:
         $ boltzgen configure path/to/design.yaml --output out_dir --protocol peptide-anything
@@ -717,6 +727,12 @@ def configure_command(args: argparse.Namespace) -> None:
     # Check that tasks can be instantiated
     for step in pipeline.steps:
         step.check()
+        if step.name == "esmfold2_scoring" and not step.get_config().reuse:
+            from boltzgen.task.esmfold2.runtime import resolve_python
+
+            # Reuse can finish entirely from saved scores. Provision that run's
+            # runtime only if the scoring task finds work still to compute.
+            resolve_python(step.get_config().python, require_cuda=True)
 
     # Make the config subdir in output
     config_dir = output_dir / "config"
@@ -1236,14 +1252,31 @@ class BinderDesignPipeline:
             )
 
         # Analysis
+        if not use_affinity:
+            self.steps.append(
+                PipelineStep(
+                    name="esmfold2_scoring",
+                    config_path=args.config_dir / "esmfold2.yaml",
+                    args=[
+                        f"design_dir={input_dir}",
+                        f"data.cfg.moldir={moldir}",
+                        f"python={args.esmfold2_python or 'null'}",
+                        f"devices={devices}",
+                        f"reuse={args.reuse}",
+                    ]
+                    + config_args_by_step["esmfold2_scoring"],
+                )
+            )
+
         self.steps.append(
             PipelineStep(
                 name="analysis",
                 config_path=args.config_dir / "analysis.yaml",
                 args=[
                     f"design_dir={input_dir}",
-                    f"data.skip_existing={args.reuse}",
+                    f"data.skip_existing={args.reuse and use_affinity}",
                     f"data.skip_existing_kind=analyzed",
+                    f"esmfold2_metrics={not use_affinity}",
                     f"data.cfg.moldir={moldir}",
                     f"designfolding_metrics={do_design_folding}",
                     f"delta_sasa_original={args.skip_inverse_folding}",
@@ -1629,6 +1662,19 @@ def merge_command(args: argparse.Namespace) -> None:
                         key = (root, original_id)
                         new_id = id_map.setdefault(key, f"{run_tag}_{original_id}")
                         new_file = _make_new_file_name(original_file, new_id)
+                        if pd.notna(row.get("esmfold2_input_hash")):
+                            from boltzgen.task.esmfold2.contract import (
+                                SCORE_DIR,
+                                copy_renamed_result,
+                            )
+
+                            row["esmfold2_input_hash"] = copy_renamed_result(
+                                src_dir / SCORE_DIR,
+                                dest_dir / SCORE_DIR,
+                                original_id,
+                                new_id,
+                                src_dir / original_file,
+                            )
                         updated_rows.append(
                             {**row, "id": new_id, "file_name": new_file}
                         )

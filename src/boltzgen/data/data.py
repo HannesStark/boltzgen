@@ -1992,6 +1992,7 @@ class Target:
     sequences: Optional[dict[str, str]] = None
     templates: Optional[dict[str, Structure]] = None
     extra_mols: Optional[dict[str, Mol]] = None
+    source_context: Optional[dict] = None
 
 
 @dataclass(frozen=True, slots=True)

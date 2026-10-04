@@ -39,6 +39,7 @@ dependencies = [
     "cuequivariance_torch>=0.5.0",
     "huggingface_hub",
     "biopython", 
+    "uv>=0.12.3,<0.13",
 ]
 
 # Enables the usage of setuptools_scm
@@ -52,7 +53,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-boltzgen = ["resources/config/**/*", "_vendor/ligandmpnn/LICENSE", "_vendor/ligandmpnn/NOTICE.md"]
+boltzgen = ["resources/config/**/*", "resources/runtime/*.txt", "_vendor/ligandmpnn/LICENSE", "_vendor/ligandmpnn/NOTICE.md"]
 
 [project.scripts]
 boltzgen = "boltzgen.cli.boltzgen:main"

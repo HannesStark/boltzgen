@@ -106,6 +106,7 @@ def collate(data: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
             "structure",
             "tokenized",
             "data_sample_idx",
+            "source_context",
         ]:
             # Check if all have the same shape
             shape = values[0].shape
@@ -342,6 +343,11 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
 
         # Get features
         feat = self.get_feat(generated_path, design_mask, ss_type, binding_type, aa_constraint_mask)
+        feat["source_context"] = (
+            str(metadata["source_context"].item())
+            if "source_context" in metadata
+            else "null"
+        )
 
         # Get native features
         if self.return_native:
@@ -876,6 +882,7 @@ class FromGeneratedDataModule(pl.LightningDataModule):
                 "structure",
                 "tokenized",
                 "data_sample_idx",
+                "source_context",
             ]:
                 batch[key] = batch[key].to(device)
 

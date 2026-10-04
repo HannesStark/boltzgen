@@ -4,6 +4,7 @@ Set BOLTZGEN_TEST_MOLDIR and BOLTZGEN_TEST_SOLUBLEMPNN_CHECKPOINT to run the
 CPU integration tests without network access during pytest.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -472,6 +473,9 @@ def test_generated_unknown_backbone_is_redesigned(real_task, tmp_path):
 @pytest.mark.parametrize("real_task", [None, "RPB"], indirect=True)
 def test_real_weights_write_and_reload_for_downstream_folding(real_task, tmp_path):
     """Exercise parser -> featurizer -> sampler -> CIF/NPZ writer -> fold loader."""
+    original = json.loads(
+        next(iter(real_task.data.predict_dataloader()))["source_context"][0]
+    )
     real_task.run()
     assert real_task.writer.failed == 0
     output = Path(real_task.output)
@@ -513,12 +517,28 @@ def test_real_weights_write_and_reload_for_downstream_folding(real_task, tmp_pat
     ).all()
     with np.load(next(output.glob("*.npz"))) as metadata:
         assert metadata["design_mask"].sum() == int(designed.sum())
+        first_context = json.loads(str(metadata["source_context"].item()))
         expected_ligand_tokens = (
             metadata["mol_type"] == const.chain_type_ids["NONPOLYMER"]
         ).sum()
     assert (
         batch["mol_type"] == const.chain_type_ids["NONPOLYMER"]
     ).sum() == expected_ligand_tokens
+    final_context = json.loads(batch["source_context"][0])
+    protein = original["chains"][0]
+    assert len(protein["residue_names"]) > len(protein["indices"])
+    design_positions = designed[0, :len(protein["indices"])].nonzero().flatten().tolist()
+    for context, identity in [(first_context, "ALA"), (final_context, "GLY")]:
+        for index, (before, after) in enumerate(zip(
+            original["chains"], context["chains"], strict=True
+        )):
+            assert after["indices"] == before["indices"]
+            expected_names = before["residue_names"].copy()
+            if index == 0:
+                for position in design_positions:
+                    expected_names[before["indices"][position]] = identity
+            assert after["residue_names"] == expected_names
+            assert after["complete"] == before["complete"]
     if expected_ligand_tokens:
         # Check ligand identity and its pose relative to the protein backbone
         # across serialization and a second inverse-folding pass.
