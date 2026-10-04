@@ -37,6 +37,57 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIGS = ROOT / "src/boltzgen/resources/config"
 
 
+@pytest.mark.parametrize("target_kind,target_sequence", [("protein", "AGCAAGCA"), ("rna", "ACGUACGU")])
+def test_symmetry_metadata_follows_design_only_crop(tmp_path, target_kind, target_sequence):
+    from types import SimpleNamespace
+
+    from boltzgen.data.feature.featurizer import Featurizer
+    from boltzgen.data.mol import load_canonicals
+    from boltzgen.data.tokenize.tokenizer import Tokenizer
+    from boltzgen.task.predict.data_from_generated import FromGeneratedDataset
+    from boltzgen.task.predict.data_from_yaml import PredictionDataset, collate
+
+    moldir = os.environ.get("BOLTZGEN_TEST_MOLDIR")
+    if moldir is None:
+        pytest.skip("Set BOLTZGEN_TEST_MOLDIR")
+    specification = tmp_path / "input.yaml"
+    specification.write_text(
+        "entities:\n"
+        "  - protein: {id: [A, B], sequence: 6, symmetric_group: 1}\n"
+        f"  - {target_kind}: {{id: R, sequence: {target_sequence}}}\n"
+    )
+    canonicals = load_canonicals(Path(moldir))
+    config = SimpleNamespace(
+        yaml_path=str(specification), tokenizer=Tokenizer(),
+        featurizer=Featurizer(), multiplicity=1,
+    )
+    batch = collate([PredictionDataset(config, canonicals.copy(), moldir, atom14=False)[0]])
+    prediction = dict(batch)
+    prediction["coords"] = torch.arange(batch["coords"][:, 0].numel(), dtype=torch.float32).reshape_as(batch["coords"][:, 0]) + 1
+    prediction["exception"] = False
+    output = tmp_path / "generated"
+    writer = DesignWriter(str(output), res_atoms_only=False, atom14=False)
+    writer.write_on_batch_end(prediction=prediction, batch=batch, sample_id="symmetry")
+    assert writer.failed == 0
+    source = output / "symmetry_0.cif"
+    reader = FromGeneratedDataset(
+        [source], [source.with_suffix(".npz")], [source], moldir, canonicals,
+        Tokenizer(), Featurizer(), extra_mol_dir=output / const.molecules_dirname,
+        return_designfolding=True, design=False,
+    )
+    features = reader[0]
+    assert len(features["symmetric_group"]) == len(features["design_mask"]) == 12
+    assert (features["symmetric_group"] == 1).all()
+    assert (features["mol_type"] == const.chain_type_ids["PROTEIN"]).all()
+
+    with np.load(source.with_suffix(".npz")) as archive:
+        metadata = {key: archive[key] for key in archive.files if key != "symmetric_group"}
+    np.savez_compressed(source.with_suffix(".npz"), **metadata)
+    legacy = reader[0]
+    assert len(legacy["symmetric_group"]) == 12
+    assert (legacy["symmetric_group"] == 0).all()
+
+
 @pytest.mark.parametrize("only", [False, True])
 @pytest.mark.parametrize("backend", [None, "boltzif", "solublempnn"])
 @pytest.mark.parametrize(

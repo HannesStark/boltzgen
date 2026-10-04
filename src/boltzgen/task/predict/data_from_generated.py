@@ -342,17 +342,10 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
                 )
 
         # Get features
-        feat = self.get_feat(generated_path, design_mask, ss_type, binding_type, aa_constraint_mask)
-        if "symmetric_group" in metadata:
-            groups = metadata["symmetric_group"]
-            if (
-                groups.shape != tuple(feat["symmetric_group"].shape)
-                or not np.issubdtype(groups.dtype, np.integer)
-            ):
-                raise ValueError(
-                    "Invalid symmetric_group in NPZ: expected one integer per token"
-                )
-            feat["symmetric_group"] = torch.from_numpy(groups).long()
+        feat = self.get_feat(
+            generated_path, design_mask, ss_type, binding_type, aa_constraint_mask,
+            symmetric_group=metadata.get("symmetric_group"),
+        )
         feat["source_context"] = (
             str(metadata["source_context"].item())
             if "source_context" in metadata
@@ -371,7 +364,7 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
 
         return feat
 
-    def get_feat(self, path, design_mask, ss_type=None, binding_type=None, aa_constraint_mask=None):
+    def get_feat(self, path, design_mask, ss_type=None, binding_type=None, aa_constraint_mask=None, symmetric_group=None):
         # Load design
         if self.extra_mol_dir is not None:
             mols = {
@@ -411,6 +404,15 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
             print(f"Tokenizer failed on {path} with error {e}. Skipping.")  # noqa: T201
             raise DataFetchException() from e
 
+        if symmetric_group is not None:
+            if (
+                symmetric_group.shape != (len(tokenized.tokens),)
+                or not np.issubdtype(symmetric_group.dtype, np.integer)
+            ):
+                raise ValueError(
+                    "Invalid symmetric_group in NPZ: expected one integer per token"
+                )
+
         # Propagate design mask to obtain chain_design_mask (True whenever something is covalently bound to any residue that is in a chain that contains a design residue).
         chain_design_mask = design_mask.astype(bool)
         asym_id = tokenized.tokens["asym_id"]
@@ -434,7 +436,12 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
             structure = Structure.extract_residues(structure, residue_design_mask)
             tokenized = self.tokenizer.tokenize(structure)
             design_mask = design_mask[chain_design_mask]
+            if symmetric_group is not None:
+                symmetric_group = symmetric_group[chain_design_mask]
             chain_design_mask = chain_design_mask[chain_design_mask]
+
+        if symmetric_group is not None:
+            tokenized.tokens["symmetric_group"] = symmetric_group
 
         # For inverse folding, condition even on structure selected for design
         if self.inverse_fold:
