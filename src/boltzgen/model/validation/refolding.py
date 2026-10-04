@@ -240,7 +240,7 @@ class RefoldingValidator(design.DesignValidator):
             aff_pred = self.affinity_model.predict_step(batch_gen, batch_idx=batch_idx)
 
             for k, v in aff_pred.items():
-                if k not in refolded:
+                if k not in ("exception", "skip") and k not in refolded:
                     refolded[k] = v
 
             self.aff_writer.write_on_batch_end(

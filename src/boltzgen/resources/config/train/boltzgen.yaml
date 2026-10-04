@@ -512,7 +512,7 @@ model:
         transformer_post_ln: false
         activation_checkpointing: false
 
-      confidence_prediction: false
+      confidence_prediction: true
       affinity_prediction: false
       structure_prediction_training: true
       affinity_model_args:

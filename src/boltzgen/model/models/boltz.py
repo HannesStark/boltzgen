@@ -1211,10 +1211,12 @@ class Boltz(LightningModule):
     ) -> Dict:
         # Skip invalid samples
         if "exception" in batch and any(batch["exception"]):
-            print(f"WARNING: Skipping batch. Exception for {batch['id'][0]}")
+            sample_id = batch.get("id", ["unknown"])[0]
+            print(f"WARNING: Skipping batch. Exception for {sample_id}")
             return {"exception": True}
         if "skip" in batch and any(batch["skip"]):
-            print(f"WARNING: Skipping batch. Skip was set true for {batch['id'][0]}")
+            sample_id = batch.get("id", ["unknown"])[0]
+            print(f"WARNING: Skipping batch. Skip was set true for {sample_id}")
             return {"skip": True}
 
         # Checkpoint switching logic
@@ -1325,6 +1327,7 @@ class Boltz(LightningModule):
                 # pred_dict["confidence"] = out.get("ablation_confidence", None)
                 pred_dict["pde"] = out["pde"]
                 pred_dict["plddt"] = out["plddt"]
+                pred_dict["token_level_confidence"] = self.token_level_confidence
                 pred_dict["confidence_score"] = (
                     4 * out["complex_plddt"]
                     + (
