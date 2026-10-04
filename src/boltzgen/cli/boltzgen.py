@@ -1352,6 +1352,13 @@ class BinderDesignPipeline:
 
 ### Misc utiltiies ###
 def check_design_specs(args: argparse.Namespace, moldir: Path, mols: Dict[str, Any]):
+    stem_counts = collections.Counter(Path(path).stem for path in args.design_spec)
+    duplicates = sorted(stem for stem, count in stem_counts.items() if count > 1)
+    if duplicates:
+        raise ValueError(
+            "Design input filenames must have unique stems; repeated: "
+            + ", ".join(duplicates)
+        )
     last_banner = ""
     for design_spec in args.design_spec:
         banner = f"************** Checking design spec: {design_spec} **************"

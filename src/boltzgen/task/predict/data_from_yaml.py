@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -201,6 +202,13 @@ class PredictionDataset(torch.utils.data.Dataset):
         path = dataset.yaml_path
         self.yaml_paths = [path] if isinstance(path, str) else path
 
+        stem_counts = Counter(Path(path).stem for path in self.yaml_paths)
+        duplicates = sorted(stem for stem, count in stem_counts.items() if count > 1)
+        if duplicates:
+            raise ValueError(
+                "Design input filenames must have unique stems; repeated: "
+                + ", ".join(duplicates)
+            )
         for path in self.yaml_paths:
             filename = Path(path).name
             if re.search(r"_\d+\.yaml$", filename):
