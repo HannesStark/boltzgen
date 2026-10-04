@@ -25,6 +25,8 @@ from boltzgen.cli.boltzgen import (
     build_parser,
     configure_command,
     get_artifact_path,
+    protocol_configs,
+    run_command,
 )
 from boltzgen.data import const
 from boltzgen.model.modules.masker import BoltzMasker
@@ -136,6 +138,44 @@ def test_pipeline_selects_model_without_fetching_other_weights(
     else:
         assert config.data.skip_existing
         assert config.data.skip_existing_kind == "inverse_fold"
+
+
+@pytest.mark.parametrize("protocol", sorted(protocol_configs))
+@pytest.mark.parametrize("command", ["configure", "run"])
+def test_only_inverse_fold_cannot_skip_inverse_folding_early(
+    tmp_path, monkeypatch, protocol, command
+):
+    from boltzgen.cli import boltzgen as cli
+
+    args = build_parser().parse_args(
+        [
+            command,
+            "input.yaml",
+            "--output",
+            str(tmp_path / "out"),
+            "--protocol",
+            protocol,
+            "--only_inverse_fold",
+            "--skip_inverse_folding",
+        ]
+    )
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Conflicting inverse-fold flags must fail before setup")
+
+    monkeypatch.setattr(cli, "get_artifact_path", unexpected)
+    monkeypatch.setattr(cli, "load_canonicals", unexpected)
+    monkeypatch.setattr(cli, "check_design_specs", unexpected)
+    monkeypatch.setattr(torch.cuda, "get_device_capability", unexpected)
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        if command == "run":
+            run_command(args)
+        else:
+            configure_command(args)
+    with pytest.raises(ValueError, match="cannot be combined"):
+        BinderDesignPipeline(args, tmp_path)
+    assert not args.output.exists()
 
 
 def test_solublempnn_download_cache_and_force(tmp_path, monkeypatch):

@@ -651,6 +651,10 @@ def download_command(args: argparse.Namespace) -> list[Path]:
 
 def _resolve_inverse_fold_model(args: argparse.Namespace) -> str:
     """Validate inverse-fold settings before loading any pipeline artifacts."""
+    if args.only_inverse_fold and args.skip_inverse_folding:
+        raise ValueError(
+            "--only_inverse_fold cannot be combined with --skip_inverse_folding"
+        )
     protocol = args.protocol
     if protocol not in protocol_configs:
         raise ValueError(
