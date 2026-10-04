@@ -1,12 +1,14 @@
 """SASA integration through parsing, featurization, refold export and analysis."""
 
+# ruff: noqa: INP001
+
 from __future__ import annotations
 
 import copy
 import pickle
 from dataclasses import dataclass
-from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import biotite.structure as bst
 import numpy as np
@@ -34,6 +36,9 @@ from boltzgen.data.write.mmcif import to_mmcif
 from boltzgen.task.analyze.analyze import Analyze
 from boltzgen.task.analyze.analyze_utils import _load_stack, _radius, get_delta_sasa
 from boltzgen.task.predict.data_from_generated import FromGeneratedDataset
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -230,16 +235,19 @@ def expected_sasa(
 
 @pytest.fixture(scope="session")
 def analysis_template() -> Analyze:
-    # Analyze configures PyTorch interop threads, which may only be set once.
-    return Analyze(
-        name="sasa",
-        data=SimpleNamespace(),
-        backbone_fold_metrics=False,
-        allatom_fold_metrics=False,
-        delta_sasa_original=True,
-        delta_sasa_refolded=True,
-        compute_lddts=False,
-    )
+    # Other analysis tests may already have configured the process-wide pool.
+    # Its size is unrelated to the SASA behavior exercised here.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(torch, "set_num_interop_threads", lambda _: None)
+        return Analyze(
+            name="sasa",
+            data=SimpleNamespace(),
+            backbone_fold_metrics=False,
+            allatom_fold_metrics=False,
+            delta_sasa_original=True,
+            delta_sasa_refolded=True,
+            compute_lddts=False,
+        )
 
 
 def run_analysis(
