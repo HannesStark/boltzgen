@@ -8,6 +8,7 @@ from typing import Any, BinaryIO, Self, TextIO
 import gemmi
 import numpy as np
 import pytest
+import torch
 from test_folding_export_consistency import (
     _features,
     _forward_output,
@@ -26,7 +27,7 @@ from boltzgen.task.predict.data_from_generated import (
     FromGeneratedDataModule,
     collate,
 )
-from boltzgen.task.predict.writer import FoldingWriter
+from boltzgen.task.predict.writer import AffinityWriter, FoldingWriter
 
 
 def _case(
@@ -49,7 +50,7 @@ def _case(
 
 def _remaining(
     inputs: Path,
-    writer: FoldingWriter,
+    writer: FoldingWriter | AffinityWriter,
     monkeypatch: pytest.MonkeyPatch,
     *,
     external: bool = False,
@@ -67,12 +68,17 @@ def _remaining(
         num_workers=0,
         pin_memory=False,
     )
-    primary = writer.refold_cif_dir if writer.designfolding else writer.outdir
+    if isinstance(writer, AffinityWriter):
+        primary = writer.outdir
+        kind = "affinity"
+    else:
+        primary = writer.refold_cif_dir if writer.designfolding else writer.outdir
+        kind = "design_folded" if writer.designfolding else "folded"
     data = FromGeneratedDataModule(
         cfg=config,
         design_dir=str(inputs),
         skip_existing=True,
-        skip_existing_kind="design_folded" if writer.designfolding else "folded",
+        skip_existing_kind=kind,
         output_dir=str(primary) if external else None,
     )
     return len(data.predict_set)
@@ -197,3 +203,51 @@ def test_interrupted_publication_leaves_no_completion_marker_and_retries(  # noq
     block = gemmi.cif.read_file(str(cif)).sole_block()
     x = np.asarray(block.find_values("_atom_site.Cartn_x"), dtype=float)
     np.testing.assert_allclose(x, prediction["coords"][1, :8, 0].numpy())
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("stage", ["write", "replace"])
+def test_affinity_publication_preserves_valid_archive_or_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    existing: bool,
+    stage: str,
+) -> None:
+    inputs, _, batch, _ = _case(tmp_path, designfolding=False)
+    writer = AffinityWriter(str(inputs))
+    archive = writer.outdir / "contract.npz"
+    prediction = {"exception": False, "affinity_pred_value": torch.tensor([1.25])}
+    if existing:
+        writer.write_on_batch_end(prediction=prediction, batch=batch)
+    previous = archive.read_bytes() if existing else None
+    prediction["affinity_pred_value"] = torch.tensor([2.75])
+
+    def interrupted_npz(path: str | Path | BinaryIO, **_arrays: object) -> None:
+        if isinstance(path, (str, Path)):
+            Path(path).write_bytes(b"partial zip")
+        else:
+            path.write(b"partial zip")
+        raise OSError("interrupted affinity write")
+
+    def interrupted_replace(_source: str | Path, destination: str | Path) -> None:
+        assert Path(destination) == archive
+        raise OSError("interrupted affinity replace")
+
+    with monkeypatch.context() as patch:
+        if stage == "write":
+            patch.setattr(writer_module.np, "savez_compressed", interrupted_npz)
+        else:
+            patch.setattr(writer_module.os, "replace", interrupted_replace)
+        with pytest.raises(OSError, match="interrupted affinity"):
+            writer.write_on_batch_end(prediction=prediction, batch=batch)
+    assert (archive.read_bytes() if archive.exists() else None) == previous
+    assert not list(writer.outdir.glob("*.tmp"))
+    assert _remaining(inputs, writer, monkeypatch) == int(not existing)
+    if existing:
+        with np.load(archive) as saved:
+            np.testing.assert_array_equal(saved["affinity_pred_value"], [1.25])
+
+    writer.write_on_batch_end(prediction=prediction, batch=batch)
+    assert _remaining(inputs, writer, monkeypatch) == 0
+    with np.load(archive) as saved:
+        np.testing.assert_array_equal(saved["affinity_pred_value"], [2.75])

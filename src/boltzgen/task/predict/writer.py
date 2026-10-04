@@ -239,7 +239,7 @@ class AffinityWriter(BasePredictionWriter):
             # check object is tensor
             if key in const.eval_keys:
                 pred_dict[key] = value.cpu().numpy()
-        np.savez_compressed(self.outdir / f"{batch['id'][0]}.npz", **pred_dict)
+        _write_npz_atomically(self.outdir / f"{batch['id'][0]}.npz", **pred_dict)
 
     def on_predict_epoch_end(
         self,
