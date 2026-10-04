@@ -914,8 +914,7 @@ def parse_mmcif(  # noqa: C901, PLR0915, PLR0912
 
     use_original_res_idx : bool
         Retained for compatibility. Polymer residue indices use zero-based
-        label_seq_id positions for both values; author numbering is stored in
-        auth_idx.
+        label_seq_id positions for both values, not author residue numbers.
 
     Returns
     -------
@@ -959,8 +958,7 @@ def mmcif_from_block(  # noqa: C901, PLR0915, PLR0912
 
     use_original_res_idx : bool
         Retained for compatibility. Polymer residue indices use zero-based
-        label_seq_id positions for both values; author numbering is stored in
-        auth_idx.
+        label_seq_id positions for both values, not author residue numbers.
 
     Returns
     -------
