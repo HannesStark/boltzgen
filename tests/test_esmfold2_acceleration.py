@@ -204,15 +204,7 @@ class _Denoiser(torch.nn.Module):
         }
 
 
-@pytest.mark.parametrize(
-    "samples,steps,cap,noise,atom_repr",
-    [(1, 1, None, 0.0, False), (5, 17, 256.0, 1.0, True)],
-)
-def test_schedule_hoisting_preserves_sampling_outputs_and_rng(
-    samples, steps, cap, noise, atom_repr
-):
-    # Real native sampling, augmentation and alignment with a cheap deterministic
-    # denoiser, so the test covers all random draws and the complete schedule.
+def _sampling_case(samples, steps, cap, noise, atom_repr):
     head = layers.DiffusionStructureHead.__new__(layers.DiffusionStructureHead)
     torch.nn.Module.__init__(head)
     settings = dict(
@@ -253,6 +245,19 @@ def test_schedule_hoisting_preserves_sampling_outputs_and_rng(
         noise_scale=noise,
         return_atom_repr=atom_repr,
     )
+    return head, values, device
+
+
+@pytest.mark.parametrize(
+    "samples,steps,cap,noise,atom_repr",
+    [(1, 1, None, 0.0, False), (5, 17, 256.0, 1.0, True)],
+)
+def test_schedule_hoisting_preserves_sampling_outputs_and_rng(
+    samples, steps, cap, noise, atom_repr
+):
+    # Real native sampling, augmentation and alignment with a cheap deterministic
+    # denoiser, so the test covers all random draws and the complete schedule.
+    head, values, device = _sampling_case(samples, steps, cap, noise, atom_repr)
     torch.manual_seed(81)
     expected = head.sample(**values)
     rng_expected = (
@@ -264,6 +269,46 @@ def test_schedule_hoisting_preserves_sampling_outputs_and_rng(
         torch.cuda.get_rng_state() if device == "cuda" else torch.get_rng_state()
     )
     assert torch.equal(rng_expected, rng_actual)
+    for name in expected:
+        torch.testing.assert_close(actual[name], expected[name], atol=0, rtol=0)
+
+
+@pytest.mark.parametrize("variant", ["subclass", "replaced_clone"])
+def test_custom_inference_context_preserves_sampling_and_rng(monkeypatch, variant):
+    class AuditedInference(torch.inference_mode):
+        def __enter__(self):
+            torch.rand(1)
+            return super().__enter__()
+
+    context = AuditedInference() if variant == "subclass" else torch.inference_mode()
+    if variant == "replaced_clone":
+        def changed_clone(self):
+            torch.rand(1)
+            return torch.inference_mode(self.mode)
+
+        context.clone = MethodType(changed_clone, context)
+    native = layers.DiffusionStructureHead.sample
+    monkeypatch.setattr(
+        layers.DiffusionStructureHead, "sample", context(native.__wrapped__)
+    )
+    head, values, device = _sampling_case(1, 2, None, 0.0, False)
+    model = torch.nn.Module()
+    model.structure_head = head
+    model.folding_trunk = layers.FoldingTrunk(n_layers=1, d_pair=32)
+    model.eval().requires_grad_(False)
+    options = dict(acceleration="auto", acceleration_revision=ACCELERATION_REVISION)
+    torch.manual_seed(81)
+    expected = head.sample(**values)
+    expected_cpu_rng = torch.get_rng_state()
+    expected_cuda_rng = torch.cuda.get_rng_state() if device == "cuda" else None
+    torch.manual_seed(81)
+    with acceleration_context(model, options) as execution:
+        actual = head.sample(**values)
+    assert execution["effective"] == "off"
+    assert "inference wrapper" in execution["fallback_reason"]
+    assert torch.equal(expected_cpu_rng, torch.get_rng_state())
+    if device == "cuda":
+        assert torch.equal(expected_cuda_rng, torch.cuda.get_rng_state())
     for name in expected:
         torch.testing.assert_close(actual[name], expected[name], atol=0, rtol=0)
 

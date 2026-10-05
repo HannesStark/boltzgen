@@ -92,10 +92,12 @@ def check_source(
         if getattr(function, "__code__", None) is not native_code:
             raise ValueError("Unsupported ESMFold2 inference wrapper")
         closure = inspect.getclosurevars(function).nonlocals
-        context = getattr(closure.get("ctx_factory"), "__self__", None)
+        factory = closure.get("ctx_factory")
+        context = getattr(factory, "__self__", None)
         if (
-            not isinstance(context, torch.inference_mode)
-            or not context.mode
+            type(context) is not torch.inference_mode
+            or context.mode is not True
+            or getattr(factory, "__func__", None) is not torch.inference_mode.clone
             or closure.get("func") is not wrapped
         ):
             raise ValueError("Unsupported ESMFold2 inference wrapper")
