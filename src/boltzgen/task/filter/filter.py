@@ -21,7 +21,10 @@ import heapq
 from textwrap import fill, dedent
 import re
 
-from boltzgen.task.analyze.analyze_utils import compute_liability_scores
+from boltzgen.task.analyze.analyze_utils import (
+    compute_liability_scores,
+    sequence_identity,
+)
 from boltzgen.task.filter.seqplot_utils import (
     aa_composition_pie,
     cdr_logo,
@@ -37,6 +40,26 @@ from boltzgen.task.esmfold2.contract import (
     fingerprint,
     load_result,
 )
+
+
+def _chain_sequences(row: pd.Series, *, full: bool) -> dict[str, str]:
+    """Read the established per-chain CSV fields, with a legacy-row fallback."""
+    prefix = "full_sequence_" if full else "designed_sequence_"
+    sequences = {
+        key.removeprefix(prefix): value
+        for key, value in row.items()
+        if key.startswith(prefix)
+        and key.removeprefix(prefix).isdigit()
+        and isinstance(value, str)
+        and value
+    }
+    if sequences:
+        return sequences
+    value = row.get("designed_chain_sequence" if full else "designed_sequence", "")
+    if not isinstance(value, str) or not value:
+        return {}
+    chains = value.split(":")
+    return {str(i) if len(chains) > 1 else "": seq for i, seq in enumerate(chains)}
 
 
 class Filter(Task):
@@ -446,7 +469,7 @@ class Filter(Task):
         df["neg_min_interaction_pae"] = -df["min_interaction_pae"]
         df["neg_filter_rmsd"] = -df["filter_rmsd"]
         df["neg_filter_rmsd_design"] = -df["filter_rmsd_design"]
-        df["has_x"] = df["designed_sequence"].str.contains("X")
+        df["has_x"] = df["designed_sequence"].fillna("X").str.contains("X")
         self.df = df
 
         print(f"Total number of designs: {len(self.df):>5}")
@@ -709,8 +732,7 @@ class Filter(Task):
             if key not in pid_cache:
                 seq1 = seqs[i]
                 seq2 = seqs[j]
-                aln = aligner.align(seq1, seq2)[0]
-                pid_cache[key] = aln.score / max(len(seqs[i]), len(seqs[j]))
+                pid_cache[key] = sequence_identity(seq1, seq2, aligner)
             return pid_cache[key]
 
         random.seed(self.random_state)
@@ -736,7 +758,7 @@ class Filter(Task):
 
         buckets = np.zeros(len(self.size_buckets) + 1)
         first = selected[0]
-        first_len = len(self.df_m["sequence"][first])
+        first_len = len(self.df_m["sequence"][first].replace(":", ""))
         for idx, bucket_size in enumerate(self.size_buckets):
             if first_len >= bucket_size["min"] and first_len < bucket_size["max"]:
                 buckets[idx] += 1
@@ -746,7 +768,7 @@ class Filter(Task):
         ):
             while True:
                 neg_gain, cand = heapq.heappop(heap)
-                num_design = len(self.df_m["sequence"][cand])
+                num_design = len(self.df_m["sequence"][cand].replace(":", ""))
                 bucket_idx = None
                 for idx, bucket_size in enumerate(self.size_buckets):
                     if (
@@ -1005,10 +1027,16 @@ class Filter(Task):
 
         csv_expl_rows = [
             ["id", "filename to retrieve the file"],
-            ["design_sequence", "designed amino acids (may be subset of chain)"],
+            [
+                "designed_sequence",
+                "designed protein residues, with : separating chains",
+            ],
             [
                 "designed_chain_sequence",
-                "full sequence of the chain containing designed residues (recommended for synthesis)",
+                (
+                    "full protein sequences of chains containing designed residues; "
+                    ": separates chains (synthesize separately)"
+                ),
             ],
             ["num_design", "number of designed residues"],
             ["secondary_rank", "intermediate rank from the sorting procedure"],
@@ -1098,6 +1126,8 @@ class Filter(Task):
                 fig.set_size_inches(target_w, h * scale, forward=True)
 
         def show(fig):
+            if fig is None:
+                return
             _ensure_width(fig)
             plt.tight_layout()
             pdf.savefig(fig)
@@ -1324,37 +1354,49 @@ class Filter(Task):
                     "hydrophobicity and charge composition comparing ALL, Top-quality (red), and Diversity-optimised subsets. "
                 ),
             )
-        vis = (
-            "designed_sequence"
-            if (
-                self.df["designed_chain_sequence"].str.len().mean()
-                > 1.5 * self.df["designed_sequence"].str.len().mean()
-            )
-            else "designed_chain_sequence"
-        )
-        seq_sets = [
-            (
-                f"All {len(self.df)} {vis}",
-                self.df[vis].tolist(),
-            ),
-            (
-                f"Top {self.top_budget} {vis}",
-                self.df[vis].tolist()[: self.top_budget],
-            ),
-            (
-                f"Diverse {self.budget} {vis}",
-                self.df_div[vis].tolist(),
-            ),
-        ]
         if self.plot_seq_logos:
-            for name, sequences in seq_sets:
-                show(create_alignment_logo(sequences, name))
-            for name, sequences in seq_sets:
-                show(aa_composition_pie(sequences, name))
-
-            if self.modality == "antibody":
-                for name, sequences in seq_sets:
-                    show(cdr_logo(sequences, name))
+            # Select full-chain or redesigned-region views separately per chain.
+            # CDR concatenations are display-only; liabilities always use full chains.
+            chain_ids = dict.fromkeys(
+                chain_id
+                for _, row in self.df.iterrows()
+                for chain_id in _chain_sequences(row, full=True)
+            )
+            for chain_id in chain_ids:
+                full_lengths, designed_lengths = [], []
+                for _, row in self.df.iterrows():
+                    full_lengths.append(
+                        len(_chain_sequences(row, full=True).get(chain_id, ""))
+                    )
+                    designed_lengths.append(
+                        len(_chain_sequences(row, full=False).get(chain_id, ""))
+                    )
+                use_full = sum(full_lengths) <= 1.5 * sum(designed_lengths)
+                vis = "designed_chain_sequence" if use_full else "designed_sequence"
+                for name, frame in (
+                    ("All", self.df),
+                    ("Top", self.df[: self.top_budget]),
+                    ("Diverse", self.df_div),
+                ):
+                    sequences = [
+                        seq
+                        for _, row in frame.iterrows()
+                        if (seq := _chain_sequences(row, full=use_full).get(chain_id))
+                    ]
+                    if not sequences:
+                        continue
+                    title = f"{name} {len(sequences)} {vis}" + (
+                        f" chain {chain_id}" if chain_id else ""
+                    )
+                    show(create_alignment_logo(sequences, title))
+                    show(aa_composition_pie(sequences, title))
+                    if self.modality == "antibody":
+                        full_sequences = [
+                            seq
+                            for _, row in frame.iterrows()
+                            if (seq := _chain_sequences(row, full=True).get(chain_id))
+                        ]
+                        show(cdr_logo(full_sequences, title))
 
         section_page(
             "Scatter Plots – Metric relationships",
@@ -1413,28 +1455,28 @@ class Filter(Task):
                     "attention during optimisation."
                 ),
             )
-        # Plot Liability Heatmaps for Top-budget subset
-        for idx, row in tqdm(
-            enumerate(self.df[: self.num_liability_plots].itertuples(index=False)),
-            desc=f"Making liability plots for top {self.num_liability_plots} sequences.",
-        ):
-            seq = row.designed_sequence
-            try:
-                res = compute_liability_scores(
-                    [seq], modality=self.modality, peptide_type=self.peptide_type
-                )
-                liab = res.get(seq, {"score": None, "violations": []})
-                fig = plot_seq_liabilities(
-                    seq,
-                    f"Qualityrank {idx} {row.id}",
-                    liab["violations"],
-                    total_score=liab["score"],
-                )
-                show(fig)
-            except Exception as e:
-                print(f"  Error processing  {seq[:20]}: {e}")
-                plt.close("all")
-                continue
+        # Match analysis: scan each complete designed protein chain independently.
+        for idx, (_, row) in enumerate(self.df[: self.num_liability_plots].iterrows()):
+            for chain_id, seq in _chain_sequences(row, full=True).items():
+                try:
+                    res = compute_liability_scores(
+                        [seq], modality=self.modality, peptide_type=self.peptide_type
+                    )
+                    liab = res[seq]
+                    title = f"Qualityrank {idx} {row['id']}" + (
+                        f" chain {chain_id}" if chain_id else ""
+                    )
+                    show(
+                        plot_seq_liabilities(
+                            seq,
+                            title,
+                            liab["violations"],
+                            total_score=liab["score"],
+                        )
+                    )
+                except Exception as e:  # noqa: PERF203 - isolate failed chain plots
+                    print(f"  Error processing {seq[:20]}: {e}")
+                    plt.close("all")
 
         pdf.close()
 

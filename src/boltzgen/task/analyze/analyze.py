@@ -17,7 +17,8 @@ import json
 from boltzgen.task.analyze.analyze_utils import (
     TARGET_ID_RE,
     calc_hydrophobicity,
-    compute_liability_metrics,
+    compute_chain_liability_metrics,
+    chain_hydrophobicity,
     compute_novelty_foldseek,
     compute_rmsd,
     compute_ss_metrics,
@@ -383,11 +384,14 @@ class Analyze(Task):
                 {
                     "id": data["sample_id"],
                     "target_id": data["target_id"],
-                    "sequence": "".join(
-                        [
-                            const.prot_token_to_letter[const.tokens[t]]
-                            for t in data["design_seq"]
-                        ]
+                    "sequence": data.get(
+                        "sequence",
+                        "".join(
+                            [
+                                const.prot_token_to_letter.get(const.tokens[t], "X")
+                                for t in data["design_seq"]
+                            ]
+                        ),
                     ),
                     "ca_coords": json.dumps(data["ca_coords"].numpy().tolist()),
                 }
@@ -548,37 +552,41 @@ class Analyze(Task):
             print(msg)
             return None
 
-        # Get designed sequence
+        # Protein sequence metrics exclude padding and designed nonprotein tokens.
         res_type_argmax = torch.argmax(feat["res_type"], dim=-1)
-        design_seq_tensor = res_type_argmax[
-            feat["design_mask"].bool() & feat["token_pad_mask"].bool()
-        ]
-        design_chain_id = feat["asym_id"][
-            torch.where(feat["design_mask"].bool() & feat["token_pad_mask"].bool())[0][
-                0
-            ]
-        ].item()
-        design_chain_seq = res_type_argmax[design_chain_id == feat["asym_id"]]
-        design_seq = "".join(
-            [
-                const.prot_token_to_letter.get(const.tokens[t], "X")
-                for t in design_seq_tensor
-            ]
+        protein_mask = feat["token_pad_mask"].bool() & (
+            feat["mol_type"] == const.chain_type_ids["PROTEIN"]
         )
-        design_chain_seq = "".join(
-            [
-                const.prot_token_to_letter.get(const.tokens[t], "X")
-                for t in design_chain_seq
-            ]
+        protein_design_mask = feat["design_mask"].bool() & protein_mask
+        design_seq_tensor = res_type_argmax[protein_design_mask]
+        designed_chain_ids = list(
+            dict.fromkeys(feat["asym_id"][protein_design_mask].tolist())
         )
+        full_sequences = {}
+        designed_sequences = {}
+        for chain_id in designed_chain_ids:
+            chain_mask = (feat["asym_id"] == chain_id) & protein_mask
+            full_sequences[chain_id] = "".join(
+                const.prot_token_to_letter.get(const.tokens[t], "X")
+                for t in res_type_argmax[chain_mask]
+            )
+            designed_sequences[chain_id] = "".join(
+                const.prot_token_to_letter.get(const.tokens[t], "X")
+                for t in res_type_argmax[chain_mask & protein_design_mask]
+            )
 
-        # initialize metrics
+        # A colon preserves chain boundaries in display and sequence identity keys.
+        design_seq = ":".join(designed_sequences.values())
         metrics = {
             "id": sample_id,
             "file_name": path.name,
             "designed_sequence": design_seq,
-            "designed_chain_sequence": design_chain_seq,
+            "designed_chain_sequence": ":".join(full_sequences.values()),
         }
+        if len(designed_chain_ids) > 1:
+            for chain_id in designed_chain_ids:
+                metrics[f"designed_sequence_{chain_id}"] = designed_sequences[chain_id]
+                metrics[f"full_sequence_{chain_id}"] = full_sequences[chain_id]
 
         if self.esmfold2_metrics:
             import json
@@ -595,36 +603,6 @@ class Analyze(Task):
             metrics["esmfold2_selected_sample"] = result["selected_sample"]
             if result.get("scoring_mode") == "redesign":
                 metrics["esmfold2_score_metric"] = result["score_metric"]
-
-        # Add per-chain sequences to csv when designing multiple chains
-        design_token_indices = torch.where(feat["design_mask"].bool() & feat["token_pad_mask"].bool())[0]
-        designed_chain_ids = feat["asym_id"][design_token_indices].unique().tolist()
-        if len(designed_chain_ids) > 1:
-            for chain_id in designed_chain_ids:
-                chain_mask = feat["asym_id"] == chain_id
-
-                # Full chain sequence
-                chain_res_types = res_type_argmax[chain_mask]
-                full_chain_seq = "".join(
-                    [
-                        const.prot_token_to_letter.get(const.tokens[t], "X")
-                        for t in chain_res_types
-                    ]
-                )
-
-                # Designed residues only from this chain
-                design_chain_mask = feat["design_mask"].bool() & feat["token_pad_mask"].bool() & chain_mask
-                design_res_types = res_type_argmax[design_chain_mask]
-                design_seq = "".join(
-                    [
-                        const.prot_token_to_letter.get(const.tokens[t], "X")
-                        for t in design_res_types
-                    ]
-                )
-
-                metrics[f"designed_sequence_{chain_id}"] = design_seq
-                metrics[f"full_sequence_{chain_id}"] = full_chain_seq
-
 
         target_id = re.search(rf"{self.data.cfg.target_id_regex}", sample_id).group(1)
 
@@ -769,7 +747,7 @@ class Analyze(Task):
         # Sequence metrics
         if self.sequence_recovery:
             native_seq = torch.argmax(feat["native_res_type"], dim=-1)[
-                native_design_mask
+                native_design_mask & protein_mask
             ]
             metrics["seq_recovery"] = (
                 (design_seq_tensor == native_seq).float().mean().item()
@@ -822,11 +800,23 @@ class Analyze(Task):
             metrics["helix"] = float("nan")
             metrics["sheet"] = float("nan")
 
+        # Evaluate each chain with its own termini and length correction.
+        metrics["design_chain_hydrophobicity"] = chain_hydrophobicity(full_sequences)
+        metrics["design_hydrophobicity"] = chain_hydrophobicity(designed_sequences)
+        if len(designed_chain_ids) > 1:
+            for chain_id in designed_chain_ids:
+                metrics[f"design_chain_hydrophobicity_{chain_id}"] = (
+                    calc_hydrophobicity(full_sequences[chain_id])
+                )
+                metrics[f"design_hydrophobicity_{chain_id}"] = calc_hydrophobicity(
+                    designed_sequences[chain_id]
+                )
+
         # Liability analysis
-        if self.liability_analysis:
+        if self.liability_analysis and full_sequences:
             try:
-                liability_metrics = compute_liability_metrics(
-                    design_chain_seq,
+                liability_metrics = compute_chain_liability_metrics(
+                    full_sequences,
                     self.liability_modality,
                     self.liability_peptide_type,
                 )
@@ -1114,12 +1104,6 @@ class Analyze(Task):
             if des_refold_cif_path is not None:
                 des_refold_cif_path.unlink(missing_ok=True)
 
-            # Compute sequence based hydrophobicity
-            metrics["design_chain_hydrophobicity"] = calc_hydrophobicity(
-                design_chain_seq
-            )
-            metrics["design_hydrophobicity"] = calc_hydrophobicity(design_seq)
-
             # delta sasa for refolded
             if self.delta_sasa_refolded:
                 cif_path_refolded = self.refold_cif_dir / f"{feat['id']}.cif"
@@ -1197,6 +1181,7 @@ class Analyze(Task):
             "target_id": target_id,
             "sample_id": sample_id,
             "design_seq": design_seq_tensor.cpu(),
+            "sequence": design_seq,
             "ca_coords": ca_coords.cpu(),
             "ca_coords_refolded": ca_coords_refolded,
         }
@@ -1223,8 +1208,14 @@ class Analyze(Task):
 
             seq = data["design_seq"]
             try:
-                seq = "".join(
-                    [const.prot_token_to_letter[const.tokens[t]] for t in seq]
+                seq = data.get(
+                    "sequence",
+                    "".join(
+                        [
+                            const.prot_token_to_letter.get(const.tokens[t], "X")
+                            for t in seq
+                        ]
+                    ),
                 )
                 sequences[data["target_id"]].append(seq)
             except KeyError as e:

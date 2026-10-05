@@ -95,12 +95,20 @@ protocol_configs = {
         "filtering": ["use_affinity=true"],
     },
     "nanobody-anything": {
-        "analysis": ["largest_hydrophobic=false", "largest_hydrophobic_refolded=false"],
-        "filtering": ["filter_cysteine=true"],
+        "analysis": [
+            "largest_hydrophobic=false",
+            "largest_hydrophobic_refolded=false",
+            "liability_modality=antibody",
+        ],
+        "filtering": ["filter_cysteine=true", "modality=antibody"],
     },
     "antibody-anything": {
-        "analysis": ["largest_hydrophobic=false", "largest_hydrophobic_refolded=false"],
-        "filtering": ["filter_cysteine=true"],
+        "analysis": [
+            "largest_hydrophobic=false",
+            "largest_hydrophobic_refolded=false",
+            "liability_modality=antibody",
+        ],
+        "filtering": ["filter_cysteine=true", "modality=antibody"],
     },
     "protein-redesign": {
         "esmfold2_scoring": ["scoring_mode=redesign"],

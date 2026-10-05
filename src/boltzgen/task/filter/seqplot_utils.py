@@ -1,5 +1,6 @@
 import os
 import tempfile
+import warnings
 from matplotlib import pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.patches import Patch
@@ -265,7 +266,15 @@ def draw_logo(counts, title, width=10):
 
 
 def cdr_logo(sequences, name):
-    from abnumber import Chain
+    try:
+        from abnumber import Chain
+    except ImportError:
+        warnings.warn(
+            "Skipping optional CDR logos: the abnumber package and its dependencies "
+            "are required. Other sequence and liability plots are still available.",
+            stacklevel=2,
+        )
+        return None
 
     # Create temporary FASTA
     names = [f"seq_{i + 1}" for i in range(len(sequences))]
