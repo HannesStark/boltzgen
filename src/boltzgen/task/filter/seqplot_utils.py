@@ -96,9 +96,7 @@ def aa_composition_pie(sequences, name):
 
     if not any(hydrophobicity_counts.values()):
         for ax in (ax1, ax2):
-            ax.text(
-                0.5, 0.5, "No recognized amino acids", ha="center", va="center"
-            )
+            ax.text(0.5, 0.5, "No recognized amino acids", ha="center", va="center")
             ax.set_axis_off()
         fig.suptitle(name)
         return fig
