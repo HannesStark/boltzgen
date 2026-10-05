@@ -1,4 +1,5 @@
 import json
+from importlib.resources import files
 from boltzgen.utils.quiet import quiet_startup
 
 
@@ -105,6 +106,10 @@ class Filter(Task):
     Ranking & Diversity
     -------------------
     **Filtering.** Each design must pass all hard thresholds (``pass_<feature>_filter``).
+    Repeated rules for a feature are combined with AND in its output flag; each
+    rule contributes independently to ``num_filters_passed`` and score penalties.
+    Affinity-score penalties multiply nonnegative scores by 0.1 and negative
+    scores by 10, so failures never improve the signed composite score.
     The step also adds convenience columns (e.g., ``filter_rmsd``,
     ``designfolding-filter_rmsd``, signed variants like ``neg_min_design_to_target_pae``).
 
@@ -283,6 +288,7 @@ class Filter(Task):
                 {
                     "feature": "bb_target_aligned<2.5",
                     "lower_is_better": False,
+                    "threshold": True,
                 }
             )
         if filter_cysteine:
@@ -449,9 +455,19 @@ class Filter(Task):
         msg = f"Duplicates found: {before - len(self.df)}. Removing duplicates. {len(self.df)} designs remain.\n"
         print(msg)
 
+    def _filter_pass_mask(self, rule: dict) -> pd.Series:
+        """Evaluate one inclusive threshold, treating missing values as failures."""
+        values = self.df[rule["feature"]]
+        if rule["lower_is_better"]:
+            passed = values <= rule["threshold"]
+        else:
+            passed = values >= rule["threshold"]
+        return passed.fillna(value=False)
+
     def filter_df(self):
-        filter_cols = []
+        filter_cols = set()
         self.df["num_filters_passed"] = 0
+        self.df["pass_filters"] = True
 
         for filter in self.filters:
             feat = filter["feature"]
@@ -459,16 +475,20 @@ class Filter(Task):
             threshold = filter["threshold"]
 
             filter_col = f"pass_{feat}_filter"
-            filter_cols.append(filter_col)
-            if low:
-                self.df[filter_col] = self.df[feat] <= threshold
+            passed = self._filter_pass_mask(filter)
+            if filter_col in filter_cols:
+                self.df[filter_col] &= passed
             else:
-                self.df[filter_col] = self.df[feat] >= threshold
+                self.df[filter_col] = passed
+                filter_cols.add(filter_col)
 
-            self.df["num_filters_passed"] += self.df[filter_cols].all(axis=1)
-            self.df["pass_filters"] = self.df[filter_cols].all(axis=1)
+            self.df["num_filters_passed"] += passed.astype(int)
+            self.df["pass_filters"] &= passed
 
-            msg = f"Num designs that pass the {feat} filter with threshold {threshold} where {'lower' if low else 'higher'} is better: {self.df[filter_col].sum()}"
+            msg = (
+                f"Num designs that pass the {feat} filter with threshold {threshold} "
+                f"where {'lower' if low else 'higher'} is better: {passed.sum()}"
+            )
             print(msg)
             print(f"Remaining designs: {self.df['pass_filters'].sum()}")
 
@@ -484,8 +504,8 @@ class Filter(Task):
             # These composite calibrations describe Boltz2 interaction metrics;
             # applying them to ESMFold2 ipSAE would imply unmeasured calibration.
             return
-        norm_path = Path("src/boltzgen/resources/metrics_normalization.json")
-        if not norm_path.exists():
+        norm_path = files("boltzgen") / "resources" / "metrics_normalization.json"
+        if not norm_path.is_file():
             return
 
         with norm_path.open("r") as f:
@@ -528,14 +548,16 @@ class Filter(Task):
 
         for flt in self.filters:
             feat = flt["feature"]
-            filter_col = f"pass_{feat}_filter"
+            mask_fail = ~self._filter_pass_mask(flt)
             if "fraction" in feat:
                 # If this is a "fraction" feature, meaning a res_type fraction filter, only apply the penalty if num_design > 8
-                mask_fail = (self.df["num_design"] > 8) & (self.df[filter_col] == False)
-            else:
-                mask_fail = self.df[filter_col] == False
+                mask_fail &= self.df["num_design"] > 8
 
-            self.df.loc[mask_fail, "absolute_score"] *= 0.1
+            # Failed rules must worsen signed z-scores, not reward negative ones.
+            scores = self.df.loc[mask_fail, "absolute_score"]
+            self.df.loc[mask_fail, "absolute_score"] = scores * np.where(
+                scores < 0, 10.0, 0.1
+            )
 
 
     def sort_df(self):
@@ -1227,7 +1249,7 @@ class Filter(Task):
         filters_df = pd.DataFrame(self.filters)
         filters_df["Pass"] = 0
         for i, filter in enumerate(self.filters):
-            filters_df.at[i, "Pass"] = self.df[f"pass_{filter['feature']}_filter"].sum()
+            filters_df.at[i, "Pass"] = self._filter_pass_mask(filter).sum()
 
         fig_height = 0.4 * len(filters_df) + 2
         fig, ax = plt.subplots(figsize=(8.5, fig_height))
