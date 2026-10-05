@@ -80,8 +80,28 @@ def acceleration_context(model, options: dict):
         controller.close()
 
 
-def check_source(function: Callable, expected: str) -> None:
+def check_source(
+    function: Callable, expected: str, *, inference_mode: bool = False
+) -> None:
     """Refuse a port against different upstream code, including local patches."""
+    # getsource() follows __wrapped__ automatically. Validate the executed
+    # wrapper first so functools.wraps cannot hide a modified implementation.
+    if inference_mode:
+        wrapped = getattr(function, "__wrapped__", None)
+        native_code = torch.inference_mode()(lambda: None).__code__
+        if getattr(function, "__code__", None) is not native_code:
+            raise ValueError("Unsupported ESMFold2 inference wrapper")
+        closure = inspect.getclosurevars(function).nonlocals
+        context = getattr(closure.get("ctx_factory"), "__self__", None)
+        if (
+            not isinstance(context, torch.inference_mode)
+            or not context.mode
+            or closure.get("func") is not wrapped
+        ):
+            raise ValueError("Unsupported ESMFold2 inference wrapper")
+        function = wrapped
+    if hasattr(function, "__wrapped__"):
+        raise ValueError("Unsupported extra wrapper around ESMFold2 source")
     try:
         source = inspect.getsource(function)
     except TypeError as exc:
@@ -287,10 +307,33 @@ class AcceleratedInference:
             return
         from esm.models.esmfold2 import layers
 
-        check_source(layers.DiffusionStructureHead.sample, _SOURCE_HASHES["sample"])
+        check_source(
+            layers.DiffusionStructureHead.sample,
+            _SOURCE_HASHES["sample"],
+            inference_mode=True,
+        )
         check_source(layers.SWA3DRoPEAttention.forward, _SOURCE_HASHES["forward"])
         if self.model.training or any(p.requires_grad for p in self.model.parameters()):
             raise ValueError("ESMFold2 acceleration requires eval() and frozen weights")
+        sample = self.model.structure_head.sample
+        if (
+            getattr(sample, "__func__", None) is not layers.DiffusionStructureHead.sample
+            or getattr(sample, "__self__", None) is not self.model.structure_head
+        ):
+            raise ValueError("Unsupported ESMFold2 sample method override or wrapper")
+        attention_modules = [
+            module
+            for module in self.model.modules()
+            if not layers.FLASH_ATTN_AVAILABLE
+            and isinstance(module, layers.SWA3DRoPEAttention)
+        ]
+        for module in attention_modules:
+            forward = module.forward
+            if (
+                getattr(forward, "__func__", None) is not layers.SWA3DRoPEAttention.forward
+                or getattr(forward, "__self__", None) is not module
+            ):
+                raise ValueError("Unsupported ESMFold2 attention method override or wrapper")
 
         def sample_wrapper(*args, **kwargs):
             # Recycling has finished. Its graph pool is no longer needed, and
@@ -308,14 +351,12 @@ class AcceleratedInference:
                 self.masks.clear()
 
         self._patch(self.model.structure_head, "sample", sample_wrapper)
-        if not layers.FLASH_ATTN_AVAILABLE:
-            for module in self.model.modules():
-                if isinstance(module, layers.SWA3DRoPEAttention):
+        for module in attention_modules:
 
-                    def forward(x, attention_params, module=module):
-                        return cached_attention(module, x, attention_params, self.masks)
+            def forward(x, attention_params, module=module):
+                return cached_attention(module, x, attention_params, self.masks)
 
-                    self._patch(module, "forward", forward)
+            self._patch(module, "forward", forward)
         trunk = self.model.folding_trunk
         trunk_forward = trunk.forward
 

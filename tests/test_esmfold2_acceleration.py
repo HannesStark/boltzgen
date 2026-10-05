@@ -4,6 +4,7 @@ The CUDA cases exercise replay, ownership, input changes and RNG refusal.
 Full checkpoint comparisons live in the public benchmark harness.
 """
 
+from functools import wraps
 from types import MethodType
 
 import pytest
@@ -25,7 +26,9 @@ from boltzgen.task.esmfold2.sampling import sample_without_scalar_sync
 
 
 def test_copied_functions_match_pinned_native_source():
-    check_source(layers.DiffusionStructureHead.sample, _SOURCE_HASHES["sample"])
+    check_source(
+        layers.DiffusionStructureHead.sample, _SOURCE_HASHES["sample"], inference_mode=True
+    )
     check_source(layers.SWA3DRoPEAttention.forward, _SOURCE_HASHES["forward"])
     with pytest.raises(ValueError, match="Unsupported ESMFold2 source"):
         check_source(layers.SWA3DRoPEAttention.forward, "wrong-version")
@@ -57,12 +60,86 @@ def test_uninspectable_callable_preserves_working_native_forward(monkeypatch):
     assert "Cannot inspect ESMFold2 source" in execution["fallback_reason"]
 
 
+@pytest.mark.parametrize("method", ["attention", "sample"])
+@pytest.mark.parametrize("scope", ["class", "instance", "subclass"])
+def test_decorated_native_methods_fall_back_without_removing_wrapper(
+    monkeypatch, method, scope
+):
+    cls, name = (
+        (layers.SWA3DRoPEAttention, "forward")
+        if method == "attention"
+        else (layers.DiffusionStructureHead, "sample")
+    )
+    original = getattr(cls, name)
+    sentinel = torch.ones(1)
+    calls = []
+
+    @wraps(original)
+    def decorated(*args, **kwargs):
+        calls.append(1)
+        return sentinel
+
+    attention_cls = layers.SWA3DRoPEAttention
+    sample_cls = layers.DiffusionStructureHead
+    if scope == "subclass":
+        subclass = type("CustomImplementation", (cls,), {name: decorated})
+        if method == "attention":
+            attention_cls = subclass
+        else:
+            sample_cls = subclass
+    model = torch.nn.Module()
+    model.attn = attention_cls(32, 4)
+    model.folding_trunk = layers.FoldingTrunk(n_layers=1, d_pair=32)
+    model.structure_head = sample_cls.__new__(sample_cls)
+    torch.nn.Module.__init__(model.structure_head)
+    model.structure_head.diffusion_module = _Denoiser()
+    model.eval().requires_grad_(False)
+    if scope == "class":
+        monkeypatch.setattr(cls, name, decorated)
+    elif scope == "instance":
+        module = model.attn if method == "attention" else model.structure_head
+        monkeypatch.setattr(module, name, MethodType(decorated, module))
+    options = dict(acceleration="auto", acceleration_revision=ACCELERATION_REVISION)
+    with acceleration_context(model, options) as execution:
+        actual = model.attn() if method == "attention" else model.structure_head.sample()
+    assert execution["effective"] == "off"
+    assert "wrapper" in execution["fallback_reason"]
+    assert actual is sentinel
+    assert calls == [1]
+
+
+def test_rebound_attention_method_keeps_its_original_owner(monkeypatch):
+    model = torch.nn.Module()
+    model.attn = layers.SWA3DRoPEAttention(32, 4)
+    model.folding_trunk = layers.FoldingTrunk(n_layers=1, d_pair=32)
+    model.structure_head = torch.nn.Module()
+    model.structure_head.sample = MethodType(
+        layers.DiffusionStructureHead.sample, model.structure_head
+    )
+    model.structure_head.diffusion_module = _Denoiser()
+    other = layers.SWA3DRoPEAttention(32, 4).eval().requires_grad_(False)
+    model.eval().requires_grad_(False)
+    monkeypatch.setattr(model.attn, "forward", other.forward)
+    x = torch.randn(1, 8, 32)
+    params = (torch.randn(1, 8, 4), torch.randn(1, 8, 4))
+    options = dict(acceleration="auto", acceleration_revision=ACCELERATION_REVISION)
+    with torch.inference_mode():
+        expected = model.attn(x, params)
+        with acceleration_context(model, options) as execution:
+            actual = model.attn(x, params)
+    assert execution["effective"] == "off"
+    assert model.attn.forward.__self__ is other
+    torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+
+
 def test_context_restores_methods_and_releases_state_after_failure():
     # Small real components exercise installation/cleanup without a checkpoint.
     model = torch.nn.Module()
     model.folding_trunk = layers.FoldingTrunk(n_layers=1, d_pair=32)
     model.structure_head = torch.nn.Module()
-    model.structure_head.sample = lambda **kwargs: None
+    model.structure_head.sample = MethodType(
+        layers.DiffusionStructureHead.sample, model.structure_head
+    )
     model.structure_head.diffusion_module = _Denoiser()
     model.attn = layers.SWA3DRoPEAttention(32, 4)
     model.eval().requires_grad_(False)
@@ -242,7 +319,9 @@ def test_repeated_requests_reuse_stream_without_resident_memory_growth():
     model = torch.nn.Module()
     model.folding_trunk = layers.FoldingTrunk(n_layers=1, d_pair=32).cuda()
     model.structure_head = torch.nn.Module()
-    model.structure_head.sample = lambda **kwargs: None
+    model.structure_head.sample = MethodType(
+        layers.DiffusionStructureHead.sample, model.structure_head
+    )
     model.structure_head.diffusion_module = _Denoiser()
     model.eval().requires_grad_(False)
     options = dict(acceleration="auto", acceleration_revision=ACCELERATION_REVISION)
