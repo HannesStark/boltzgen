@@ -52,5 +52,7 @@ apply. Protein/peptide defaults are unchanged.
 Optional numbered CDR logos require `abnumber` and its dependencies. If these
 are unavailable, the PDF still includes ordinary sequence logos, composition
 plots and liability heatmaps. Numbering receives complete per-chain scaffolds.
+The existing numbered CDR helper is restricted to alpaca heavy chains; light
+chains still receive ordinary sequence logos, composition and liability plots.
 Composition plots label chains with no recognized amino acids instead of trying
 to draw a pie chart with zero total counts.
