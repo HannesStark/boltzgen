@@ -1801,7 +1801,7 @@ def merge_command(args: argparse.Namespace) -> None:
 
     def _make_new_file_name(original_file: str, new_id: str) -> str:
         path = Path(original_file)
-        suffix = "".join(path.suffixes)
+        suffix = path.suffix
         return f"{new_id}{suffix}" if suffix else new_id
 
     def _slugify_run_tag(path: Path, index: int) -> str:
@@ -1875,7 +1875,7 @@ def merge_command(args: argparse.Namespace) -> None:
             print(f"- merged {merged} designs into {dest_dir}")
 
     if total_designs == 0:
-        print("No designs found to merge.")
+        print("No analyzed designs available for filtering.")
     else:
         print("===============================================")
         print(f"Merged {len(source_roots)} source(s) into {dest_root}")

@@ -182,6 +182,30 @@ def test_merge_counts_repeated_source_only_once(
     assert rows["id"].tolist() == ["run_candidate"]
 
 
+@pytest.mark.parametrize("stem", ["target_0", "target.v1", "target.v1.2"])
+@pytest.mark.parametrize("with_metrics", [False, True])
+def test_merge_preserves_design_stems(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stem: str,
+    with_metrics: bool,
+) -> None:
+    source = tmp_path / "run"
+    designs = source / "intermediate_designs_inverse_folded"
+    _pair(designs, stem, "original")
+    if with_metrics:
+        pd.DataFrame([{"id": stem, "file_name": f"{stem}.cif"}]).to_csv(
+            designs / "aggregate_metrics_analyze.csv", index=False
+        )
+    output = tmp_path / "merged"
+    _merge(monkeypatch, [source], output)
+    merged = output / designs.name
+    assert sorted(path.name for path in merged.glob("*.cif")) == [f"run_{stem}.cif"]
+    module = _module(merged, tmp_path / "unused", monkeypatch, multiplicity=1)
+    assert len(module.predict_set.generated_paths) == 1
+    assert all(path.is_file() for path in module.predict_set.metadata_paths)
+
+
 @pytest.mark.parametrize("multiplicity", [1, 3, 12])
 @pytest.mark.parametrize("missing", ["cif", "npz"])
 def test_inverse_fold_resume_requires_every_sequence_pair(
