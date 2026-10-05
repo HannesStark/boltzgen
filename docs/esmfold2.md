@@ -110,6 +110,8 @@ template is supplied to ESMFold2.
 
 ## Inference acceleration
 
+See [H200 measurements and reproduction commands](esmfold2-performance.md).
+
 ESMFold2 scoring uses `--esmfold2_acceleration auto` by default. Installation
 and runtime dependencies are unchanged. The worker adapts three techniques from
 [Anthropic's public optimization kit](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/f4f62fa6592ae4938d49b1757bea0cfeff9f468e/esmfold2):
