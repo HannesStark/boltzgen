@@ -119,7 +119,13 @@ def check_source(
         raise ValueError(
             "Cannot inspect ESMFold2 source; leave its callable unchanged"
         ) from exc
-    tree = ast.parse(textwrap.dedent(source))
+    try:
+        tree = ast.parse(textwrap.dedent(source))
+    except SyntaxError as exc:
+        # A valid lambda can occupy only part of a larger source expression.
+        raise ValueError(
+            "Cannot parse ESMFold2 source; leave its callable unchanged"
+        ) from exc
     # Python 3.13+ omits empty fields by default; retain the pinned 3.12 digest.
     dump_options = {"show_empty": True} if sys.version_info >= (3, 13) else {}
     digest = hashlib.sha256(

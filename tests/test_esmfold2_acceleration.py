@@ -6,6 +6,7 @@ Full checkpoint comparisons live in the public benchmark harness.
 
 from functools import wraps
 from contextlib import nullcontext
+import linecache
 from types import MethodType
 
 import pytest
@@ -59,6 +60,33 @@ def test_uninspectable_callable_preserves_working_native_forward(monkeypatch):
         torch.testing.assert_close(actual, expected, atol=0, rtol=0)
     assert execution["effective"] == "off"
     assert "Cannot inspect ESMFold2 source" in execution["fallback_reason"]
+
+
+def test_lambda_with_incomplete_source_preserves_native_forward(monkeypatch):
+    native = layers.SWA3DRoPEAttention.forward
+    filename = "<esmfold2-lambda-wrapper>"
+    source = (
+        'setattr(attention_class, "forward",\n'
+        '        lambda self, x, params: original(self, x, params))\n'
+    )
+    monkeypatch.setitem(
+        linecache.cache, filename, (len(source), None, source.splitlines(True), filename)
+    )
+    monkeypatch.setattr(layers.SWA3DRoPEAttention, "forward", native)
+    exec(compile(source, filename, "exec"), {
+        "attention_class": layers.SWA3DRoPEAttention, "original": native,
+    })
+    model = torch.nn.Module()
+    model.attn = layers.SWA3DRoPEAttention(32, 4).eval().requires_grad_(False)
+    x = torch.randn(1, 8, 32)
+    params = (torch.randn(1, 8, 4), torch.randn(1, 8, 4))
+    options = dict(acceleration="auto", acceleration_revision=ACCELERATION_REVISION)
+    with torch.inference_mode():
+        expected = model.attn(x, params)
+        with acceleration_context(model, options) as execution:
+            actual = model.attn(x, params)
+    assert execution["effective"] == "off"
+    torch.testing.assert_close(actual, expected, atol=0, rtol=0)
 
 
 @pytest.mark.parametrize("method", ["attention", "sample"])
