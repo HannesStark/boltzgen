@@ -128,6 +128,8 @@ This mode can change predicted structures and scores relative to the original
 backend, and unchunked operations can use more memory on large inputs. It is an
 explicit choice; `auto` keeps the original numerical backend. Each worker fixes
 its backend before seeding requests, and results record which backend ran.
+Workers score requests sequentially. Programmatic callers must use separate
+model instances for concurrent requests.
 The pinned fused pair-bias kernel uses 32-bit offsets: crops that would overflow
 its indexing are rejected before GPU inference, with instructions to use `auto`
 or `off` (at the default five samples and pair width, this is 1,296 tokens or more).
@@ -146,7 +148,9 @@ limited to 256 MiB. Unsupported graph captures fall back to eager execution
 with a warning; incompatible upstream source disables the adapter. The result
 JSON's `execution` field records the effective path and capture/replay counts.
 The requested mode and adapter revision are part of the score fingerprint, so
-changing the mode invalidates old cached scores.
+changing the mode invalidates old cached scores. Upgrading from a version without
+acceleration metadata also recomputes ESMFold2 scores once, including in `off`
+mode; existing design and Boltz2 folding artifacts remain reusable.
 
 Use the original execution path for comparison or troubleshooting:
 
@@ -342,10 +346,12 @@ errors; there is no implicit fallback to Boltz2 iPTM.
 CPU regression checks:
 
 ```bash
-uv run --extra test pytest tests/test_esmfold2_scoring.py tests/test_esmfold2_source_context.py
+uv run --extra test pytest tests/test_esmfold2_scoring.py \
+  tests/test_esmfold2_source_context.py tests/test_esmfold2_source_guard.py
 # In the ESM environment, with the pinned CCD available:
 ESMCFOLD_CCD_PATH=/path/to/ccd.pkl PYTHONPATH=src \
-  .venv-esmfold2/bin/python -m pytest tests/test_esmfold2_inputs.py
+  .venv-esmfold2/bin/python -m pytest tests/test_esmfold2_inputs.py \
+  tests/test_esmfold2_acceleration.py
 ```
 
 The latter tests require pytest and `gemmi>=0.6.5` in the ESM test environment
@@ -353,7 +359,9 @@ The latter tests require pytest and `gemmi>=0.6.5` in the ESM test environment
 They exercise actual
 ESMFold2 feature construction without downloading model weights. A model-boundary
 test proves full-chain LM inputs, cropped folding inputs, and ipSAE sample
-selection. GPU inference qualification is separate.
+selection. Acceleration checks also exercise source guards and native sampler
+equivalence; their CUDA graph cases run when a GPU is available. Full-checkpoint
+GPU inference qualification is separate.
 
 References: [ESMFold2 model card](https://huggingface.co/biohub/ESMFold2),
 [pinned public ESM implementation](https://github.com/Biohub/esm/tree/43b4548b86762edfa747b07d5f440aad3c33acee),

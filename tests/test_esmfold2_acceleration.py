@@ -313,7 +313,10 @@ def test_custom_inference_context_preserves_sampling_and_rng(monkeypatch, varian
         torch.testing.assert_close(actual[name], expected[name], atol=0, rtol=0)
 
 
-@pytest.mark.parametrize("variant", ["sample", "attention", "factory", "class_sample"])
+@pytest.mark.parametrize(
+    "variant",
+    ["sample", "attention", "factory", "class_sample", "attention_function", "sample_body"],
+)
 def test_callable_proxies_preserve_custom_execution(monkeypatch, variant):
     calls = []
 
@@ -323,6 +326,13 @@ def test_callable_proxies_preserve_custom_execution(monkeypatch, variant):
 
         def __getattr__(self, name):
             return getattr(self.method, name)
+
+        @property
+        def __class__(self):
+            return self.method.__class__
+
+        def __get__(self, instance, owner=None):
+            return self if instance is None else MethodType(self, instance)
 
         def __call__(self, *args, **kwargs):
             calls.append(1)
@@ -344,6 +354,16 @@ def test_callable_proxies_preserve_custom_execution(monkeypatch, variant):
             )
     elif variant == "attention":
         monkeypatch.setattr(model.attn, "forward", MethodProxy(model.attn.forward))
+    elif variant == "attention_function":
+        monkeypatch.setattr(
+            layers.SWA3DRoPEAttention, "forward",
+            MethodProxy(layers.SWA3DRoPEAttention.forward),
+        )
+    elif variant == "sample_body":
+        monkeypatch.setattr(
+            layers.DiffusionStructureHead, "sample",
+            torch.inference_mode()(MethodProxy(layers.DiffusionStructureHead.sample.__wrapped__)),
+        )
     else:
         context = torch.inference_mode()
         context.clone = MethodProxy(context.clone)

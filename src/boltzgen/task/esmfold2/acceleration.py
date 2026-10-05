@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import hashlib
 import inspect
 import logging
+import sys
 import textwrap
 from types import FunctionType, MethodType
 
@@ -85,12 +86,16 @@ def check_source(
     function: Callable, expected: str, *, inference_mode: bool = False
 ) -> None:
     """Refuse a port against different upstream code, including local patches."""
+    if type(function) is not FunctionType:
+        raise ValueError(
+            "Cannot inspect ESMFold2 source; leave its callable unchanged"
+        )
     # getsource() follows __wrapped__ automatically. Validate the executed
     # wrapper first so functools.wraps cannot hide a modified implementation.
     if inference_mode:
         wrapped = getattr(function, "__wrapped__", None)
         native_code = torch.inference_mode()(lambda: None).__code__
-        if type(function) is not FunctionType or function.__code__ is not native_code:
+        if function.__code__ is not native_code or type(wrapped) is not FunctionType:
             raise ValueError("Unsupported ESMFold2 inference wrapper")
         closure = inspect.getclosurevars(function).nonlocals
         factory = closure.get("ctx_factory")
@@ -115,8 +120,10 @@ def check_source(
             "Cannot inspect ESMFold2 source; leave its callable unchanged"
         ) from exc
     tree = ast.parse(textwrap.dedent(source))
+    # Python 3.13+ omits empty fields by default; retain the pinned 3.12 digest.
+    dump_options = {"show_empty": True} if sys.version_info >= (3, 13) else {}
     digest = hashlib.sha256(
-        ast.dump(tree.body[0], include_attributes=False)
+        ast.dump(tree.body[0], include_attributes=False, **dump_options)
         .replace(", type_params=[]", "")
         .encode()
     ).hexdigest()
