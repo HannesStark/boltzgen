@@ -24,9 +24,11 @@ from boltzgen.task.analyze.analyze_utils import (
     calc_hydrophobicity,
     compute_liability_metrics,
     compute_liability_scores,
+    sequence_identity,
 )
 from boltzgen.task.filter import filter as filter_module
 from boltzgen.task.filter.filter import Filter
+from boltzgen.task.filter.seqplot_utils import plot_seq_liabilities
 
 
 def _features(
@@ -167,6 +169,158 @@ def test_designed_nonprotein_tokens_are_not_amino_acids(
     assert sequences.loc[0, "sequence"] == "WM"
 
 
+@pytest.mark.parametrize("chains", [("NANANA",), ("NANANA", "ANA")])
+def test_repeated_motif_severity_survives_analysis_and_csv(
+    chains: tuple[str, ...], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task, metrics = _analyze(tmp_path, monkeypatch, chains)
+    assert metrics["liability_DeAmdM_severity"] == 5
+    if len(chains) > 1:
+        assert metrics["liability_DeAmdM_severity_0"] == 5
+        assert metrics["liability_DeAmdM_severity_2"] == 5
+    task.aggregate_metrics()
+    row = pd.read_csv(tmp_path / "aggregate_metrics_test.csv").iloc[0]
+    assert row["liability_DeAmdM_severity"] == 5
+    assert "sev0" not in row["liability_details"]
+
+
+@pytest.mark.parametrize("chains", [("CGWM", "GWM"), ("AGWM", "GWM")])
+def test_scanned_chain_has_zero_for_absent_motif(
+    chains: tuple[str, ...], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task, metrics = _analyze(tmp_path, monkeypatch, chains)
+    expected = int(chains[0].startswith("C"))
+    assert metrics["liability_UnpairedCys_count_0"] == expected
+    assert metrics["liability_UnpairedCys_count_2"] == 0
+    assert metrics["liability_UnpairedCys_position_2"] == -1
+    assert metrics["liability_UnpairedCys_length_2"] == 0
+    assert metrics["liability_UnpairedCys_severity_2"] == 0
+    assert metrics["liability_UnpairedCys_num_positions_2"] == 0
+    assert metrics["liability_UnpairedCys_avg_severity_2"] == 0.0
+    assert metrics["liability_UnpairedCys_details_2"] == ""
+    assert metrics["liability_UnpairedCys_positions_2"] == ""
+    assert metrics["liability_UnpairedCys_global_details_2"] == ""
+    task.aggregate_metrics()
+    row = pd.read_csv(tmp_path / "aggregate_metrics_test.csv").iloc[0]
+    assert row["liability_UnpairedCys_count_2"] == 0
+    assert row["liability_UnpairedCys_count"] == expected
+
+
+def test_per_chain_zero_count_filter_distinguishes_absent_chain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows = []
+    for index, chains in enumerate((("C", "A"), ("A", "C"), ("A", "G"), ("A",))):
+        _, metrics = _analyze(tmp_path / str(index), monkeypatch, chains)
+        metrics["id"] = str(index)
+        rows.append(metrics)
+    rule = {
+        "feature": "liability_UnpairedCys_count_2",
+        "lower_is_better": True,
+        "threshold": 0,
+    }
+    task = _load_filter(tmp_path, pd.DataFrame(rows), [rule])
+    task.filter_df()
+    passed = dict(
+        zip(
+            task.df["id"].astype(str),
+            task.df["pass_liability_UnpairedCys_count_2_filter"],
+        )
+    )
+    assert passed == {"0": True, "1": False, "2": True, "3": False}
+
+
+@pytest.mark.parametrize(
+    ("modality", "peptide_type", "extras"),
+    [
+        ("antibody", "linear", ("UnpairedCys", "HighNetCharge")),
+        ("peptide", "linear", ("UnpairedCys",)),
+        (
+            "peptide",
+            "cyclic",
+            ("UnpairedCys", "LowHydrophilic", "ConsecIdentical", "LongHydrophobic"),
+        ),
+    ],
+)
+def test_supplemental_scan_counts_are_zero_when_no_violation_exists(
+    modality: str, peptide_type: str, extras: tuple[str, ...]
+) -> None:
+    raw = compute_liability_scores(["GE"], modality, peptide_type)["GE"]
+    assert raw["violations"] == []
+    metrics = compute_liability_metrics("GE", modality, peptide_type)
+    for motif in extras:
+        assert metrics[f"liability_{motif}_count"] == 0
+        assert metrics[f"liability_{motif}_position"] == -1
+        assert metrics[f"liability_{motif}_severity"] == 0
+
+
+def test_hydrophobicity_weights_unequal_full_and_designed_chain_lengths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, metrics = _analyze(tmp_path, monkeypatch, ("AAAAAAAAAA", "W"))
+    assert metrics["design_chain_hydrophobicity"] == pytest.approx(
+        (10 * calc_hydrophobicity("AAAAAAAAAA") + calc_hydrophobicity("W")) / 11
+    )
+    assert metrics["design_hydrophobicity"] == pytest.approx(
+        (2 * calc_hydrophobicity("AA") + calc_hydrophobicity("W")) / 3
+    )
+
+
+@pytest.mark.parametrize(("left", "right"), [("AA", "AA:GG"), ("AA:GG", "AA")])
+def test_missing_chain_contributes_length_without_matches(
+    left: str, right: str
+) -> None:
+    assert sequence_identity(left, right) == 0.5
+
+
+def test_legacy_archive_without_sequence_retains_flat_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task, _ = _analyze(tmp_path, monkeypatch, ("AAN", "GWM"))
+    path = task.metrics_dir / "data_target_model_0.npz"
+    with np.load(path, allow_pickle=True) as archive:
+        legacy = {key: value for key, value in archive.items() if key != "sequence"}
+    np.savez_compressed(path, **legacy)
+    task.aggregate_metrics()
+    sequences = pd.read_pickle(tmp_path / "ca_coords_sequences.pkl.gz")
+    assert sequences.loc[0, "sequence"] == "ANWM"
+
+
+def test_native_recovery_excludes_nonprotein_and_padding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    feat = _features(
+        tmp_path / "target_model_0.cif", ("AAA",), ligand=True, padded=True
+    )
+    feat["design_mask"] = torch.ones_like(feat["design_mask"])
+    native = {
+        key: value.clone() if isinstance(value, torch.Tensor) else value
+        for key, value in feat.items()
+    }
+    native["res_type"][1] = one_hot(
+        torch.tensor(const.token_ids["GLY"]), len(const.tokens)
+    ).float()
+    feat.update({f"native_{key}": value for key, value in native.items()})
+    data = SimpleNamespace(
+        cfg=SimpleNamespace(target_id_regex=r"(target)"),
+        predict_set=SimpleNamespace(get_sample=lambda **_: feat),
+        return_native=True,
+    )
+    monkeypatch.setattr(torch, "set_num_interop_threads", lambda _: None)
+    task = Analyze(
+        "test",
+        data,
+        design_dir=str(tmp_path),
+        allatom_fold_metrics=False,
+        compute_lddts=False,
+        native=True,
+        sequence_recovery=True,
+    )
+    assert task.compute_metrics(sample_id=feat["id"]) == feat["id"]
+    with np.load(task.metrics_dir / "metrics_target_model_0.npz") as archive:
+        assert archive["seq_recovery"].item() == pytest.approx(2 / 3)
+
+
 @pytest.mark.parametrize(
     "protocol", ["nanobody-anything", "antibody-anything", "peptide-anything"]
 )
@@ -263,6 +417,70 @@ def test_pdf_liabilities_use_full_chains_instead_of_joined_cdrs(
         v["motif"] == "DeAmdH" for _, _, violations, _ in observed for v in violations
     )
     assert (task.outdir / "results_overview.pdf").stat().st_size > 1000
+
+
+@pytest.mark.parametrize("length", [12, 40, 41, 120, 240])
+def test_liability_pdf_keeps_residue_glyphs_legible(
+    length: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = Filter(str(tmp_path), use_affinity=True, num_liability_plots=1)
+    task.df = pd.DataFrame(
+        [
+            {
+                "id": "layout",
+                "designed_sequence": "W" * 11,
+                "designed_chain_sequence": "W" * length,
+            }
+        ]
+    )
+    task.df_div = task.df.copy()
+    task.filters = [{"feature": "id", "lower_is_better": True, "threshold": "z"}]
+    original_save = filter_module.PdfPages.savefig
+    measured = []
+
+    def record(pdf: filter_module.PdfPages, figure: Figure) -> None:
+        if any(ax.get_title().startswith("Qualityrank") for ax in figure.axes):
+            figure.canvas.draw()
+            renderer = figure.canvas.get_renderer()
+            count, overlaps, fonts = 0, 0, []
+            for ax in figure.axes:
+                letters = [text for text in ax.texts if text.get_text() == "W"]
+                boxes = [text.get_window_extent(renderer) for text in letters]
+                count += len(letters)
+                fonts.extend(text.get_fontsize() for text in letters)
+                overlaps += sum(
+                    left.x1 > right.x0 + 0.5 for left, right in zip(boxes, boxes[1:])
+                )
+            measured.append((count, overlaps, min(fonts)))
+        original_save(pdf, figure)
+
+    monkeypatch.setattr(filter_module.PdfPages, "savefig", record)
+    task.make_visualization([], [], [], [], [["score", 1]], "test", [["id", "ID"]])
+    assert measured == [(length, 0, 12)]
+
+
+def test_wrapped_liability_plot_preserves_full_sequence_coordinates() -> None:
+    # One marker crosses the visual row boundary; scoring must not restart there.
+    figure = plot_seq_liabilities(
+        "A" * 85,
+        "layout",
+        [{"motif": "marker", "pos": 38, "len": 6, "severity": 5}],
+        total_score=5,
+    )
+    letters = [
+        text for ax in figure.axes for text in ax.texts if text.get_text() == "A"
+    ]
+    assert len(letters) == 85
+    colors = [text.get_bbox_patch().get_facecolor() for text in letters]
+    assert all(color == colors[0] for color in colors[:37] + colors[43:])
+    assert all(color == colors[37] for color in colors[37:43])
+    assert colors[37] != colors[0]
+    assert any("Score: 5" in ax.get_title() for ax in figure.axes)
+    labels = [text.get_text() for ax in figure.axes for text in ax.texts]
+    assert "Residues 1-40" in labels
+    assert "Residues 41-80" in labels
+    assert "Residues 81-85" in labels
+    filter_module.plt.close(figure)
 
 
 @pytest.mark.parametrize(
@@ -401,6 +619,76 @@ def test_sequence_logos_keep_chains_separate_and_choose_each_scaffold(
         assert cdr_sequences == [["AAAAN", "AAAAN"]] * 3 + [["GWM", "GWM"]] * 3
     else:
         assert not cdr_sequences
+
+
+def test_logo_cohorts_preserve_sparse_rows_and_duplicate_indices(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = Filter(
+        str(tmp_path),
+        use_affinity=True,
+        plot_seq_logos=True,
+        top_budget=2,
+        modality="antibody",
+    )
+    task.df = pd.DataFrame(
+        [
+            {
+                "id": "first",
+                "designed_sequence": "AN:WM",
+                "designed_chain_sequence": "AAAAN:GWM",
+                "full_sequence_0": "AAAAN",
+                "full_sequence_2": "GWM",
+                "designed_sequence_0": "AN",
+                "designed_sequence_2": "WM",
+            },
+            {
+                "id": "second",
+                "designed_sequence": "AD:YF",
+                "designed_chain_sequence": "AAAAD:GYF",
+                "full_sequence_0": "AAAAD",
+                "full_sequence_2": "GYF",
+                "designed_sequence_0": "AD",
+                "designed_sequence_2": "YF",
+            },
+            {"id": "legacy", "designed_sequence": "G", "designed_chain_sequence": "AG"},
+        ],
+        index=[7, 7, 7],
+    )
+    task.df_div = task.df.iloc[[2, 1, 1]].copy()
+    task.filters = [{"feature": "id", "lower_is_better": True, "threshold": "z"}]
+    logos, scaffolds = [], []
+
+    def logo(sequences: list[str], title: str) -> None:
+        logos.append((sequences, title.split(maxsplit=1)[0]))
+
+    def cdr(sequences: list[str], _title: str) -> None:
+        scaffolds.append(sequences)
+
+    monkeypatch.setattr(filter_module, "create_alignment_logo", logo)
+    monkeypatch.setattr(filter_module, "aa_composition_pie", lambda *_: None)
+    monkeypatch.setattr(filter_module, "cdr_logo", cdr)
+    task.make_visualization([], [], [], [], [["score", 1]], "test", [["id", "ID"]])
+    assert logos == [
+        (["AN", "AD"], "All"),
+        (["AN", "AD"], "Top"),
+        (["AD", "AD"], "Diverse"),
+        (["GWM", "GYF"], "All"),
+        (["GWM", "GYF"], "Top"),
+        (["GYF", "GYF"], "Diverse"),
+        (["G"], "All"),
+        (["G"], "Diverse"),
+    ]
+    assert scaffolds == [
+        ["AAAAN", "AAAAD"],
+        ["AAAAN", "AAAAD"],
+        ["AAAAD", "AAAAD"],
+        ["GWM", "GYF"],
+        ["GWM", "GYF"],
+        ["GYF", "GYF"],
+        ["AG"],
+        ["AG"],
+    ]
 
 
 def test_real_refolding_analysis_uses_all_sequence_chains(

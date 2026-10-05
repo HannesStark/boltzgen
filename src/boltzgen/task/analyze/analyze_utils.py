@@ -1162,10 +1162,6 @@ def compute_liability_metrics(sequence, liability_modality, liability_peptide_ty
         motif = v["motif"]
         violation_counts[motif] = violation_counts.get(motif, 0) + 1
 
-    # Store individual violation type counts as metrics
-    for motif, count in violation_counts.items():
-        metrics[f"liability_{motif}_count"] = count
-
     # Add detailed violation information
     # Group violations by type for intelligent reporting
     violations_by_type = {}
@@ -1183,6 +1179,13 @@ def compute_liability_metrics(sequence, liability_modality, liability_peptide_ty
             peptide_type=liability_peptide_type,
         ).keys()
     )
+    all_motifs.update(violation_counts)
+    if liability_modality == "antibody":
+        all_motifs.update({"UnpairedCys", "HighNetCharge"})
+    elif liability_peptide_type in {"linear", "cyclic"}:
+        all_motifs.add("UnpairedCys")
+        if liability_peptide_type == "cyclic":
+            all_motifs.update({"LowHydrophilic", "ConsecIdentical", "LongHydrophobic"})
     for motif in all_motifs:
         # Initialize all possible fields with default values
         metrics[f"liability_{motif}_count"] = violation_counts.get(motif, 0)
@@ -1199,6 +1202,7 @@ def compute_liability_metrics(sequence, liability_modality, liability_peptide_ty
 
     # Store detailed violation information
     for motif, motif_violations in violations_by_type.items():
+        metrics[f"liability_{motif}_severity"] = motif_violations[0]["severity"]
         if len(motif_violations) == 1:
             # Single violation - store all details
             v = motif_violations[0]
@@ -1207,7 +1211,6 @@ def compute_liability_metrics(sequence, liability_modality, liability_peptide_ty
                 int(v["pos"]) if v["pos"] is not None else -1
             )
             metrics[f"liability_{motif}_length"] = v["len"]
-            metrics[f"liability_{motif}_severity"] = v["severity"]
             if "details" in v:
                 metrics[f"liability_{motif}_details"] = v["details"]
             else:
@@ -1284,6 +1287,7 @@ def chain_hydrophobicity(sequences: dict[int, str]) -> float:
     Each chain retains its own terminal, neighbor and length corrections.
     """
     if len(sequences) == 1:
+        # Preserve exact single-chain values rather than rounding through n*h/n.
         return calc_hydrophobicity(next(iter(sequences.values())))
     length = sum(len(seq) for seq in sequences.values())
     if not length:

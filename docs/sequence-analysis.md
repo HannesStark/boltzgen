@@ -24,6 +24,14 @@ identify the chain explicitly. No motif, terminus, charge or cysteine heuristic
 is evaluated on a concatenation of chains. These sequence heuristics do not
 infer interchain disulfide bonds.
 
+Earlier versions incorrectly reset panel motif counts to zero, including for
+single-chain designs. Counts now reflect the scan, so custom count filters may
+reject designs they previously accepted. Repeated occurrences retain their
+motif's severity in single-chain, per-chain and aggregate fields. Applicable
+supplemental heuristics also have explicit zero counts and neutral details when
+a scanned chain has no occurrences. A genuinely absent chain still has missing
+per-chain fields; it is not treated as a scanned chain with zero occurrences.
+
 `design_chain_hydrophobicity` is the residue-weighted mean of the independently
 scored full chains. `design_hydrophobicity` similarly averages scores for each
 chain's designed residues. Per-chain versions use `_<asym_id>`. Each score keeps
@@ -43,15 +51,19 @@ CSV loading and merging preserve `NA` as an amino-acid sequence; genuinely empty
 sequence cells remain missing, and numeric metrics retain normal missing values.
 
 PDF liability heatmaps scan complete chains independently, matching analysis.
+Long chains wrap into rows of at most 40 residues with original position ranges;
+wrapping does not restart the scan or change scores.
 Sequence logos and composition plots are grouped by chain. The existing choice
 between a scaffold's full sequence and its designed residues is made separately
 for each chain. Nanobody and antibody protocols default to the antibody panel
 in both analysis and reporting; explicit step configuration overrides still
 apply only to that pipeline instance. Protein/peptide defaults are unchanged.
 
-Optional numbered CDR logos require `abnumber` and its dependencies. If these
-are unavailable, the PDF still includes ordinary sequence logos, composition
-plots and liability heatmaps. Numbering receives complete per-chain scaffolds.
+Optional numbered CDR logos require `abnumber` and its dependencies. An import
+failure skips numbered logos while retaining ordinary sequence logos,
+composition plots and liability heatmaps. Installed numbering backends must be
+operational; errors during numbering still propagate. Numbering receives
+complete per-chain scaffolds.
 The existing numbered CDR helper is restricted to alpaca heavy chains; light
 chains still receive ordinary sequence logos, composition and liability plots.
 Composition plots label chains with no recognized amino acids instead of trying

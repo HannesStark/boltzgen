@@ -1367,31 +1367,44 @@ class Filter(Task):
         if self.plot_seq_logos:
             # Select full-chain or redesigned-region views separately per chain.
             # CDR concatenations are display-only; liabilities always use full chains.
+            def sequence_views(
+                frame: pd.DataFrame,
+            ) -> list[tuple[dict[str, str], dict[str, str]]]:
+                columns = [
+                    column
+                    for column in frame.columns
+                    if column in {"designed_chain_sequence", "designed_sequence"}
+                    or column.startswith(("full_sequence_", "designed_sequence_"))
+                ]
+                return [
+                    (
+                        _chain_sequences(row, full=True),
+                        _chain_sequences(row, full=False),
+                    )
+                    for _, row in frame[columns].iterrows()
+                ]
+
+            all_views = sequence_views(self.df)
+            views_by_set = (
+                ("All", all_views),
+                ("Top", all_views[: self.top_budget]),
+                ("Diverse", sequence_views(self.df_div)),
+            )
             chain_ids = dict.fromkeys(
-                chain_id
-                for _, row in self.df.iterrows()
-                for chain_id in _chain_sequences(row, full=True)
+                chain_id for full, _ in all_views for chain_id in full
             )
             for chain_id in chain_ids:
-                full_lengths, designed_lengths = [], []
-                for _, row in self.df.iterrows():
-                    full_lengths.append(
-                        len(_chain_sequences(row, full=True).get(chain_id, ""))
-                    )
-                    designed_lengths.append(
-                        len(_chain_sequences(row, full=False).get(chain_id, ""))
-                    )
-                use_full = sum(full_lengths) <= 1.5 * sum(designed_lengths)
+                full_length = sum(len(full.get(chain_id, "")) for full, _ in all_views)
+                designed_length = sum(
+                    len(designed.get(chain_id, "")) for _, designed in all_views
+                )
+                use_full = full_length <= 1.5 * designed_length
                 vis = "designed_chain_sequence" if use_full else "designed_sequence"
-                for name, frame in (
-                    ("All", self.df),
-                    ("Top", self.df[: self.top_budget]),
-                    ("Diverse", self.df_div),
-                ):
+                for name, views in views_by_set:
                     sequences = [
                         seq
-                        for _, row in frame.iterrows()
-                        if (seq := _chain_sequences(row, full=use_full).get(chain_id))
+                        for full, designed in views
+                        if (seq := (full if use_full else designed).get(chain_id))
                     ]
                     if not sequences:
                         continue
@@ -1403,8 +1416,8 @@ class Filter(Task):
                     if self.modality == "antibody":
                         full_sequences = [
                             seq
-                            for _, row in frame.iterrows()
-                            if (seq := _chain_sequences(row, full=True).get(chain_id))
+                            for full, _ in views
+                            if (seq := full.get(chain_id))
                         ]
                         show(cdr_logo(full_sequences, title))
 

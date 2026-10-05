@@ -206,11 +206,14 @@ When the pipeline completes your output directory will have:
 | protein-anything         | Design proteins to bind proteins or peptides                              | Includes `design folding` step. |
 | peptide-anything         | Design (cyclic) peptides or others to bind proteins | No Cys are generated in inverse folding. No `design folding` step. Don't compute largest hydrophobic patch. |
 | protein-small_molecule   | Design proteins to bind small molecules                                | Includes binding affinity prediction. Includes `design folding` step. |
-| antibody-anything        | Design antibody CDRs      | No Cys are generated in inverse folding. No `design folding` step. Don't compute largest hydrophobic patch. |
+| antibody-anything        | Design antibody CDRs      | No Cys are generated in inverse folding. No `design folding` step. Don't compute largest hydrophobic patch. Antibody liability rules in analysis and reporting. |
 | nanobody-anything        | Design nanobody CDRs      | Same settings as antibody-anything |
 | protein-redesign         | Redesign or optimize existing proteins | No `design folding` step. Uses `design_mask` for target/template definition. |
 
 All configuration parameters can be overridden using the `--config` option; see `boltzgen run --help` or the `Advanced Users` section below for details.
+
+See [multichain sequence analysis](docs/sequence-analysis.md) for per-chain
+metrics, aggregation, liability defaults, and report conventions.
 
 
 
