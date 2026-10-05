@@ -1702,13 +1702,16 @@ def merge_command(args: argparse.Namespace) -> None:
                     metrics_frames.append(pd.DataFrame(updated_rows))
                     merged_count += len(source_mappings)
             else:
-                known_ids = [
-                    (orig, new_id)
-                    for (src, orig), new_id in id_map.items()
-                    if src == root
-                ]
-                for original_id, new_id in known_ids:
-                    original_file = f"{original_id}.cif"
+                # Backbones and inverse-folded sequences have different IDs
+                # when several sequences are generated per backbone.
+                for path in sorted(src_dir.glob("*.cif")):
+                    if not path.is_file() or path.stem.endswith("_native"):
+                        continue
+                    original_id = path.stem
+                    new_id = id_map.setdefault(
+                        (root, original_id), f"{run_tag}_{original_id}"
+                    )
+                    original_file = path.name
                     new_file = _make_new_file_name(original_file, new_id)
                     source_mappings.append(
                         (original_id, new_id, original_file, new_file)
@@ -1831,13 +1834,27 @@ def merge_command(args: argparse.Namespace) -> None:
             continue
         if not root.exists() or not root.is_dir():
             raise FileNotFoundError(f"Source directory not found: {root}")
-        source_roots.append(root)
+        if root not in source_roots:
+            source_roots.append(root)
 
     dest_root.mkdir(parents=True, exist_ok=True)
 
-    run_tags = {
+    base_tags = {
         root: _slugify_run_tag(root, idx + 1) for idx, root in enumerate(source_roots)
     }
+    run_tags: dict[Path, str] = {}
+    used_tags: set[str] = set()
+    reserved_tags = set(base_tags.values())
+    for root, base_tag in base_tags.items():
+        tag = base_tag
+        if tag in used_tags:
+            # Preserve the names of sources whose base tags are already unique.
+            index = 2
+            while f"{base_tag}-{index}" in used_tags | reserved_tags:
+                index += 1
+            tag = f"{base_tag}-{index}"
+        run_tags[root] = tag
+        used_tags.add(tag)
     id_map: dict[tuple[Path, str], str] = {}
 
     total_designs = 0

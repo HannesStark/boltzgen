@@ -697,9 +697,20 @@ class FromGeneratedDataModule(pl.LightningDataModule):
             # If all output paths exist, the input path is skipped.
             def output_path_inverse_fold(input_path):
                 assert self.output_dir is not None
+                # Inverse folding emits one diffusion sample per dataset item.
+                # Match DesignWriter's multiplicity suffix and zero padding.
+                if self.cfg.multiplicity > 1:
+                    num_digits = len(str(self.cfg.multiplicity - 1))
+                    stems = [
+                        f"{input_path.stem}_{sample:0{num_digits}d}"
+                        for sample in range(self.cfg.multiplicity)
+                    ]
+                else:
+                    stems = [input_path.stem]
                 return [
-                    self.output_dir / f"{input_path.stem}.cif",
-                    self.output_dir / f"{input_path.stem}.npz",
+                    self.output_dir / f"{stem}{suffix}"
+                    for stem in stems
+                    for suffix in (".cif", ".npz")
                 ]
 
             def output_path_folded(input_path):
