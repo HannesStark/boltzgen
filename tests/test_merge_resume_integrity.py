@@ -508,6 +508,30 @@ def test_legacy_fallback_does_not_borrow_another_designs_metadata(
         ]
 
 
+@pytest.mark.parametrize("consumer", ["merge", "reader"])
+def test_absent_legacy_metadata_does_not_block_unfinished_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, consumer: str
+) -> None:
+    source = tmp_path / "run"
+    designs = source / "intermediate_designs"
+    for stem in ("target_gen", "target_metadata"):
+        _pair(designs, stem, "unfinished")
+        (designs / f"{stem}.npz").unlink()
+    if consumer == "merge":
+        output = tmp_path / "merged"
+        _merge(monkeypatch, [source], output)
+        for stem in ("target_gen", "target_metadata"):
+            assert (output / designs.name / f"run_{stem}.cif").is_file()
+            assert not (output / designs.name / f"run_{stem}.npz").exists()
+    else:
+        module = _module(designs, tmp_path / "unused", monkeypatch, 1)
+        assert [path.name for path in module.predict_set.generated_paths] == [
+            "target_gen.cif",
+            "target_metadata.cif",
+        ]
+        assert not any(path.is_file() for path in module.predict_set.metadata_paths)
+
+
 def test_merge_rejects_empty_metrics_instead_of_silently_omitting_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

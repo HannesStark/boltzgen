@@ -852,7 +852,7 @@ class FromGeneratedDataModule(pl.LightningDataModule):
             # Prefer modern matching sidecars; old files used "_gen"/"_metadata".
             if path.stem.endswith("_gen") and not path.with_suffix(".npz").is_file():
                 metadata_path = path.with_name(f"{path.stem[:-4]}_metadata.npz")
-                if any(
+                if metadata_path.is_file() and any(
                     metadata_path.with_suffix(suffix).is_file()
                     for suffix in (".cif", ".pdb")
                 ):

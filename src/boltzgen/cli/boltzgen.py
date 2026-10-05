@@ -1817,8 +1817,9 @@ def merge_command(args: argparse.Namespace) -> None:
         source_prefix = source_stem[:-4] if legacy_source else original_id
         source_metadata_suffix = "_metadata.npz" if legacy_source else ".npz"
         source_metadata = src_dir / f"{source_prefix}{source_metadata_suffix}"
-        if legacy_source and any(
-            source_metadata.with_suffix(suffix).is_file() for suffix in (".cif", ".pdb")
+        if legacy_source and source_metadata.is_file() and any(
+            source_metadata.with_suffix(suffix).is_file()
+            for suffix in (".cif", ".pdb")
         ):
             message = (
                 f"Ambiguous legacy metadata for {original_file}: {source_metadata} "
