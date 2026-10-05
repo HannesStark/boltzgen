@@ -16,6 +16,7 @@ import hashlib
 import inspect
 import logging
 import textwrap
+from types import FunctionType, MethodType
 
 import torch
 from torch import Tensor
@@ -89,7 +90,7 @@ def check_source(
     if inference_mode:
         wrapped = getattr(function, "__wrapped__", None)
         native_code = torch.inference_mode()(lambda: None).__code__
-        if getattr(function, "__code__", None) is not native_code:
+        if type(function) is not FunctionType or function.__code__ is not native_code:
             raise ValueError("Unsupported ESMFold2 inference wrapper")
         closure = inspect.getclosurevars(function).nonlocals
         factory = closure.get("ctx_factory")
@@ -97,7 +98,8 @@ def check_source(
         if (
             type(context) is not torch.inference_mode
             or context.mode is not True
-            or getattr(factory, "__func__", None) is not torch.inference_mode.clone
+            or type(factory) is not MethodType
+            or factory.__func__ is not torch.inference_mode.clone
             or closure.get("func") is not wrapped
         ):
             raise ValueError("Unsupported ESMFold2 inference wrapper")
@@ -319,7 +321,8 @@ class AcceleratedInference:
             raise ValueError("ESMFold2 acceleration requires eval() and frozen weights")
         sample = self.model.structure_head.sample
         if (
-            getattr(sample, "__func__", None) is not layers.DiffusionStructureHead.sample
+            type(sample) is not MethodType
+            or sample.__func__ is not layers.DiffusionStructureHead.sample
             or getattr(sample, "__self__", None) is not self.model.structure_head
         ):
             raise ValueError("Unsupported ESMFold2 sample method override or wrapper")
@@ -332,7 +335,8 @@ class AcceleratedInference:
         for module in attention_modules:
             forward = module.forward
             if (
-                getattr(forward, "__func__", None) is not layers.SWA3DRoPEAttention.forward
+                type(forward) is not MethodType
+                or forward.__func__ is not layers.SWA3DRoPEAttention.forward
                 or getattr(forward, "__self__", None) is not module
             ):
                 raise ValueError("Unsupported ESMFold2 attention method override or wrapper")

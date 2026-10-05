@@ -313,6 +313,69 @@ def test_custom_inference_context_preserves_sampling_and_rng(monkeypatch, varian
         torch.testing.assert_close(actual[name], expected[name], atol=0, rtol=0)
 
 
+@pytest.mark.parametrize("variant", ["sample", "attention", "factory", "class_sample"])
+def test_callable_proxies_preserve_custom_execution(monkeypatch, variant):
+    calls = []
+
+    class MethodProxy:
+        def __init__(self, method):
+            self.method = method
+
+        def __getattr__(self, name):
+            return getattr(self.method, name)
+
+        def __call__(self, *args, **kwargs):
+            calls.append(1)
+            torch.rand(1)
+            return self.method(*args, **kwargs)
+
+    head, values, device = _sampling_case(1, 2, None, 0.0, False)
+    model = torch.nn.Module()
+    model.structure_head = head
+    model.folding_trunk = layers.FoldingTrunk(n_layers=1, d_pair=32)
+    model.attn = layers.SWA3DRoPEAttention(32, 4)
+    model.eval().requires_grad_(False)
+    if variant in ("sample", "class_sample"):
+        monkeypatch.setattr(head, "sample", MethodProxy(head.sample))
+        if variant == "class_sample":
+            monkeypatch.setattr(
+                layers.DiffusionStructureHead, "sample",
+                MethodProxy(layers.DiffusionStructureHead.sample),
+            )
+    elif variant == "attention":
+        monkeypatch.setattr(model.attn, "forward", MethodProxy(model.attn.forward))
+    else:
+        context = torch.inference_mode()
+        context.clone = MethodProxy(context.clone)
+        monkeypatch.setattr(
+            layers.DiffusionStructureHead, "sample",
+            context(layers.DiffusionStructureHead.sample.__wrapped__),
+        )
+    x = torch.randn(1, 8, 32)
+    params = (torch.randn(1, 8, 4), torch.randn(1, 8, 4))
+    options = dict(acceleration="auto", acceleration_revision=ACCELERATION_REVISION)
+    with torch.inference_mode():
+        torch.manual_seed(81)
+        expected_attention = model.attn(x, params)
+        expected = head.sample(**values)
+        expected_cpu_rng = torch.get_rng_state()
+        expected_cuda_rng = torch.cuda.get_rng_state() if device == "cuda" else None
+        assert calls == [1]
+        calls.clear()
+        torch.manual_seed(81)
+        with acceleration_context(model, options) as execution:
+            actual_attention = model.attn(x, params)
+            actual = head.sample(**values)
+    assert execution["effective"] == "off"
+    assert calls == [1]
+    assert torch.equal(expected_cpu_rng, torch.get_rng_state())
+    if device == "cuda":
+        assert torch.equal(expected_cuda_rng, torch.cuda.get_rng_state())
+    torch.testing.assert_close(actual_attention, expected_attention, atol=0, rtol=0)
+    for name in expected:
+        torch.testing.assert_close(actual[name], expected[name], atol=0, rtol=0)
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA graph integration")
 def test_graph_replay_owns_outputs_and_handles_input_changes():
     controller = AcceleratedInference(None)
