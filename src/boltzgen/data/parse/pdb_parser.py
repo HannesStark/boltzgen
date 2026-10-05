@@ -36,28 +36,34 @@ def parse_pdb(  # noqa: C901, PLR0915, PLR0912
     for entity in st.entities:
         if "Polymer" != entity.entity_type.name:
             continue
-        sc = entity.subchains[0]
-        sc = st[0].get_subchain(sc)
+        subchains = [st[0].get_subchain(sc) for sc in entity.subchains]
 
         # If full_sequence does not exist, we create it starting from 1 in the subchain.
         # This is needed for some .pdb files that are generated from other sources (e.g. solubleMPNN).
         if len(entity.full_sequence) < 1:
-            full_sequence = [res.name for res in sc]
-            entity.full_sequence = full_sequence
+            first_subchain = next((sc for sc in subchains if len(sc) > 0), None)
+            if first_subchain is None:
+                continue
+            entity.full_sequence = [res.name for res in first_subchain]
 
-        # Manual label_seq matching with alignment.
-        align_result = gemmi.align_sequence_to_polymer(
-            entity.full_sequence,
-            sc,
-            entity.polymer_type,
-            gemmi.AlignmentScoring(),
-        ).match_string
+        # Manual label_seq matching with alignment. label_seq is stored per residue,
+        # so every subchain in a multi-chain entity needs to be assigned.
+        for sc in subchains:
+            if len(sc) < 1:
+                continue
 
-        i = 0
-        for j, align in enumerate(align_result):
-            if align == "|":
-                sc[i].label_seq = j + 1
-                i += 1
+            align_result = gemmi.align_sequence_to_polymer(
+                entity.full_sequence,
+                sc,
+                entity.polymer_type,
+                gemmi.AlignmentScoring(),
+            ).match_string
+
+            i = 0
+            for j, align in enumerate(align_result):
+                if align == "|":
+                    sc[i].label_seq = j + 1
+                    i += 1
 
     block = st.make_mmcif_block()
 
