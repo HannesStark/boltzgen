@@ -126,6 +126,9 @@ This mode can change predicted structures and scores relative to the original
 backend, and unchunked operations can use more memory on large inputs. It is an
 explicit choice; `auto` keeps the original numerical backend. Each worker fixes
 its backend before seeding requests, and results record which backend ran.
+The pinned fused pair-bias kernel uses 32-bit offsets: crops that would overflow
+its indexing are rejected before GPU inference, with instructions to use `auto`
+or `off` (at the default five samples and pair width, this is 1,296 tokens or more).
 
 Graph preparation is included in each candidate's scoring time. Graphs and masks
 are released between candidates, including candidates with matching shapes.
@@ -174,6 +177,8 @@ separate untimed call. Native GPU execution can vary between repeated runs even
 at a fixed seed, so use the deterministic comparison for numerical checks.
 Benchmark `fused` separately with `--modes fused` and a new output directory, so
 the model's numerical backend remains fixed for the lifetime of its process.
+
+## Score definition
 
 For binder protocols, the selected sample has the highest `esmfold2_ipsae_min`,
 independent of iPTM.

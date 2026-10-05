@@ -14,8 +14,18 @@ from boltzgen.task.esmfold2.contract import (
     SCORE_KEY,
     fingerprint,
     load_result,
+    validate_fused_size,
 )
 from boltzgen.task.esmfold2.ipsae import score_interface
+
+
+def test_fused_size_rejects_index_overflow_before_gpu_execution():
+    validate_fused_size(1295, 5, 256)
+    with pytest.raises(ValueError, match="32-bit indexing limit"):
+        validate_fused_size(1296, 5, 256)
+    validate_fused_size(2896, 1, 256)
+    with pytest.raises(ValueError, match="32-bit indexing limit"):
+        validate_fused_size(2897, 1, 256)
 
 
 @pytest.mark.parametrize("cached", [False, True])

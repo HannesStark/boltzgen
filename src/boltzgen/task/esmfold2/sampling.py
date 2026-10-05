@@ -1,8 +1,11 @@
+# Copyright 2026 Biohub. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Pinned ESM sampler with the public Anthropic kit's scalar-sync removal.
 
-Modified from esm 3.4.1.post1 (MIT, Copyright 2026 Chan Zuckerberg Biohub,
-Inc.). See NOTICE.md and LICENSE.esm. The schedule, RNG draws and numerical
-operations are unchanged; only loop-invariant GPU-to-host transfers move.
+Modified from the Apache-2.0-licensed layers.py in esm 3.4.1.post1.
+See NOTICE.md and LICENSE.anthropic for the license text. The schedule, RNG
+draws and numerical operations are unchanged; only loop-invariant GPU-to-host
+transfers move.
 """
 
 import torch

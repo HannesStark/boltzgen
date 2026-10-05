@@ -1,3 +1,5 @@
+# Copyright 2026 Anthropic, PBC; Copyright 2026 Biohub. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Inference acceleration adapted from Anthropic's public ESMFold2 kit.
 
 This adapter targets the pinned native ESM implementation, not the older

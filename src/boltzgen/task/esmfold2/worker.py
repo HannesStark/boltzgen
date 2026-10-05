@@ -33,6 +33,7 @@ from boltzgen.task.esmfold2.contract import (
     PTM_KEY,
     fingerprint,
     validate_acceleration,
+    validate_fused_size,
 )
 from boltzgen.task.esmfold2.crop import crop_features, polymer_representatives
 from boltzgen.task.esmfold2.ipsae import score_chain_vs_rest, score_interface
@@ -281,6 +282,12 @@ def run_request(model, builder, request: dict, output: Path, device: str) -> Non
     design = [i for chain in request["design_chains"] for i in representatives[chain]]
     target = [i for chain in request["target_chains"] for i in representatives[chain]]
     options = request["options"]
+    if options.get("acceleration") == "fused":
+        validate_fused_size(
+            audit["crop_tokens"],
+            options["diffusion_samples"],
+            model.config.pairwise_hidden_size,
+        )
     torch.manual_seed(options["seed"])
     torch.cuda.manual_seed_all(options["seed"])
     full = {k: v.to(device) for k, v in full.items()}
