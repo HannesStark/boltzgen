@@ -1810,17 +1810,38 @@ def merge_command(args: argparse.Namespace) -> None:
         new_file: str,
         include_refold: bool,
     ) -> None:
-        _copy_path(src_dir / original_file, dest_dir / new_file, required=True)
         source_stem = Path(original_file).stem
         legacy_source = source_stem.endswith("_gen") and not (
             src_dir / f"{source_stem}.npz"
         ).is_file()
         source_prefix = source_stem[:-4] if legacy_source else original_id
         source_metadata_suffix = "_metadata.npz" if legacy_source else ".npz"
+        source_metadata = src_dir / f"{source_prefix}{source_metadata_suffix}"
+        if legacy_source and any(
+            source_metadata.with_suffix(suffix).is_file() for suffix in (".cif", ".pdb")
+        ):
+            message = (
+                f"Ambiguous legacy metadata for {original_file}: {source_metadata} "
+                "also belongs to a separate coordinate file. Restore the matching "
+                "metadata before merging."
+            )
+            raise ValueError(message)
+        if new_id.endswith("_gen") and not source_metadata.is_file():
+            legacy_metadata = dest_dir / f"{new_id[:-4]}_metadata.npz"
+            if legacy_metadata.is_file():
+                # Ownership of this old alias is ambiguous; do not let the
+                # reader fall back to it for newly copied coordinates.
+                message = (
+                    f"Cannot merge incomplete design {original_file} over legacy "
+                    f"metadata {legacy_metadata}. Restore the source metadata "
+                    "or use a fresh output directory."
+                )
+                raise ValueError(message)
+        _copy_path(src_dir / original_file, dest_dir / new_file, required=True)
         # Publish one canonical layout even for legacy inputs, so replacing a
         # design cannot leave a competing metadata/native alias selected later.
         _copy_path(
-            src_dir / f"{source_prefix}{source_metadata_suffix}",
+            source_metadata,
             dest_dir / f"{new_id}.npz",
             required=False,
         )

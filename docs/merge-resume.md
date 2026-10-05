@@ -13,6 +13,12 @@ and metadata/native companions are preserved, using modern filenames in the
 destination even for legacy inputs. Replacing a merged design also removes its
 optional companions when they are absent from the replacement source. Merged files are
 independent copies, so rewriting a merged prediction cannot change a source run.
+An incomplete replacement is rejected if a preexisting legacy metadata alias could
+be selected for it. Restore its source metadata or use a fresh directory; aliases
+are not deleted because their ownership can be ambiguous.
+Legacy lookup also rejects a metadata file that has its own matching coordinate
+file, preventing an incomplete `target_gen` design from borrowing metadata from
+a separate `target_metadata` design. A complete modern pair always takes priority.
 Custom molecule definitions are copied too. Definitions sharing one CCD name must
 agree in ordered atoms, bonds, stereochemistry, and saved properties. Reference
 conformers can differ because parsing the same SMILES generates them stochastically;

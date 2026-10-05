@@ -247,17 +247,18 @@ def test_merge_preserves_csv_identifier_strings(
 
 
 @pytest.mark.parametrize("with_metrics", [False, True])
+@pytest.mark.parametrize("stem", ["target_gen", "target_gen.cif_gen"])
 def test_merge_preserves_legacy_companions(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_metrics: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_metrics: bool, stem: str
 ) -> None:
     source = tmp_path / "run"
     designs = source / "intermediate_designs"
-    _pair(designs, "target_gen", "legacy")
-    (designs / "target_gen.npz").rename(designs / "target_metadata.npz")
-    (designs / "target_native.cif").write_text("native")
-    (designs / "target_native.pdb").write_text("native-pdb")
+    _pair(designs, stem, "legacy")
+    (designs / f"{stem}.npz").rename(designs / f"{stem[:-4]}_metadata.npz")
+    (designs / f"{stem[:-4]}_native.cif").write_text("native")
+    (designs / f"{stem[:-4]}_native.pdb").write_text("native-pdb")
     if with_metrics:
-        pd.DataFrame([{"id": "target_gen", "file_name": "target_gen.cif"}]).to_csv(
+        pd.DataFrame([{"id": stem, "file_name": f"{stem}.cif"}]).to_csv(
             designs / "aggregate_metrics_analyze.csv", index=False
         )
     before = _module(designs, tmp_path / "unused", monkeypatch, multiplicity=1)
@@ -270,8 +271,8 @@ def test_merge_preserves_legacy_companions(
     assert after.predict_set.metadata_paths[0].read_bytes() == (
         before.predict_set.metadata_paths[0].read_bytes()
     )
-    assert (merged / "run_target_gen_native.cif").read_text() == "native"
-    assert (merged / "run_target_gen_native.pdb").read_text() == "native-pdb"
+    assert (merged / f"run_{stem}_native.cif").read_text() == "native"
+    assert (merged / f"run_{stem}_native.pdb").read_text() == "native-pdb"
 
 
 @pytest.mark.parametrize("conflict", [False, True])
@@ -454,6 +455,57 @@ def test_merge_removes_missing_optional_companions_on_replacement(
         assert not (merged / filename).exists()
     for folder in (const.refold_cif_dirname, const.refold_design_cif_dirname):
         assert not (merged / folder / "run_target.cif").exists()
+
+
+def test_merge_rejects_incomplete_replacement_over_legacy_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "run"
+    designs = source / "intermediate_designs"
+    designs.mkdir(parents=True)
+    (designs / "target_gen.cif").write_text("new incomplete design")
+    output = tmp_path / "merged"
+    merged = output / designs.name
+    merged.mkdir(parents=True)
+    (merged / "run_target_gen.cif").write_text("old legacy design")
+    np.savez(merged / "run_target_metadata.npz", identity="old legacy metadata")
+    (merged / "run_target_native.cif").write_text("old legacy native")
+    before = {path.name: path.read_bytes() for path in merged.iterdir()}
+    with pytest.raises(ValueError, match=r"incomplete design.*legacy metadata"):
+        _merge(monkeypatch, [source], output)
+    assert before == {path.name: path.read_bytes() for path in merged.iterdir()}
+
+
+@pytest.mark.parametrize("complete", [False, True])
+@pytest.mark.parametrize("consumer", ["merge", "reader"])
+def test_legacy_fallback_does_not_borrow_another_designs_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, complete: bool, consumer: str
+) -> None:
+    source = tmp_path / "run"
+    designs = source / "intermediate_designs"
+    _pair(designs, "target_gen", "generated")
+    _pair(designs, "target_metadata", "separate-design")
+    if not complete:
+        (designs / "target_gen.npz").unlink()
+    output = tmp_path / "merged"
+    if not complete:
+        if consumer == "merge":
+            with pytest.raises(ValueError, match="Ambiguous legacy metadata"):
+                _merge(monkeypatch, [source], output)
+        else:
+            with pytest.raises(ValueError, match="Ambiguous legacy metadata"):
+                _module(designs, tmp_path / "unused", monkeypatch, 1)
+        assert not (output / designs.name / "run_target_gen.cif").exists()
+    elif consumer == "merge":
+        _merge(monkeypatch, [source], output)
+        with np.load(output / designs.name / "run_target_gen.npz") as metadata:
+            assert metadata["identity"].item() == "generated"
+    else:
+        module = _module(designs, tmp_path / "unused", monkeypatch, 1)
+        assert module.predict_set.metadata_paths == [
+            designs / "target_gen.npz",
+            designs / "target_metadata.npz",
+        ]
 
 
 def test_merge_rejects_empty_metrics_instead_of_silently_omitting_files(

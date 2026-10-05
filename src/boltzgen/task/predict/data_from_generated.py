@@ -849,16 +849,20 @@ class FromGeneratedDataModule(pl.LightningDataModule):
         # Sort the paths to make sure each subprocess (when using multiple GPUs) has the same order and the index distribution when fetching from the dataset fetches the correct paths instead of fetching the same paths multiple times.
         filtered_paths = sorted(filtered_paths)
         for path in filtered_paths:
-            ext = path.suffix
-
             # Prefer modern matching sidecars; old files used "_gen"/"_metadata".
             if path.stem.endswith("_gen") and not path.with_suffix(".npz").is_file():
-                metadata_path = path.with_name(
-                    path.name.replace(f"_gen{ext}", "_metadata.npz")
-                )
-                native_path = path.with_name(
-                    path.name.replace(f"_gen{ext}", "_native.cif")
-                )
+                metadata_path = path.with_name(f"{path.stem[:-4]}_metadata.npz")
+                if any(
+                    metadata_path.with_suffix(suffix).is_file()
+                    for suffix in (".cif", ".pdb")
+                ):
+                    message = (
+                        f"Ambiguous legacy metadata for {path}: {metadata_path} "
+                        "also belongs to a separate coordinate file. Restore the "
+                        "matching metadata before loading."
+                    )
+                    raise ValueError(message)
+                native_path = path.with_name(f"{path.stem[:-4]}_native.cif")
             else:
                 metadata_path = path.with_suffix(".npz")
                 native_path = path.with_name(f"{path.stem}_native.cif")
