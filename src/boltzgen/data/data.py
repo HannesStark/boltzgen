@@ -1268,7 +1268,6 @@ class Structure(NumpySerializable):
             atom_to_token=torch.argmax(feat["atom_to_token"].int(), dim=-1).cpu(),
             residue_index=feat["residue_index"].cpu(),
             atom_resolved_mask=feat["atom_resolved_mask"].cpu(),
-            token_resolved_mask=feat["token_resolved_mask"].cpu(),
             design_mask=feat["design_mask"].cpu(),
             atom_pad_mask=feat["atom_pad_mask"].cpu(),
             is_standard=feat["is_standard"].cpu(),
@@ -1296,7 +1295,6 @@ class Structure(NumpySerializable):
         atom_to_token: torch.Tensor,
         residue_index: torch.Tensor,
         atom_resolved_mask: torch.Tensor,
-        token_resolved_mask: torch.Tensor,
         design_mask: torch.Tensor,
         atom_pad_mask: torch.Tensor,
         is_standard: torch.Tensor,
@@ -1338,6 +1336,7 @@ class Structure(NumpySerializable):
         ref_atom_name_chars = ref_atom_name_chars[atom_pad_mask.bool()]
         coords = coords[atom_pad_mask.bool()]
         atom_to_token = atom_to_token[atom_pad_mask.bool()]
+        atom_resolved_mask = atom_resolved_mask[atom_pad_mask.bool()]
 
         # create residue identifiers
         res_identifiers = []
@@ -1412,7 +1411,9 @@ class Structure(NumpySerializable):
                     atom_idx + center_idx,
                     atom_idx + disto_idx,
                     is_standard[token_selector[0]],
-                    token_resolved_mask[token_selector[0]],
+                    # A missing representative atom does not make the whole
+                    # residue absent, including residues with atomized tokens.
+                    atom_resolved_mask[atom_mask.bool()].any().item(),
                 )
             )
 
