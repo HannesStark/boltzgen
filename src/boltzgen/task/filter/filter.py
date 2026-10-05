@@ -404,7 +404,17 @@ class Filter(Task):
                 f"No file starting with 'aggregate_metrics_' found in {self.design_dir}"
             )
             raise FileNotFoundError(msg)
-        df_in = pd.read_csv(csv_files[0])
+        # "NA" is a valid amino-acid sequence; retain normal NA parsing for metrics.
+        sequence_columns = [
+            column
+            for column in pd.read_csv(csv_files[0], nrows=0).columns
+            if column == "designed_chain_sequence"
+            or column.startswith(("designed_sequence", "full_sequence_"))
+        ]
+        df_in = pd.read_csv(
+            csv_files[0],
+            converters=dict.fromkeys(sequence_columns, lambda value: value or None),
+        )
 
         self.df_in = df_in.copy()
         df = df_in.copy()

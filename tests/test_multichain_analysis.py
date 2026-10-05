@@ -469,3 +469,79 @@ def test_diversity_size_buckets_count_residues_not_chain_delimiters(
     ).to_pickle(tmp_path / "ca_coords_sequences.pkl.gz")
     task.optimize_diversity()
     assert task.df_div["id"].tolist() == ["first", "longer"]
+
+
+@pytest.mark.parametrize("chains", [("NA",), ("NA", "GWM"), ("AANA", "GWM")])
+@pytest.mark.parametrize("merge", [False, True])
+def test_valid_na_sequences_survive_csv_merge_and_reporting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    chains: tuple[str, ...],
+    merge: bool,
+) -> None:
+    source = tmp_path / "run"
+    designs = source / "intermediate_designs"
+    designs.mkdir(parents=True)
+    analysis, metrics = _analyze(designs, monkeypatch, chains, modality="peptide")
+    metrics.update(
+        bb_rmsd=0.0,
+        bb_rmsd_design=0.0,
+        min_interaction_pae=1.0,
+        esmfold2_input_hash=float("nan"),
+    )
+    np.savez(analysis.metrics_dir / f"metrics_{metrics['id']}.npz", **metrics)
+    analysis.aggregate_metrics()
+    (designs / "aggregate_metrics_test.csv").rename(
+        designs / "aggregate_metrics_analyze.csv"
+    )
+    (designs / metrics["file_name"]).write_text("coordinate copy fixture")
+    if merge:
+        output = tmp_path / "merged"
+        cli.merge_command(SimpleNamespace(sources=[source], output=output))
+        designs = output / designs.name
+
+    task = Filter(
+        str(designs),
+        use_affinity=True,
+        plot_seq_logos=True,
+        num_liability_plots=1,
+        modality="peptide",
+    )
+    task.load_dataframe()
+    row = task.df.iloc[0]
+    assert row["designed_sequence"] == ":".join(seq[-2:] for seq in chains)
+    assert row["designed_chain_sequence"] == ":".join(chains)
+    assert not row["has_x"]
+    assert pd.isna(row["esmfold2_input_hash"])
+    assert row["bb_rmsd"] == 0.0
+    if len(chains) > 1:
+        for index, seq in enumerate(chains):
+            assert row[f"full_sequence_{index * 2}"] == seq
+            assert row[f"designed_sequence_{index * 2}"] == seq[-2:]
+    task.df_div = task.df.copy()
+    task.filters = [{"feature": "id", "lower_is_better": True, "threshold": "z"}]
+    task.make_visualization([], [], [], [], [["score", 1]], "test", [["id", "ID"]])
+    assert (task.outdir / "results_overview.pdf").stat().st_size > 1000
+
+
+def test_pdf_composition_handles_unknown_full_chain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, metrics = _analyze(tmp_path, monkeypatch, ("AAA", "XXX"))
+    _, other = _analyze(tmp_path, monkeypatch, ("AGA", "XXX"))
+    other["id"] = "target_model_1"
+    task = _load_filter(tmp_path, pd.DataFrame([metrics, other]), [])
+    task.plot_seq_logos = True
+    task.df_div = task.df.copy()
+    task.filters = [{"feature": "id", "lower_is_better": True, "threshold": "z"}]
+    task.make_visualization([], [], [], [], [["score", 1]], "test", [["id", "ID"]])
+    assert (task.outdir / "results_overview.pdf").stat().st_size > 1000
+
+
+def test_filter_still_rejects_missing_protein_sequence(tmp_path: Path) -> None:
+    task = _load_filter(
+        tmp_path,
+        pd.DataFrame({"designed_sequence": [""], "designed_chain_sequence": [""]}),
+        [],
+    )
+    assert task.df.iloc[0]["has_x"]

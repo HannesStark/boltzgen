@@ -39,6 +39,8 @@ zero matches; delimiters do not count as residues. This is ordered chain
 comparison, not a search over chain permutations. Legacy analysis archives
 without stored chain boundaries remain readable; rerun analysis to recover
 boundaries for those designs.
+CSV loading and merging preserve `NA` as an amino-acid sequence; genuinely empty
+sequence cells remain missing, and numeric metrics retain normal missing values.
 
 PDF liability heatmaps scan complete chains independently, matching analysis.
 Sequence logos and composition plots are grouped by chain. The existing choice
@@ -50,3 +52,5 @@ apply. Protein/peptide defaults are unchanged.
 Optional numbered CDR logos require `abnumber` and its dependencies. If these
 are unavailable, the PDF still includes ordinary sequence logos, composition
 plots and liability heatmaps. Numbering receives complete per-chain scaffolds.
+Composition plots label chains with no recognized amino acids instead of trying
+to draw a pie chart with zero total counts.

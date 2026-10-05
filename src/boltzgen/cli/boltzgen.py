@@ -1675,7 +1675,19 @@ def merge_command(args: argparse.Namespace) -> None:
 
             metrics_path = src_dir / "aggregate_metrics_analyze.csv"
             if metrics_path.exists():
-                df = pd.read_csv(metrics_path)
+                # Preserve valid "NA" sequences across merged analysis tables.
+                sequence_columns = [
+                    column
+                    for column in pd.read_csv(metrics_path, nrows=0).columns
+                    if column == "designed_chain_sequence"
+                    or column.startswith(("designed_sequence", "full_sequence_"))
+                ]
+                df = pd.read_csv(
+                    metrics_path,
+                    converters=dict.fromkeys(
+                        sequence_columns, lambda value: value or None
+                    ),
+                )
                 if not df.empty:
                     updated_rows = []
                     for _, row in df.iterrows():
