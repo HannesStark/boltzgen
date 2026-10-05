@@ -15,14 +15,6 @@ In an environment with python >=3.11:
 pip install boltzgen
 ```
 
-Polymer binder protocols score interfaces with the full ESMFold2 2021 checkpoint
-and ipSAE. BoltzGen prepares its cached runtime automatically on first use; no
-extra install command or interpreter flag is needed. See [ESMFold2 scoring](docs/esmfold2.md)
-for GPU requirements, cropped targets, and existing designs. The
-`protein-small_molecule` protocol continues to use Boltz2 affinity.
-`protein-redesign` uses the weakest chain-versus-rest ESMFold2 ipSAE, or
-ESMFold2 pTM for single-chain redesigns.
-
 <details>
   <summary style="font-size: 1.3em; font-weight: 600;">
     Click for detailed installation instructions
@@ -98,57 +90,11 @@ docker build -t boltzgen:weights --build-arg DOWNLOAD_WEIGHTS=true .
 
 
 # Running BoltzGen
-
-SolubleMPNN is the default sequence-redesign model for `boltzgen run` and
-`boltzgen configure` in protein, peptide, antibody, nanobody, and protein-redesign protocols.
-The `protein-small_molecule` protocol always uses BoltzIF:
-
-```bash
-boltzgen run example/vanilla_protein/1g13prot.yaml \
-    --output results/solublempnn --protocol protein-anything \
-    --num_designs 10
-```
-
-Installation stays `pip install boltzgen`: the bundled upstream model uses the
-existing PyTorch and NumPy dependencies. The 6.4 MiB `solublempnn_v_48_020.pt`
-checkpoint downloads automatically from the upstream LigandMPNN server, with a
-pinned SHA-256, into the selected `--cache` directory (or the Hugging Face cache
-under `HF_HOME`). No separate repository checkout or environment is needed.
-For offline use, run `boltzgen download solublempnn` ahead of time or pass
-`--solublempnn_checkpoint /path/to/solublempnn_v_48_020.pt`.
-
-The same backend also supports `--only_inverse_fold`. Sequence counts,
-`--inverse_fold_avoid`, fixed residues, and downstream folding/analysis use the
-existing pipeline. `--solublempnn_sampling_temperature` defaults to `0.1` and
-must be positive. To use BoltzIF instead, pass `--inverse_fold_model boltzif`;
-its checkpoint is controlled by `--inverse_fold_checkpoint`.
-
-SolubleMPNN conditions on protein N/CA/C/O backbone geometry and fixed protein
-sequences. It does not use ligand, nucleic-acid, side-chain, or cyclic-bond
-context; these remain in the output structures for downstream evaluation.
-Because SolubleMPNN ignores the ligand during sequence redesign,
-`protein-small_molecule` requires BoltzIF, including with `--only_inverse_fold`.
-Explicitly selecting `--inverse_fold_model solublempnn` with that protocol
-raises an error before any model downloads or GPU initialization.
-Redesigned positions must be protein residues with complete resolved N/CA/C/O
-backbones; generated `UNK` residues with these atoms are supported. An
-inverse-fold design-mask override can restrict the original
-design region but cannot expand it. This is an alternative sequence model;
-equivalent design quality across BoltzGen protocols has not been established.
-
-Per-residue amino-acid constraints and YAML `symmetric_group` sequence tying
-are supported, both with `--only_inverse_fold` and after backbone generation.
-The generated NPZ metadata preserves symmetry groups when designs are reloaded.
-Tied positions use the intersection of their allowed amino acids;
-incompatible constraints raise an error. As with BoltzIF, a per-position
-constraint that conflicts with all globally allowed residues is relaxed with
-a warning, while global `--inverse_fold_avoid` exclusions remain enforced.
-
 ![alt text](assets/fig1.png)
 
 
 `boltzgen run` takes a [design specification](#how-to-make-a-design-specification-yaml) `.yaml` and produces a set of ranked designs.\
-⚠️ Boltz models need about 6 GB. Polymer scoring additionally downloads about 27 GB of ESM weights and a 6 GB isolated runtime on first use. ESMFold2 requires a CUDA 13 compatible NVIDIA driver. `--cache` controls Boltz downloads; `HF_HOME` controls ESM weights and `UV_CACHE_DIR` controls the isolated runtime. All use standard user caches by default. See [installation and caching details](docs/esmfold2.md#installation-and-use).\
+⚠️ Models download automatically: ~6 GB for Boltz, plus ~33 GB for ESMFold2 weights and runtime. ESMFold2 requires a CUDA 13 compatible NVIDIA driver. See [installation and cache settings](docs/esmfold2.md#installation-and-use).\
 ⚠️ If your run is ever interrupted, you can restart it with `--reuse`. No progress is lost.
 
 
@@ -200,6 +146,9 @@ When the pipeline completes your output directory will have:
   - `/results_overview.pdf` — plots
 
 # Protocols
+
+SolubleMPNN is the default inverse-folding model, with [ESMFold2 scoring](docs/esmfold2.md).
+The `protein-small_molecule` protocol instead uses BoltzIF and Boltz2 affinity.
 
 | Protocol (design-target) | Appropriate for                                                           | Major config differences        |
 |--------------------------|---------------------------------------------------------------------------|------------------------|
@@ -371,6 +320,8 @@ constraints:
 ## Symmetric complex design (inverse-folding only)
 
 For symmetric complexes (e.g., homo-dimers), the you can tie sequence generation during inverse folding by specifying the `symmetric_group` for each symmetric chain. The `protein-redesign` protocol allows for scoring complexes without separate binders/targets.
+
+Sequence tying works with `--only_inverse_fold` and after backbone generation.
 
 ```yaml
 entities:
