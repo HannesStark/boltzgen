@@ -693,6 +693,34 @@ class FromGeneratedDataModule(pl.LightningDataModule):
             generated_paths = filtered_generated_paths
 
         if self.skip_existing:
+            if (
+                self.skip_existing_kind == "inverse_fold"
+                and self.cfg.multiplicity > 1
+                and self.output_dir is not None
+            ):
+                input_stems = {path.stem for path in generated_paths}
+                num_digits = len(str(self.cfg.multiplicity - 1))
+                for path in self.output_dir.glob("*.cif"):
+                    stem, _, suffix = path.stem.rpartition("_")
+                    if (
+                        stem in input_stems
+                        and suffix.isascii()
+                        and suffix.isdecimal()
+                        and path.is_file()
+                        and path.with_suffix(".npz").is_file()
+                    ):
+                        index = int(suffix)
+                        if (
+                            index < self.cfg.multiplicity
+                            and suffix != f"{index:0{num_digits}d}"
+                        ):
+                            message = (
+                                "Existing inverse-fold outputs use different numeric "
+                                f"padding from the requested multiplicity: {path}. "
+                                "Use a fresh output directory when changing padding."
+                            )
+                            raise ValueError(message)
+
             # Functions to map an input path to a list of output paths.
             # If all output paths exist, the input path is skipped.
             def output_path_inverse_fold(input_path):

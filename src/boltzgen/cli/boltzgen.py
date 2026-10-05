@@ -1844,11 +1844,9 @@ def merge_command(args: argparse.Namespace) -> None:
             dst.parent.mkdir(parents=True, exist_ok=True)
             if dst.exists():
                 dst.unlink()
-            # Try to make a hard link if possible, otherwise copy
-            try:
-                os.link(src, dst)
-            except OSError:
-                shutil.copy2(src, dst)
+            # Prediction writers can overwrite coordinates in place. A merged
+            # run must not share writable files with its source runs.
+            shutil.copy2(src, dst)
         elif required:
             raise FileNotFoundError(f"Required file missing during merge: {src}")
 

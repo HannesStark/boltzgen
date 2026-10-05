@@ -334,6 +334,36 @@ def test_inverse_fold_resume_requires_files(
     assert len(module.predict_set) == multiplicity
 
 
+@pytest.mark.parametrize(
+    ("multiplicity", "old_suffix"), [(3, "00"), (12, "0"), (101, "00")]
+)
+def test_inverse_fold_resume_rejects_complete_padding_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    multiplicity: int,
+    old_suffix: str,
+) -> None:
+    inputs, outputs = tmp_path / "inputs", tmp_path / "outputs"
+    _pair(inputs, "target_0", "input")
+    _pair(outputs, f"target_0_{old_suffix}", "existing")
+    before = {path.name: path.read_bytes() for path in outputs.iterdir()}
+    with pytest.raises(ValueError, match="different numeric padding"):
+        _module(inputs, outputs, monkeypatch, multiplicity)
+    assert before == {path.name: path.read_bytes() for path in outputs.iterdir()}
+
+
+def test_merged_files_do_not_share_writable_source_storage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "run"
+    designs = source / "intermediate_designs"
+    _pair(designs, "candidate", "original")
+    output = tmp_path / "merged"
+    _merge(monkeypatch, [source], output)
+    (output / designs.name / "run_candidate.cif").write_text("rewritten prediction")
+    assert (designs / "candidate.cif").read_text() == "original"
+
+
 @pytest.mark.parametrize("multiplicity", [1, 3, 12])
 @pytest.mark.parametrize("missing", ["cif", "npz"])
 def test_inverse_fold_resume_requires_every_sequence_pair(
@@ -405,6 +435,53 @@ def test_inverse_fold_writer_outputs_are_reused(
     assert writer.failed == 0
     assert len(list(outputs.glob("*.cif"))) == multiplicity
     assert len(_module(inputs, outputs, monkeypatch, multiplicity).predict_set) == 0
+
+
+def test_inverse_fold_partial_resume_preserves_completed_sibling(
+    tmp_path: Path,
+) -> None:
+    outputs = tmp_path / "outputs"
+    writer = DesignWriter(
+        str(outputs),
+        res_atoms_only=False,
+        atom14=False,
+        inverse_fold=True,
+        write_native=False,
+    )
+    datamodule = SimpleNamespace(
+        cfg=SimpleNamespace(multiplicity=3),
+        skip_existing=True,
+        skip_existing_kind="inverse_fold",
+    )
+    trainer = SimpleNamespace(datamodule=datamodule)
+
+    def write_sample(sample: int, shift: float) -> None:
+        features = _features(padded=False, missing_atom=False, ligand=False)
+        features["data_sample_idx"] = sample
+        batch = data_from_generated.collate([features])
+        batch["extra_mols"] = None
+        prediction = {key: value for key, value in batch.items() if key != "extra_mols"}
+        prediction["coords"] = batch["coords"][0] + shift
+        prediction["exception"] = False
+        writer.write_on_batch_end(trainer=trainer, prediction=prediction, batch=batch)
+
+    write_sample(0, 0.0)
+    write_sample(1, 0.0)
+    completed = {
+        suffix: (outputs / f"contract_0{suffix}").read_bytes()
+        for suffix in (".cif", ".npz")
+    }
+    (outputs / "contract_1.npz").unlink()
+    incomplete_cif = (outputs / "contract_1.cif").read_bytes()
+    for index in range(3):
+        write_sample(index, 10.0)
+    assert writer.failed == 0
+    for suffix, content in completed.items():
+        assert (outputs / f"contract_0{suffix}").read_bytes() == content
+    assert (outputs / "contract_1.cif").read_bytes() != incomplete_cif
+    assert (outputs / "contract_1.npz").is_file()
+    assert (outputs / "contract_2.cif").is_file()
+    assert (outputs / "contract_2.npz").is_file()
 
 
 def test_merge_keeps_multisequence_score_provenance(
