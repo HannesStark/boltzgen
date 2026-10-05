@@ -703,7 +703,7 @@ def parse_polymer(  # noqa: C901, PLR0915, PLR0912
             res_idx = res.label_seq - 1  # convert to 0 indexing
         else:
             auth_idx = None
-            res_idx = j
+            res_idx = j - 1
 
         # Map MSE to MET, put the selenium atom in the sulphur column
         if res_name == "MSE":
@@ -913,9 +913,8 @@ def parse_mmcif(  # noqa: C901, PLR0915, PLR0912
         Path to the MMCIF file.
 
     use_original_res_idx : bool
-        Uses the res_idx for the res_idx in the Residues in the returned structure
-        that was in the mmcif file for each residue instead of using the index in the
-        seqres that is obtained after aligning the seqres to the sequence of amino acids from the present residues.
+        Retained for compatibility. Polymer residue indices use zero-based
+        label_seq_id positions for both values, not author residue numbers.
 
     Returns
     -------
@@ -958,7 +957,8 @@ def mmcif_from_block(  # noqa: C901, PLR0915, PLR0912
         Gemmi Block.
 
     use_original_res_idx : bool
-        Uses the res_idx for the res_idx in the Residues in the returned structure that was in the mmcif file for each residue instead of using the index in the seqres that is obtained after aligning the seqres to the sequence of amino acids from the present residues.
+        Retained for compatibility. Polymer residue indices use zero-based
+        label_seq_id positions for both values, not author residue numbers.
 
     Returns
     -------
@@ -1001,18 +1001,20 @@ def mmcif_from_block(  # noqa: C901, PLR0915, PLR0912
     # Load structure object
     structure = gemmi.make_structure_from_block(block)
 
-    # Clean up the structure
     structure.merge_chain_parts()
-    structure.remove_waters()
-    structure.remove_hydrogens()
-    structure.remove_alternative_conformations()
-    structure.remove_empty_chains()
 
-    # Expand assembly 1
+    # Expand before removing waters: assembly generators may reference their
+    # subchains, which Gemmi 0.7 requires to exist during expansion.
     if use_assembly and structure.assemblies:
         how = gemmi.HowToNameCopiedChain.AddNumber
         assembly_name = structure.assemblies[0].name
         structure.transform_to_assembly(assembly_name, how=how)
+
+    # Clean up the structure
+    structure.remove_waters()
+    structure.remove_hydrogens()
+    structure.remove_alternative_conformations()
+    structure.remove_empty_chains()
 
     # Parse entities
     # Create mapping from subchain id to entity

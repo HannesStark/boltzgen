@@ -58,7 +58,7 @@ def to_mmcif(
     model = _create_gemmi_model(1)
 
     chain_to_entity_id = {}
-    sequence_to_entity_id = {}
+    entity_key_to_id = {}
     entity_counter = 1
     chain_names = [re.sub(r"\d+", "", c["name"]) for c in structure.chains]
     chain_id_pool = list(reversed(string.ascii_uppercase)) + list(
@@ -83,10 +83,16 @@ def to_mmcif(
             chain["res_idx"] : chain["res_idx"] + chain["res_num"]
         ]
 
-        sequence = "".join([res["name"].item() for res in residues])
         chain_type = chain["mol_type"].item()
-        if sequence not in sequence_to_entity_id:
-            sequence_to_entity_id[sequence] = str(entity_counter)
+        # An entity shares both residue identities and label_seq_id positions.
+        # Equal cropped sequences can have different original residue indices.
+        entity_key = (
+            chain_type,
+            tuple(residues["name"].tolist()),
+            tuple(residues["res_idx"].tolist()),
+        )
+        if entity_key not in entity_key_to_id:
+            entity_key_to_id[entity_key] = str(entity_counter)
 
             entity = gemmi.Entity(str(entity_counter))
 
@@ -107,7 +113,7 @@ def to_mmcif(
             gemmi_struct.entities.append(entity)
             entity_counter += 1
 
-        chain_to_entity_id[new_chainid] = sequence_to_entity_id[sequence]
+        chain_to_entity_id[new_chainid] = entity_key_to_id[entity_key]
 
     label_seq_dict = defaultdict(list)
     for chain in structure.chains:
@@ -258,13 +264,15 @@ def to_mmcif(
 
     # Include poly_seq_scheme table
     if poly_seq_scheme:
-        add_poly_seq_scheme_cols(structure, block, chain_to_entity_id, label_seq_dict)
+        add_poly_seq_scheme_cols(
+            structure, block, chain_to_entity_id, label_seq_dict, old_to_new_chainid
+        )
 
     if plddt_cols:
-        add_plddt_cols(structure, block)
+        add_plddt_cols(structure, block, old_to_new_chainid)
 
     if design_coloring:
-        add_design_cols(structure, block, color_features)
+        add_design_cols(structure, block, color_features, old_to_new_chainid)
 
     # remove _chem_comp records because they are empty and then just cause problems with visualization softwares
     block_string = doc.as_string()
@@ -304,7 +312,7 @@ def add_boltzgen_metadata(structure, block, old_to_new_chainid):
             )
 
 
-def add_design_cols(structure, block, colors):
+def add_design_cols(structure, block, colors, old_to_new_chainid: dict[str, str]):
     plddt_loop = block.init_loop(
         "_ma_qa_metric.",
         [
@@ -331,8 +339,7 @@ def add_design_cols(structure, block, colors):
     plddt_loop = block.init_loop("_ma_qa_metric_local.", plddt_cols)
     global_res_idx = -1
     for chain in structure.chains:
-        chain_name_str = re.sub(r"\d+", "", chain["name"].item())
-        chain_id = chain_name_str
+        chain_id = old_to_new_chainid[chain["name"].item()]
 
         residues = structure.residues[
             chain["res_idx"] : chain["res_idx"] + chain["res_num"]
@@ -357,7 +364,7 @@ def add_design_cols(structure, block, colors):
             )
 
 
-def add_plddt_cols(structure, block):
+def add_plddt_cols(structure, block, old_to_new_chainid: dict[str, str]):
     plddt_loop = block.init_loop(
         "_ma_qa_metric.",
         [
@@ -386,8 +393,7 @@ def add_plddt_cols(structure, block):
         if chain["mol_type"].item() == const.chain_type_ids["NONPOLYMER"]:
             continue
 
-        chain_name_str = re.sub(r"\d+", "", chain["name"].item())
-        chain_id = chain_name_str
+        chain_id = old_to_new_chainid[chain["name"].item()]
 
         residues = structure.residues[
             chain["res_idx"] : chain["res_idx"] + chain["res_num"]
@@ -412,7 +418,13 @@ def add_plddt_cols(structure, block):
             )
 
 
-def add_poly_seq_scheme_cols(structure, block, chain_to_entity_id, label_seq_dict):
+def add_poly_seq_scheme_cols(
+    structure,
+    block,
+    chain_to_entity_id,
+    label_seq_dict,
+    old_to_new_chainid: dict[str, str],
+):
     poly_seq_scheme_cols = [
         "asym_id",
         "entity_id",
@@ -432,8 +444,7 @@ def add_poly_seq_scheme_cols(structure, block, chain_to_entity_id, label_seq_dic
         if chain["mol_type"].item() == const.chain_type_ids["NONPOLYMER"]:
             continue
 
-        chain_name_str = re.sub(r"\d+", "", chain["name"].item())
-        chain_id = chain_name_str
+        chain_id = old_to_new_chainid[chain["name"].item()]
         entity_id = chain_to_entity_id[chain_id]
 
         residues = structure.residues[

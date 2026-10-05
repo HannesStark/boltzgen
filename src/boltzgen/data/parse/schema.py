@@ -1966,6 +1966,19 @@ class YamlDesignParser:
             self._struct_cache[cache_key] = deepcopy(parsed)
 
         structure = parsed.data
+        # YAML design operations use the reference model. Select it before
+        # cropping or combining files so later models cannot replace other atoms.
+        if len(structure.ensemble) > 1:
+            ensemble = structure.ensemble[:1].copy()
+            start = ensemble["atom_coord_idx"][0]
+            count = ensemble["atom_num"][0]
+            assert count == len(structure.atoms)
+            ensemble["atom_coord_idx"] = 0
+            structure = replace(
+                structure,
+                coords=structure.coords[start : start + count].copy(),
+                ensemble=ensemble,
+            )
         source_context = source_context_utils.from_file(
             structure, path, file.get("full_sequences")
         )
@@ -2094,11 +2107,11 @@ class YamlDesignParser:
                 chain_res = structure.residues[chain_start:chain_end]
                 included_res = chain_res[chain_include_mask]
                 is_present = included_res["is_present"]
-                first_true = np.argmax(is_present)
-                last_true = len(is_present) - 1 - np.argmax(is_present[::-1])
-                included_missing_mask = np.ones_like(is_present, dtype=bool)
-                included_missing_mask[:first_true] = False
-                included_missing_mask[last_true + 1 :] = False
+                included_missing_mask = np.zeros_like(is_present, dtype=bool)
+                if is_present.any():
+                    first_true = np.argmax(is_present)
+                    last_true = len(is_present) - 1 - np.argmax(is_present[::-1])
+                    included_missing_mask[first_true : last_true + 1] = True
 
                 # Print a message if there are any trailing or leading missing residues.
                 if (~included_missing_mask).sum() > 0:
@@ -2410,6 +2423,9 @@ class YamlDesignParser:
         fss_type = fss_type[include_mask].astype(np.int32)
 
         # Apply mask to structrue
+        if not include_mask.any():
+            msg = f"No residues remain after applying selections to {path}."
+            raise ValueError(msg)
         if not all(include_mask):
             new_structure = Structure.extract_residues(
                 structure, include_mask.astype(bool), res_reindex=False
@@ -2472,6 +2488,11 @@ class YamlDesignParser:
                     msg = f"Misspecified chain in reset_res_index with missing 'id' for file with path {path}."
                     raise ValueError(msg)
                 chain_id = chain["id"]
+                if chain_id not in structure.chains["name"]:
+                    msg = f"Specified chain id {chain_id} not in file {path}."
+                    raise ValueError(msg)
+                if chain_id not in new_structure.chains["name"]:
+                    continue
                 chain_idx = np.where(chain_id == new_structure.chains["name"])[0].item()
                 struct_chain = new_structure.chains[chain_idx]
                 new_structure.residues[
@@ -2486,6 +2507,18 @@ class YamlDesignParser:
             fuse_info["fuse"] = True
         else:
             fuse_info["fuse"] = False
+
+        retained_chains = set(new_structure.chains["name"])
+        file_chain_to_msa = {
+            chain_id: msa
+            for chain_id, msa in file_chain_to_msa.items()
+            if chain_id in retained_chains
+        }
+        file_chain_symmetric_group = {
+            chain_id: group
+            for chain_id, group in file_chain_symmetric_group.items()
+            if chain_id in retained_chains
+        }
 
         return (
             new_structure,
