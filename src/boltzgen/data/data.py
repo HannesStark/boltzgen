@@ -311,6 +311,48 @@ Ensemble = [
 ]
 
 
+def _unique_chain_index(chains: np.ndarray, chain_name: str) -> int:
+    """Resolve a chain name to a scalar index without choosing an arbitrary match."""
+    indices = np.where(chains["name"] == chain_name)[0]
+    if indices.size != 1:
+        msg = (
+            f"Chain name {chain_name!r} matched {indices.size} chains; "
+            "expected exactly one."
+        )
+        raise ValueError(msg)
+    return indices.item()
+
+
+def _insert_coordinate_models(
+    coords: np.ndarray,
+    ensemble: np.ndarray,
+    atom_idx: int,
+    insert_coords: np.ndarray,
+    insert_ensemble: np.ndarray,
+) -> np.ndarray:
+    """Insert one shared conformer or corresponding conformers into each model."""
+    target_models = ensemble if len(ensemble) else [(0, len(coords))]
+    donor_models = (
+        insert_ensemble if len(insert_ensemble) else [(0, len(insert_coords))]
+    )
+    if len(donor_models) not in (1, len(target_models)):
+        raise ValueError(
+            "Inserted coordinates must have one conformer or the same number "
+            "of conformers as the target."
+        )
+    result = []
+    for i, (start, count) in enumerate(target_models):
+        donor_start, donor_count = donor_models[i if len(donor_models) > 1 else 0]
+        result.append(
+            np.insert(
+                coords[start : start + count],
+                atom_idx,
+                insert_coords[donor_start : donor_start + donor_count],
+            )
+        )
+    return np.concatenate(result)
+
+
 @dataclass(frozen=True, slots=True)
 class Structure(NumpySerializable):
     """Structure datatype."""
@@ -562,13 +604,7 @@ class Structure(NumpySerializable):
         coords = structure.coords.copy()
         ensemble = structure.ensemble.copy()
 
-        target_chain_indices = np.where(chains["name"] == chain_name)[0]
-        if target_chain_indices.size != 1:
-            raise ValueError(
-                f"Chain name {chain_name!r} matched {target_chain_indices.size} chains; "
-                "expected exactly one."
-            )
-        target_chain_idx = target_chain_indices.item()
+        target_chain_idx = _unique_chain_index(chains, chain_name)
         # Scalar records are views: retain the original values as chains change.
         target_chain = chains[target_chain_idx].copy()
 
@@ -627,7 +663,13 @@ class Structure(NumpySerializable):
         # Insert new data into main arrays
         final_atoms = np.insert(atoms, atom_insert_idx, insert_atoms)
         final_residues = np.insert(residues, res_insert_idx, insert_residues)
-        final_coords = np.insert(coords, atom_insert_idx, insert_coords)
+        final_coords = _insert_coordinate_models(
+            coords,
+            ensemble,
+            atom_insert_idx,
+            insert_coords,
+            np.array([], dtype=Ensemble),
+        )
 
         # Update indices in all data structures
 
@@ -701,6 +743,8 @@ class Structure(NumpySerializable):
             Structure where we fuse
         structure2: Structure
             Structure where we take the chain from, needs to be a single chain
+            with one conformer (broadcast to all target conformers) or the same
+            number of conformers as structure1 (paired by position).
         chain_id: chain id of there chain where we wish to
         """
         assert len(structure2.chains) == 1
@@ -715,13 +759,7 @@ class Structure(NumpySerializable):
         num_new_atoms = len(structure2.atoms)
         num_new_residues = len(structure2.residues)
 
-        target_chain_indices = np.where(chains["name"] == chain_name)[0]
-        if target_chain_indices.size != 1:
-            raise ValueError(
-                f"Chain name {chain_name!r} matched {target_chain_indices.size} chains; "
-                "expected exactly one."
-            )
-        target_chain_idx = target_chain_indices.item()
+        target_chain_idx = _unique_chain_index(chains, chain_name)
         # Preserve the target entity and residue counts while updating chains.
         target_chain = chains[target_chain_idx].copy()
 
@@ -755,7 +793,9 @@ class Structure(NumpySerializable):
 
         final_atoms = np.insert(atoms, atom_insert_idx, insert_atoms)
         final_residues = np.insert(residues, res_insert_idx, insert_residues)
-        final_coords = np.insert(coords, atom_insert_idx, insert_coords)
+        final_coords = _insert_coordinate_models(
+            coords, ensemble, atom_insert_idx, insert_coords, structure2.ensemble
+        )
 
         # Update indices in all data structures
         chains["res_num"][target_chain_idx] += num_new_residues
@@ -773,14 +813,20 @@ class Structure(NumpySerializable):
             chains["res_idx"][chains_after_mask] += num_new_residues
             chains["atom_idx"][chains_after_mask] += num_new_atoms
 
-        # TODO: the bonds of structure2 are ignored right now and completely dropped
-
         # Update bonds: Shift atom and residue indices for any bond affected by the insertion.
         if bonds.size > 0:
             bonds["atom_1"][bonds["atom_1"] >= atom_insert_idx] += num_new_atoms
             bonds["atom_2"][bonds["atom_2"] >= atom_insert_idx] += num_new_atoms
             bonds["res_1"][bonds["res_1"] >= res_insert_idx] += num_new_residues
             bonds["res_2"][bonds["res_2"] >= res_insert_idx] += num_new_residues
+
+        # Donor bonds retain their chemistry and move into the target chain.
+        insert_bonds = structure2.bonds.copy()
+        for end in (1, 2):
+            insert_bonds[f"chain_{end}"] = target_chain["asym_id"]
+            insert_bonds[f"res_{end}"] += res_insert_idx
+            insert_bonds[f"atom_{end}"] += atom_insert_idx
+        bonds = np.concatenate([bonds, insert_bonds])
 
         # Handle the cyclic bond in case the fusion target is cyclic
         if target_chain["cyclic_period"] > 0:
@@ -806,7 +852,7 @@ class Structure(NumpySerializable):
             )
 
             # Get atom indices
-            res2 = final_residues[structure1.bonds[cyclic_bond_idx]["res_2"]]
+            res2 = final_residues[bonds[cyclic_bond_idx]["res_2"]]
             atoms2 = final_atoms[res2["atom_idx"] : res2["atom_idx"] + res2["atom_num"]]
             assert "C" in atoms2["name"]
             idx_in_res2 = np.where(atoms2["name"] == "C")[0].item()

@@ -4,7 +4,7 @@
 # ruff: noqa: CPY001, INP001, PLR2004
 
 from copy import deepcopy
-from dataclasses import fields
+from dataclasses import fields, replace
 from pathlib import Path
 
 import numpy as np
@@ -98,11 +98,14 @@ def assert_consistent(structure: Structure) -> None:
             atom_offset += residue["atom_num"]
         residue_offset += chain["res_num"]
     assert residue_offset == len(structure.residues)
-    assert atom_offset == len(structure.atoms) == len(structure.coords)
-    np.testing.assert_array_equal(structure.atoms["coords"], structure.coords["coords"])
+    assert atom_offset == len(structure.atoms)
     np.testing.assert_array_equal(
-        structure.ensemble, np.array([(0, atom_offset)], dtype=Ensemble)
+        structure.atoms["coords"], structure.coords["coords"][:atom_offset]
     )
+    assert len(structure.coords) == atom_offset * max(1, len(structure.ensemble))
+    for model, ensemble in enumerate(structure.ensemble):
+        assert ensemble["atom_coord_idx"] == model * atom_offset
+        assert ensemble["atom_num"] == atom_offset
     for bond in structure.bonds:
         for end in [1, 2]:
             residue = structure.residues[bond[f"res_{end}"]]
@@ -268,3 +271,104 @@ def test_real_yaml_parser(operation: str, tmp_path: Path) -> None:
         parsed.structure.chains["res_num"],
         [3, 2] if operation == "sequence_range" else [expected],
     )
+
+
+def with_ensembles(structure: Structure, count: int) -> Structure:
+    """Give each conformer distinguishable coordinates, keeping model zero."""
+    atom_count = len(structure.atoms)
+    coords = np.concatenate([structure.coords] * max(1, count))
+    for model in range(count):
+        coords["coords"][model * atom_count : (model + 1) * atom_count] += model * 1000
+    return replace(
+        structure,
+        coords=coords,
+        ensemble=np.array(
+            [(i * atom_count, atom_count) for i in range(count)], dtype=Ensemble
+        ),
+    )
+
+
+@pytest.mark.parametrize("ensembles", [0, 1, 2])
+def test_insert_updates_every_coordinate_ensemble(ensembles: int) -> None:
+    structure = with_ensembles(make_structure(), ensembles)
+    result = Structure.insert(structure, "B", 1, 2)
+    assert_consistent(result)
+    for model in range(max(1, ensembles)):
+        expected = np.concatenate(
+            [
+                structure.coords[model * 36 : model * 36 + 16],
+                np.zeros(8, dtype=Coords),
+                structure.coords[model * 36 + 16 : (model + 1) * 36],
+            ]
+        )
+        np.testing.assert_array_equal(
+            result.coords[model * 44 : (model + 1) * 44], expected
+        )
+
+
+@pytest.mark.parametrize(
+    ("target_models", "donor_models"), [(0, 0), (1, 1), (2, 1), (2, 2)]
+)
+def test_fuse_coordinates_and_donor_bonds(
+    target_models: int, donor_models: int
+) -> None:
+    target = with_ensembles(make_structure(), target_models)
+    donor = with_ensembles(make_structure(1), donor_models)
+    donor = replace(donor, bonds=np.array([(0, 0, 0, 2, 1, 9, 1)], dtype=Bond))
+    donor_snapshot = deepcopy(donor)
+    result = Structure.fuse(target, donor, "B")
+    assert_consistent(result)
+    assert_unmodified(donor, donor_snapshot)
+    np.testing.assert_array_equal(
+        result.bonds[-1:], np.array([(1, 1, 6, 8, 25, 33, 1)], dtype=Bond)
+    )
+    for model in range(max(1, target_models)):
+        donor_model = model if donor_models > 1 else 0
+        expected = np.concatenate(
+            [
+                target.coords[model * 36 : model * 36 + 24],
+                donor.coords[donor_model * 12 : (donor_model + 1) * 12],
+                target.coords[model * 36 + 24 : (model + 1) * 36],
+            ]
+        )
+        np.testing.assert_array_equal(
+            result.coords[model * 48 : (model + 1) * 48], expected
+        )
+
+
+def test_fuse_rejects_unmatched_coordinate_ensembles() -> None:
+    target = make_structure()
+    donor = with_ensembles(make_structure(1), 2)
+    with pytest.raises(ValueError, match="one conformer or the same number"):
+        Structure.fuse(target, donor, "A")
+
+
+@pytest.mark.parametrize("chain_idx", [0, 1, 2])
+def test_fuse_moves_cyclic_bond_to_new_terminal_atom(chain_idx: int) -> None:
+    target = make_structure()
+    target.chains["cyclic_period"][chain_idx] = 3
+    start = chain_idx * 3
+    target = replace(
+        target,
+        bonds=np.array(
+            [
+                (
+                    chain_idx,
+                    chain_idx,
+                    start,
+                    start + 2,
+                    start * 4,
+                    (start + 2) * 4 + 2,
+                    1,
+                )
+            ],
+            dtype=Bond,
+        ),
+    )
+    result = Structure.fuse(target, make_structure(1), chr(65 + chain_idx))
+    assert_consistent(result)
+    assert result.chains["cyclic_period"][chain_idx] == 6
+    bond = result.bonds[0]
+    assert bond["res_2"] == start + 5
+    assert bond["atom_2"] == (start + 5) * 4 + 2
+    assert result.atoms["name"][bond["atom_2"]] == "C"
