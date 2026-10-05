@@ -15,6 +15,13 @@ SCORE_KEY = "esmfold2_ipsae_min"
 REDESIGN_SCORE_KEY = "esmfold2_score"
 PTM_KEY = "esmfold2_ptm"
 SCHEMA_VERSION = 1
+ACCELERATION_REVISION = "anthropic-native-v1"
+
+
+def validate_acceleration(mode: str) -> None:
+    """Validate execution mode before provisioning the GPU runtime."""
+    if mode not in ("auto", "fused", "off"):
+        raise ValueError("ESMFold2 acceleration must be auto, fused, or off")
 
 
 def validate_scoring_mode(mode: str, target_chains: list[str] | None) -> None:

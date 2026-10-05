@@ -12,6 +12,7 @@ from rdkit import Chem
 
 from boltzgen.data.source_context import update_designed
 from boltzgen.task.esmfold2.contract import (
+    ACCELERATION_REVISION,
     ESM_VERSION,
     ESMC_REVISION,
     MODEL_REVISION,
@@ -21,6 +22,7 @@ from boltzgen.task.esmfold2.contract import (
     fingerprint,
     load_result,
     validate_scoring_mode,
+    validate_acceleration,
 )
 from boltzgen.task.task import Task
 from boltzgen.task.esmfold2.runtime import resolve_python, worker_command
@@ -209,6 +211,7 @@ class ESMFold2Score(Task):
         diffusion_samples: int = 5,
         lm_dropout: float = 0.3,
         seed: int = 0,
+        acceleration: str = "auto",
     ):
         self.data = data
         self.design_dir = Path(design_dir)
@@ -236,7 +239,10 @@ class ESMFold2Score(Task):
             lm_mask_pct=0.0,
             seed=seed,
             pae_cutoff=10.0,
+            acceleration=acceleration,
+            acceleration_revision=ACCELERATION_REVISION,
         )
+        validate_acceleration(acceleration)
 
     def run(self, config=None) -> None:
         outdir = self.design_dir / SCORE_DIR

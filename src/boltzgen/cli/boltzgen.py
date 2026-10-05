@@ -318,6 +318,12 @@ def add_configure_arguments(
         help="Optional ESMFold2 interpreter override. By default BoltzGen prepares its runtime automatically.",
     )
     p.add_argument(
+        "--esmfold2_acceleration",
+        choices=["auto", "fused", "off"],
+        default="auto",
+        help="ESMFold2 acceleration: auto preserves native numerics; fused also enables native BF16 kernels; off disables acceleration.",
+    )
+    p.add_argument(
         "--folding_checkpoint",
         type=str,
         help="Path to the folding checkpoint. Default: %(default)s",
@@ -732,7 +738,7 @@ def configure_command(args: argparse.Namespace) -> None:
     for step in pipeline.steps:
         step.check()
         if step.name == "esmfold2_scoring":
-            from boltzgen.task.esmfold2.contract import validate_scoring_mode
+            from boltzgen.task.esmfold2.contract import validate_scoring_mode, validate_acceleration
             from boltzgen.task.esmfold2.runtime import resolve_python
 
             esm_config = step.get_config()
@@ -740,6 +746,7 @@ def configure_command(args: argparse.Namespace) -> None:
                 esm_config.get("scoring_mode", "binder"),
                 esm_config.get("scoring_target_chains"),
             )
+            validate_acceleration(esm_config.get("acceleration", "auto"))
             # Reuse can finish entirely from saved scores. Provision that run's
             # runtime only if the scoring task finds work still to compute.
             if not esm_config.reuse:
@@ -1272,6 +1279,7 @@ class BinderDesignPipeline:
                         f"design_dir={input_dir}",
                         f"data.cfg.moldir={moldir}",
                         f"python={args.esmfold2_python or 'null'}",
+                        f"acceleration='{args.esmfold2_acceleration}'",
                         f"devices={devices}",
                         f"reuse={args.reuse}",
                     ]

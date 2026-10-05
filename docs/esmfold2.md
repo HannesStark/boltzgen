@@ -108,6 +108,70 @@ encodes complete source chains; the folding model receives only the requested
 structural crop and the corresponding ESMC states. No target coordinate
 template is supplied to ESMFold2.
 
+## Inference acceleration
+
+ESMFold2 scoring uses `--esmfold2_acceleration auto` by default. Installation
+and runtime dependencies are unchanged. The worker adapts three techniques from
+[Anthropic's public optimization kit](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/f4f62fa6592ae4938d49b1757bea0cfeff9f468e/esmfold2):
+reuse the atom-attention mask within an input, transfer the diffusion schedule
+to the CPU once, and replay CUDA graphs for the recycling trunk and deterministic
+diffusion forward. The native precision and kernel backend remain unchanged.
+This is a port of these techniques to the pinned native ESM implementation,
+not an installation of the kit's older Transformers stack or its `fast` kernels.
+
+For additional speed, `--esmfold2_acceleration fused` combines the adapter with
+ESMFold2's bundled fused Triton/BF16 backend and unchunked pair operations, the
+backend used by the public kit's `exact` mode. It needs no additional packages.
+This mode can change predicted structures and scores relative to the original
+backend, and unchunked operations can use more memory on large inputs. It is an
+explicit choice; `auto` keeps the original numerical backend. Each worker fixes
+its backend before seeding requests, and results record which backend ran.
+
+Graph preparation is included in each candidate's scoring time. Graphs and masks
+are released between candidates, including candidates with matching shapes.
+ESMC still encodes full source sequences before cropping. The checkpoint, loops,
+diffusion steps, five samples, random seed, and LM dropout are unchanged. The
+stochastic dropout path and batched confidence trunk execute eagerly.
+
+Graphs are attempted for crops up to 512 tokens. Larger inputs retain mask
+caching and schedule-transfer optimization without graphs. Retained masks are
+limited to 256 MiB. Unsupported graph captures fall back to eager execution
+with a warning; incompatible upstream source disables the adapter. The result
+JSON's `execution` field records the effective path and capture/replay counts.
+The requested mode and adapter revision are part of the score fingerprint, so
+changing the mode invalidates old cached scores.
+
+Use the original execution path for comparison or troubleshooting:
+
+```bash
+boltzgen run design.yaml --output results --protocol protein-anything \
+  --esmfold2_acceleration off
+```
+
+The small-molecule protocol still uses Boltz2 affinity and never loads this adapter.
+
+To reproduce worker benchmarks from a source checkout using the same isolated
+dependencies as scoring:
+
+```bash
+uv run --no-project --python 3.12 \
+  --with-requirements src/boltzgen/resources/runtime/esmfold2.txt \
+  python scripts/benchmark_esmfold2.py --output benchmark-results \
+  --modes off auto --repeats 3
+```
+
+The benchmark saves all five PAE/coordinate predictions, RNG states, input
+requests, effective execution settings, timings, and peak GPU memory. It counts
+full input preparation, ESMC, graph setup, folding, scoring, and result writing;
+it reports weight loading separately and never reuses saved scores. The first
+call per shape and mode is marked separately from repeated calls. Add
+`--deterministic` to compare both arms using deterministic PyTorch algorithms
+without disabling LM dropout. Add `--profile` to collect operator totals on a
+separate untimed call. Native GPU execution can vary between repeated runs even
+at a fixed seed, so use the deterministic comparison for numerical checks.
+Benchmark `fused` separately with `--modes fused` and a new output directory, so
+the model's numerical backend remains fixed for the lifetime of its process.
+
 For binder protocols, the selected sample has the highest `esmfold2_ipsae_min`,
 independent of iPTM.
 The score uses PAE strictly below 10 Å, per-residue d0 normalization, and the
