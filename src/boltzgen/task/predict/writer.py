@@ -130,10 +130,20 @@ class FoldingWriter(BasePredictionWriter):
         best_idx = np.argmax(confidence)
         best_sample_coords = pred_dict["coords"][best_idx]
 
+        # Per-sample outputs (e.g. plddt) have one entry per diffusion sample, while
+        # batch features have a leading batch dim of 1: keep them from the same sample
+        num_samples = len(pred_dict["coords"])
         prediction_out = {}
         for k in prediction:
             if k == "coords":
                 prediction_out[k] = torch.from_numpy(best_sample_coords)
+            elif (
+                num_samples > 1
+                and isinstance(prediction[k], Tensor)
+                and prediction[k].dim() > 0
+                and prediction[k].shape[0] == num_samples
+            ):
+                prediction_out[k] = prediction[k][best_idx]
             else:
                 prediction_out[k] = prediction[k][0]
 
