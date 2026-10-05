@@ -15,6 +15,9 @@ In an environment with python >=3.11:
 pip install boltzgen
 ```
 
+See [NumPy and Numba compatibility](docs/dependencies.md) for dependency bounds
+and tested Python 3.11 and 3.13 combinations.
+
 Polymer binder protocols score interfaces with the full ESMFold2 2021 checkpoint
 and ipSAE. BoltzGen prepares its cached runtime automatically on first use; no
 extra install command or interpreter flag is needed. See [ESMFold2 scoring](docs/esmfold2.md)
