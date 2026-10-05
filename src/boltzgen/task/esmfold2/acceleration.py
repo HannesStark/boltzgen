@@ -52,7 +52,9 @@ def acceleration_context(model, options: dict):
         raise ValueError(
             "ESMFold2 acceleration request revision does not match this worker"
         )
-    controller = AcceleratedInference(model)
+    # On the native backend, graph setup outweighs replay savings for larger
+    # crops. Fused kernels remain launch-bound over a wider measured range.
+    controller = AcceleratedInference(model, max_tokens=512 if mode == "fused" else 256)
     try:
         try:
             controller.configure()
@@ -60,7 +62,9 @@ def acceleration_context(model, options: dict):
             controller.close()
             execution["fallback_reason"] = str(exc)
             logger.warning(
-                "ESMFold2 acceleration unavailable; using native execution: %s", exc
+                "ESMFold2 adapter unavailable; using the unwrapped %s backend: %s",
+                execution["kernel_backend"],
+                exc,
             )
         else:
             execution["effective"] = "cached_with_graphs"
@@ -179,7 +183,13 @@ def _clone_output(value):
 class _Graph:
     """A deterministic forward with private buffers and a private memory pool."""
 
-    def __init__(self, forward: Callable, kwargs: dict, dynamic: tuple[str, ...]):
+    def __init__(
+        self,
+        forward: Callable,
+        kwargs: dict,
+        dynamic: tuple[str, ...],
+        stream: torch.cuda.Stream,
+    ):
         self.kwargs = dict(kwargs)
         self.dynamic = dynamic
         for name in dynamic:
@@ -192,7 +202,6 @@ class _Graph:
         with torch.cuda.device(device):
             rng = torch.cuda.get_rng_state(device)
             cpu_rng = torch.get_rng_state()
-            stream = torch.cuda.Stream(device=device)
             stream.wait_stream(torch.cuda.current_stream(device))
             try:
                 with torch.cuda.stream(stream):
@@ -256,6 +265,7 @@ class AcceleratedInference:
         self.originals: list[tuple[object, str, Callable]] = []
         self.stats = Counter()
         self.ready = False
+        self.capture_stream = getattr(model, "_boltzgen_capture_stream", None)
 
     def _patch(self, module, name: str, function: Callable) -> None:
         self.originals.append((module, name, getattr(module, name)))
@@ -351,7 +361,17 @@ class AcceleratedInference:
             graph = None
         if graph is None:
             try:
-                graph = _Graph(forward, kwargs, dynamic)
+                if (
+                    self.capture_stream is None
+                    or self.capture_stream.device != first.device
+                ):
+                    # PyTorch retains a cuBLAS workspace for each stream. Reuse
+                    # one stream across requests instead of accumulating those
+                    # workspaces throughout a long design campaign.
+                    self.capture_stream = torch.cuda.Stream(device=first.device)
+                    if self.model is not None:
+                        self.model._boltzgen_capture_stream = self.capture_stream
+                graph = _Graph(forward, kwargs, dynamic, self.capture_stream)
             except RuntimeError as exc:
                 if not any(
                     word in str(exc).lower()

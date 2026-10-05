@@ -232,6 +232,10 @@ def main() -> None:
                     rng=torch.cuda.get_rng_state(args.device).cpu().numpy(),
                 )
                 captured.clear()
+                torch.cuda.synchronize(args.device)
+                row["resident_after_gib"] = (
+                    torch.cuda.memory_allocated(args.device) / 2**30
+                )
                 timings.append(row)
                 (args.output / "timings.json").write_text(json.dumps(timings, indent=2))
                 print("BENCH_RESULT", json.dumps(row), flush=True)

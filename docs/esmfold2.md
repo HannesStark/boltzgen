@@ -133,8 +133,10 @@ ESMC still encodes full source sequences before cropping. The checkpoint, loops,
 diffusion steps, five samples, random seed, and LM dropout are unchanged. The
 stochastic dropout path and batched confidence trunk execute eagerly.
 
-Graphs are attempted for crops up to 512 tokens. Larger inputs retain mask
-caching and schedule-transfer optimization without graphs. Retained masks are
+Graphs are attempted for crops up to 256 tokens in `auto` and 512 in `fused`.
+Larger inputs retain mask caching and schedule-transfer optimization without
+graphs. These conservative limits avoid capture overhead outweighing replay
+savings in the measured native workload. Retained masks are
 limited to 256 MiB. Unsupported graph captures fall back to eager execution
 with a warning; incompatible upstream source disables the adapter. The result
 JSON's `execution` field records the effective path and capture/replay counts.
@@ -161,7 +163,8 @@ uv run --no-project --python 3.12 \
 ```
 
 The benchmark saves all five PAE/coordinate predictions, RNG states, input
-requests, effective execution settings, timings, and peak GPU memory. It counts
+requests, effective execution settings, timings, peak GPU memory, and GPU memory
+remaining after each request. It counts
 full input preparation, ESMC, graph setup, folding, scoring, and result writing;
 it reports weight loading separately and never reuses saved scores. The first
 call per shape and mode is marked separately from repeated calls. Add

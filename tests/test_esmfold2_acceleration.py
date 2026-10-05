@@ -207,3 +207,27 @@ def test_random_forward_falls_back_without_consuming_extra_rng():
         assert torch.equal(expected, actual)
         assert torch.equal(expected_rng, torch.cuda.get_rng_state())
         assert controller.stats["test_fallbacks"] == 1
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA graph lifetime")
+def test_repeated_requests_reuse_stream_without_resident_memory_growth():
+    model = torch.nn.Module()
+    model.folding_trunk = layers.FoldingTrunk(n_layers=1, d_pair=32).cuda()
+    model.structure_head = torch.nn.Module()
+    model.structure_head.sample = lambda **kwargs: None
+    model.structure_head.diffusion_module = _Denoiser()
+    model.eval().requires_grad_(False)
+    options = dict(acceleration="auto", acceleration_revision=ACCELERATION_REVISION)
+    memory, streams = [], []
+    with torch.inference_mode():
+        pair = torch.randn(1, 8, 8, 32, device="cuda")
+        for _ in range(8):
+            with acceleration_context(model, options):
+                output = model.folding_trunk(pair)
+                assert torch.isfinite(output).all()
+                del output
+            torch.cuda.synchronize()
+            streams.append(model._boltzgen_capture_stream.cuda_stream)
+            memory.append(torch.cuda.memory_allocated())
+    assert len(set(streams)) == 1
+    assert max(memory[1:]) - min(memory[1:]) < 2 * 1024**2, memory
