@@ -525,7 +525,7 @@ class Structure(NumpySerializable):
 
     @classmethod
     def insert(
-        self, structure: "Structure", chain_name: int, res_idx: int, num_residues: int
+        self, structure: "Structure", chain_name: str, res_idx: int, num_residues: int
     ) -> "Structure":
         """Insert number of residues into chain of a strucure object.
         This creates new residues and inserts them into the structure.residues at the index obtained from the specified chain and the res_idx that indexes the chain.
@@ -539,8 +539,8 @@ class Structure(NumpySerializable):
         structure : Structure
             Structure in which to insert the residues.
 
-        chain_name : int
-            Index of the chain in `structure.chains` in which the residues should be inserted.
+        chain_name : str
+            Name of the chain in which the residues should be inserted.
 
         res_idx : int
             Residue index (starts at 0 for the chain) for where the residue should be inserted in the chain.
@@ -562,11 +562,18 @@ class Structure(NumpySerializable):
         coords = structure.coords.copy()
         ensemble = structure.ensemble.copy()
 
-        target_chain_idx = np.where(chains["name"] == chain_name)[0]
-        target_chain = chains[target_chain_idx]
+        target_chain_indices = np.where(chains["name"] == chain_name)[0]
+        if target_chain_indices.size != 1:
+            raise ValueError(
+                f"Chain name {chain_name!r} matched {target_chain_indices.size} chains; "
+                "expected exactly one."
+            )
+        target_chain_idx = target_chain_indices.item()
+        # Scalar records are views: retain the original values as chains change.
+        target_chain = chains[target_chain_idx].copy()
 
         # Absolute residue index in the full `residues` array
-        res_insert_idx = target_chain["res_idx"] + res_idx
+        res_insert_idx = int(target_chain["res_idx"]) + res_idx
 
         # Absolute atom index in the full `atoms` array
         if res_idx == target_chain["res_num"]:
@@ -697,7 +704,6 @@ class Structure(NumpySerializable):
         chain_id: chain id of there chain where we wish to
         """
         assert len(structure2.chains) == 1
-        assert chain_name in structure1.chains["name"]
 
         # Make copies of the original data to avoid in-place modification
         atoms = structure1.atoms.copy()
@@ -709,8 +715,15 @@ class Structure(NumpySerializable):
         num_new_atoms = len(structure2.atoms)
         num_new_residues = len(structure2.residues)
 
-        target_chain_idx = np.where(chains["name"] == chain_name)[0]
-        target_chain = chains[target_chain_idx]
+        target_chain_indices = np.where(chains["name"] == chain_name)[0]
+        if target_chain_indices.size != 1:
+            raise ValueError(
+                f"Chain name {chain_name!r} matched {target_chain_indices.size} chains; "
+                "expected exactly one."
+            )
+        target_chain_idx = target_chain_indices.item()
+        # Preserve the target entity and residue counts while updating chains.
+        target_chain = chains[target_chain_idx].copy()
 
         for idx in range(len(chains)):
             if chains["entity_id"][idx] >= target_chain["entity_id"]:
@@ -720,9 +733,9 @@ class Structure(NumpySerializable):
         ]
 
         # Absolute residue index in the full `residues` array
-        res_insert_idx = target_chain["res_idx"] + target_chain["res_num"]
+        res_insert_idx = int(target_chain["res_idx"]) + int(target_chain["res_num"])
 
-        atom_insert_idx = target_chain["atom_idx"] + target_chain["atom_num"]
+        atom_insert_idx = int(target_chain["atom_idx"]) + int(target_chain["atom_num"])
 
         insert_atoms = structure2.atoms.copy()
         insert_residues = structure2.residues.copy()
@@ -731,7 +744,7 @@ class Structure(NumpySerializable):
         if res_reindex and num_new_residues:
             # Crops can retain leading offsets and internal residue-index gaps.
             # Append after the last retained index, rather than the residue count.
-            last_res_idx = residues["res_idx"][res_insert_idx[0] - 1]
+            last_res_idx = residues["res_idx"][res_insert_idx - 1]
             res_index_offset = int(last_res_idx) + 1 - int(insert_residues["res_idx"][0])
         for residue in insert_residues:
             if res_reindex:
