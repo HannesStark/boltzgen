@@ -4,6 +4,8 @@ The CUDA cases exercise replay, ownership, input changes and RNG refusal.
 Full checkpoint comparisons live in the public benchmark harness.
 """
 
+from types import MethodType
+
 import pytest
 import torch
 
@@ -27,6 +29,32 @@ def test_copied_functions_match_pinned_native_source():
     check_source(layers.SWA3DRoPEAttention.forward, _SOURCE_HASHES["forward"])
     with pytest.raises(ValueError, match="Unsupported ESMFold2 source"):
         check_source(layers.SWA3DRoPEAttention.forward, "wrong-version")
+
+
+def test_uninspectable_callable_preserves_working_native_forward(monkeypatch):
+    native_forward = layers.SWA3DRoPEAttention.forward
+
+    class WrappedForward:
+        def __get__(self, instance, owner=None):
+            return self if instance is None else MethodType(self, instance)
+
+        def __call__(self, instance, *args, **kwargs):
+            return native_forward(instance, *args, **kwargs)
+
+    model = torch.nn.Module()
+    model.attn = layers.SWA3DRoPEAttention(32, 4, half_window=3)
+    model.eval().requires_grad_(False)
+    x = torch.randn(1, 8, 32)
+    params = (torch.randn(1, 8, 4), torch.randn(1, 8, 4))
+    options = dict(acceleration="auto", acceleration_revision=ACCELERATION_REVISION)
+    with torch.inference_mode():
+        expected = model.attn(x, params)
+        monkeypatch.setattr(layers.SWA3DRoPEAttention, "forward", WrappedForward())
+        with acceleration_context(model, options) as execution:
+            actual = model.attn(x, params)
+        torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+    assert execution["effective"] == "off"
+    assert "Cannot inspect ESMFold2 source" in execution["fallback_reason"]
 
 
 def test_context_restores_methods_and_releases_state_after_failure():

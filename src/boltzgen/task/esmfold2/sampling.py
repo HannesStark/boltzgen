@@ -43,11 +43,9 @@ def sample_without_scalar_sync(
 ) -> dict[str, Tensor | None]:
     """Diffusion sampling (Algorithm 18).
 
-    ``num_sampling_steps`` is the number of denoising steps actually run.
-    When ``max_inference_sigma`` is set, the Karras schedule built with
-    ``num_sampling_steps`` entries would lose its high-σ tail to the cap,
-    so we inflate the underlying schedule length here to land back at the
-    requested step count post-truncation.
+    ``num_sampling_steps`` sets the native schedule length before applying
+    ``max_inference_sigma``. The cap removes high-sigma entries, so fewer
+    denoising steps may run. This adapter preserves that native behavior.
     """
     n_atoms = tok_idx.shape[1]
     device = s_inputs.device

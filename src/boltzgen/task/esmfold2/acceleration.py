@@ -82,7 +82,15 @@ def acceleration_context(model, options: dict):
 
 def check_source(function: Callable, expected: str) -> None:
     """Refuse a port against different upstream code, including local patches."""
-    tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
+    try:
+        source = inspect.getsource(function)
+    except TypeError as exc:
+        # Instrumentation may wrap a valid native method in a callable object.
+        # Its execution can still work even though Python cannot inspect it.
+        raise ValueError(
+            "Cannot inspect ESMFold2 source; leave its callable unchanged"
+        ) from exc
+    tree = ast.parse(textwrap.dedent(source))
     digest = hashlib.sha256(
         ast.dump(tree.body[0], include_attributes=False)
         .replace(", type_params=[]", "")
