@@ -1667,40 +1667,47 @@ def merge_command(args: argparse.Namespace) -> None:
 
             metrics_path = src_dir / "aggregate_metrics_analyze.csv"
             if metrics_path.exists():
-                df = pd.read_csv(metrics_path)
-                if not df.empty:
-                    updated_rows = []
-                    for _, row in df.iterrows():
-                        if "id" not in row or "file_name" not in row:
-                            raise ValueError(
-                                "aggregate_metrics_analyze.csv must contain 'id' and 'file_name' columns."
-                            )
-                        original_id = str(row["id"])
-                        original_file = str(row["file_name"])
-                        key = (root, original_id)
-                        new_id = id_map.setdefault(key, f"{run_tag}_{original_id}")
-                        new_file = _make_new_file_name(original_file, new_id)
-                        if pd.notna(row.get("esmfold2_input_hash")):
-                            from boltzgen.task.esmfold2.contract import (
-                                SCORE_DIR,
-                                copy_renamed_result,
-                            )
+                df = pd.read_csv(
+                    metrics_path, converters={"id": str, "file_name": str}
+                )
+                if df.empty:
+                    message = (
+                        f"Metrics file contains no analyzed designs: {metrics_path}. "
+                        "Rerun analysis before merging this source."
+                    )
+                    raise ValueError(message)
+                updated_rows = []
+                for _, row in df.iterrows():
+                    if "id" not in row or "file_name" not in row:
+                        raise ValueError(
+                            "aggregate_metrics_analyze.csv must contain 'id' and 'file_name' columns."
+                        )
+                    original_id = str(row["id"])
+                    original_file = str(row["file_name"])
+                    key = (root, original_id)
+                    new_id = id_map.setdefault(key, f"{run_tag}_{original_id}")
+                    new_file = _make_new_file_name(original_file, new_id)
+                    if pd.notna(row.get("esmfold2_input_hash")):
+                        from boltzgen.task.esmfold2.contract import (
+                            SCORE_DIR,
+                            copy_renamed_result,
+                        )
 
-                            row["esmfold2_input_hash"] = copy_renamed_result(
-                                src_dir / SCORE_DIR,
-                                dest_dir / SCORE_DIR,
-                                original_id,
-                                new_id,
-                                src_dir / original_file,
-                            )
-                        updated_rows.append(
-                            {**row, "id": new_id, "file_name": new_file}
+                        row["esmfold2_input_hash"] = copy_renamed_result(
+                            src_dir / SCORE_DIR,
+                            dest_dir / SCORE_DIR,
+                            original_id,
+                            new_id,
+                            src_dir / original_file,
                         )
-                        source_mappings.append(
-                            (original_id, new_id, original_file, new_file)
-                        )
-                    metrics_frames.append(pd.DataFrame(updated_rows))
-                    merged_count += len(source_mappings)
+                    updated_rows.append(
+                        {**row, "id": new_id, "file_name": new_file}
+                    )
+                    source_mappings.append(
+                        (original_id, new_id, original_file, new_file)
+                    )
+                metrics_frames.append(pd.DataFrame(updated_rows))
+                merged_count += len(source_mappings)
             else:
                 # Backbones and inverse-folded sequences have different IDs
                 # when several sequences are generated per backbone.
@@ -1721,6 +1728,19 @@ def merge_command(args: argparse.Namespace) -> None:
                 continue
 
             dest_dir.mkdir(parents=True, exist_ok=True)
+
+            for molecule in sorted((src_dir / const.molecules_dirname).glob("*.pkl")):
+                destination = dest_dir / const.molecules_dirname / molecule.name
+                if (
+                    destination.exists()
+                    and destination.read_bytes() != molecule.read_bytes()
+                ):
+                    message = (
+                        f"Conflicting molecule definition for {molecule.stem}: "
+                        f"{molecule} and {destination}"
+                    )
+                    raise ValueError(message)
+                _copy_path(molecule, destination, required=True)
 
             seq_path = src_dir / "ca_coords_sequences.pkl.gz"
             if seq_path.exists():
@@ -1772,19 +1792,30 @@ def merge_command(args: argparse.Namespace) -> None:
         include_refold: bool,
     ) -> None:
         _copy_path(src_dir / original_file, dest_dir / new_file, required=True)
+        source_stem = Path(original_file).stem
+        legacy_source = source_stem.endswith("_gen") and not (
+            src_dir / f"{source_stem}.npz"
+        ).is_file()
+        legacy_destination = legacy_source and new_id.endswith("_gen")
+        source_prefix = source_stem[:-4] if legacy_source else original_id
+        destination_prefix = new_id[:-4] if legacy_destination else new_id
+        source_metadata_suffix = "_metadata.npz" if legacy_source else ".npz"
+        destination_metadata_suffix = (
+            "_metadata.npz" if legacy_destination else ".npz"
+        )
         _copy_path(
-            src_dir / f"{original_id}.npz",
-            dest_dir / f"{new_id}.npz",
+            src_dir / f"{source_prefix}{source_metadata_suffix}",
+            dest_dir / f"{destination_prefix}{destination_metadata_suffix}",
             required=False,
         )
         _copy_path(
-            src_dir / f"{original_id}_native.cif",
-            dest_dir / f"{new_id}_native.cif",
+            src_dir / f"{source_prefix}_native.cif",
+            dest_dir / f"{destination_prefix}_native.cif",
             required=False,
         )
         _copy_path(
-            src_dir / f"{original_id}_native.pdb",
-            dest_dir / f"{new_id}_native.pdb",
+            src_dir / f"{source_prefix}_native.pdb",
+            dest_dir / f"{destination_prefix}_native.pdb",
             required=False,
         )
         if include_refold:

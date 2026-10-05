@@ -669,7 +669,7 @@ class FromGeneratedDataModule(pl.LightningDataModule):
             p
             for p in design_dir.iterdir()
             if p.suffix in {".cif", ".pdb"}
-            and "_native.cif" not in p.name
+            and not p.stem.endswith("_native")
             and "_metadata.npz" not in p.name
         )
         if self.fail_if_no_designs and len(generated_paths) == 0:
@@ -775,7 +775,7 @@ class FromGeneratedDataModule(pl.LightningDataModule):
             generated_paths = [
                 p
                 for p in generated_paths
-                if not all(output_path.exists() for output_path in selected_mapping(p))
+                if not all(output_path.is_file() for output_path in selected_mapping(p))
             ]
             msg = f"[Info] Skipped already {self.skip_existing_kind} IDs. Number of files after filtering: {len(generated_paths)}"
             print(msg)
@@ -823,8 +823,8 @@ class FromGeneratedDataModule(pl.LightningDataModule):
         for path in filtered_paths:
             ext = path.suffix
 
-            # Legacy files contain "_gen" before the extension.
-            if path.stem.endswith("_gen"):
+            # Prefer modern matching sidecars; old files used "_gen"/"_metadata".
+            if path.stem.endswith("_gen") and not path.with_suffix(".npz").is_file():
                 metadata_path = path.with_name(
                     path.name.replace(f"_gen{ext}", "_metadata.npz")
                 )

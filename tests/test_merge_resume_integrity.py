@@ -2,6 +2,7 @@
 # ruff: noqa: INP001
 
 import json
+import pickle
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
+from rdkit import Chem
 from test_folding_export_consistency import _features
 
 from boltzgen.cli import boltzgen as cli
@@ -182,7 +184,7 @@ def test_merge_counts_repeated_source_only_once(
     assert rows["id"].tolist() == ["run_candidate"]
 
 
-@pytest.mark.parametrize("stem", ["target_0", "target.v1", "target.v1.2"])
+@pytest.mark.parametrize("stem", ["target_0", "target.v1", "target.v1.2", "target_gen"])
 @pytest.mark.parametrize("with_metrics", [False, True])
 def test_merge_preserves_design_stems(
     tmp_path: Path,
@@ -204,6 +206,132 @@ def test_merge_preserves_design_stems(
     module = _module(merged, tmp_path / "unused", monkeypatch, multiplicity=1)
     assert len(module.predict_set.generated_paths) == 1
     assert all(path.is_file() for path in module.predict_set.metadata_paths)
+
+
+@pytest.mark.parametrize("stems", [("001", "1"), ("NA", "null")])
+def test_merge_preserves_csv_identifier_strings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stems: tuple[str, str]
+) -> None:
+    source = tmp_path / "run"
+    designs = source / "intermediate_designs_inverse_folded"
+    for stem in stems:
+        _pair(designs, stem, stem)
+    pd.DataFrame(
+        [
+            {"id": stem, "file_name": f"{stem}.cif", "esmfold2_input_hash": None}
+            for stem in stems
+        ]
+    ).to_csv(designs / "aggregate_metrics_analyze.csv", index=False)
+    pd.DataFrame([{"id": stem, "sequence": "GG"} for stem in stems]).to_pickle(
+        designs / "ca_coords_sequences.pkl.gz"
+    )
+    output = tmp_path / "merged"
+    _merge(monkeypatch, [source], output)
+    merged = output / designs.name
+    rows = pd.read_csv(merged / "aggregate_metrics_analyze.csv")
+    assert rows["id"].tolist() == [f"run_{stem}" for stem in stems]
+    assert rows["esmfold2_input_hash"].isna().all()
+    for stem in stems:
+        assert (merged / f"run_{stem}.cif").read_text() == stem
+        with np.load(merged / f"run_{stem}.npz") as metadata:
+            assert metadata["identity"].item() == stem
+    sequences = pd.read_pickle(merged / "ca_coords_sequences.pkl.gz")  # noqa: S301
+    assert sequences["id"].tolist() == rows["id"].tolist()
+
+
+@pytest.mark.parametrize("with_metrics", [False, True])
+def test_merge_preserves_legacy_companions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_metrics: bool
+) -> None:
+    source = tmp_path / "run"
+    designs = source / "intermediate_designs"
+    _pair(designs, "target_gen", "legacy")
+    (designs / "target_gen.npz").rename(designs / "target_metadata.npz")
+    (designs / "target_native.cif").write_text("native")
+    (designs / "target_native.pdb").write_text("native-pdb")
+    if with_metrics:
+        pd.DataFrame([{"id": "target_gen", "file_name": "target_gen.cif"}]).to_csv(
+            designs / "aggregate_metrics_analyze.csv", index=False
+        )
+    before = _module(designs, tmp_path / "unused", monkeypatch, multiplicity=1)
+    assert before.predict_set.metadata_paths[0].is_file()
+    output = tmp_path / "merged"
+    _merge(monkeypatch, [source], output)
+    merged = output / designs.name
+    after = _module(merged, tmp_path / "unused", monkeypatch, multiplicity=1)
+    assert len(after.predict_set.generated_paths) == 1
+    assert after.predict_set.metadata_paths[0].read_bytes() == (
+        before.predict_set.metadata_paths[0].read_bytes()
+    )
+    assert (merged / "run_target_native.cif").read_text() == "native"
+    assert (merged / "run_target_native.pdb").read_text() == "native-pdb"
+
+
+@pytest.mark.parametrize("conflict", [False, True])
+def test_merge_preserves_custom_molecules_without_overwriting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, conflict: bool
+) -> None:
+    sources = [tmp_path / "first", tmp_path / "second"]
+    for index, source in enumerate(sources):
+        designs = source / "intermediate_designs_inverse_folded"
+        _pair(designs, "candidate", source.name)
+        pd.DataFrame([{"id": "candidate", "file_name": "candidate.cif"}]).to_csv(
+            designs / "aggregate_metrics_analyze.csv", index=False
+        )
+        molecules = designs / const.molecules_dirname
+        molecules.mkdir()
+        molecule = Chem.MolFromSmiles("CCN" if conflict and index else "CCO")
+        (molecules / "LIG0.pkl").write_bytes(pickle.dumps(molecule))
+    output = tmp_path / "merged"
+    if conflict:
+        with pytest.raises(ValueError, match=r"Conflicting molecule definition.*LIG0"):
+            _merge(monkeypatch, sources, output)
+    else:
+        _merge(monkeypatch, sources, output)
+        _merge(monkeypatch, sources, output)
+    relative = (
+        Path("intermediate_designs_inverse_folded")
+        / const.molecules_dirname
+        / "LIG0.pkl"
+    )
+    assert (output / relative).read_bytes() == (sources[0] / relative).read_bytes()
+
+
+def test_generated_reader_prefers_modern_gen_sidecar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inputs = tmp_path / "inputs"
+    _pair(inputs, "target_gen", "modern")
+    module = _module(inputs, tmp_path / "outputs", monkeypatch, multiplicity=1)
+    assert module.predict_set.metadata_paths == [inputs / "target_gen.npz"]
+
+
+def test_merge_rejects_empty_metrics_instead_of_silently_omitting_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "run"
+    designs = source / "intermediate_designs"
+    _pair(designs, "candidate", "unscored")
+    pd.DataFrame(columns=["id", "file_name"]).to_csv(
+        designs / "aggregate_metrics_analyze.csv", index=False
+    )
+    with pytest.raises(ValueError, match="contains no analyzed designs"):
+        _merge(monkeypatch, [source], tmp_path / "merged")
+
+
+@pytest.mark.parametrize("multiplicity", [1, 3])
+def test_inverse_fold_resume_requires_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, multiplicity: int
+) -> None:
+    inputs, outputs = tmp_path / "inputs", tmp_path / "outputs"
+    _pair(inputs, "target", "input")
+    outputs.mkdir()
+    for index in range(multiplicity):
+        stem = f"target_{index}" if multiplicity > 1 else "target"
+        for suffix in (".cif", ".npz"):
+            (outputs / f"{stem}{suffix}").mkdir()
+    module = _module(inputs, outputs, monkeypatch, multiplicity)
+    assert len(module.predict_set) == multiplicity
 
 
 @pytest.mark.parametrize("multiplicity", [1, 3, 12])
