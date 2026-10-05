@@ -1005,8 +1005,8 @@ class BinderDesignPipeline:
         protocol = args.protocol
         use_solublempnn = _resolve_inverse_fold_model(args) == "solublempnn"
 
-        # Handle use_kernels argument
-        device_capability = torch.cuda.get_device_capability()
+        # Handle use_kernels argument, defaulting to (0,0) for CPU/MPS
+        device_capability = torch.cuda.get_device_capability() if torch.cuda.is_available() else (0, 0)
         use_kernels = None
         if args.use_kernels == "auto":
             use_kernels = device_capability[0] >= 8
@@ -1025,9 +1025,9 @@ class BinderDesignPipeline:
         config_args_by_step = parse_config_args(
             protocol_config, args.config, step_names
         )
-
+        # Determine number of devices to use, defaulting to 1 for MPS/CPU
         devices = (
-            args.devices if args.devices is not None else torch.cuda.device_count()
+            args.devices if args.devices is not None else torch.cuda.device_count() if torch.cuda.is_available() else 1
         )
         print(f"Using {devices} devices")
 
@@ -1702,12 +1702,19 @@ def merge_command(args: argparse.Namespace) -> None:
                     metrics_frames.append(pd.DataFrame(updated_rows))
                     merged_count += len(source_mappings)
             else:
-                known_ids = [
-                    (orig, new_id)
-                    for (src, orig), new_id in id_map.items()
-                    if src == root
-                ]
-                for original_id, new_id in known_ids:
+                # No metrics file: take the designs present in this directory. IDs
+                # from other directories cannot be reused, since with
+                # inverse_fold_num_sequences > 1 the inverse-folded designs are named
+                # design_i_j while the backbones here are named design_i.
+                original_ids = sorted(
+                    path.stem
+                    for path in src_dir.glob("*.cif")
+                    if not path.stem.endswith("_native")
+                )
+                for original_id in original_ids:
+                    new_id = id_map.setdefault(
+                        (root, original_id), f"{run_tag}_{original_id}"
+                    )
                     original_file = f"{original_id}.cif"
                     new_file = _make_new_file_name(original_file, new_id)
                     source_mappings.append(

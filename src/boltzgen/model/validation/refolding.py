@@ -299,11 +299,14 @@ class RefoldingValidator(design.DesignValidator):
         self.folding_model = None
         del self.affinity_model
         self.affinity_model = None
-        torch._C._cuda_clearCublasWorkspaces()
+        if torch.cuda.is_available():
+            torch._C._cuda_clearCublasWorkspaces()
         torch._dynamo.reset()
         gc.collect()
-        torch.cuda.empty_cache()
-
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif torch.backends.mps.is_available():
+            torch.mps.empty_cache()
         # Compute standard metrics
         self.common_on_epoch_end(model, logname="val_monomer_ligand")
         self.on_epoch_end_design(model, logname="val_monomer_ligand")

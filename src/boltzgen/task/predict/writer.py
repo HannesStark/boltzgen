@@ -130,10 +130,20 @@ class FoldingWriter(BasePredictionWriter):
         best_idx = np.argmax(confidence)
         best_sample_coords = pred_dict["coords"][best_idx]
 
+        # Per-sample outputs (e.g. plddt) have one entry per diffusion sample, while
+        # batch features have a leading batch dim of 1: keep them from the same sample
+        num_samples = len(pred_dict["coords"])
         prediction_out = {}
         for k in prediction:
             if k == "coords":
                 prediction_out[k] = torch.from_numpy(best_sample_coords)
+            elif (
+                num_samples > 1
+                and isinstance(prediction[k], Tensor)
+                and prediction[k].dim() > 0
+                and prediction[k].shape[0] == num_samples
+            ):
+                prediction_out[k] = prediction[k][best_idx]
             else:
                 prediction_out[k] = prediction[k][0]
 
@@ -146,7 +156,7 @@ class FoldingWriter(BasePredictionWriter):
             plddt_atom[prediction_out["atom_pad_mask"].bool()].float().cpu().numpy()
         )
         cif_text = to_mmcif(structure)
-        open(self.refold_cif_dir / f"{batch['id'][0]}.cif", "w").write(cif_text)
+        (self.refold_cif_dir / f"{batch['id'][0]}.cif").write_text(cif_text)
 
         # Failed prediction handling
         if isinstance(prediction["exception"], bool):
@@ -428,7 +438,7 @@ class DesignWriter(BasePredictionWriter):
                     )
 
                 if self.write_native:
-                    open(native_path, "w").write(to_mmcif(str_native))
+                    Path(native_path).write_text(to_mmcif(str_native))
 
                 pred_binding_mask = prediction["binding_type"][0].cpu().bool().numpy()
                 if self.design:
@@ -448,7 +458,7 @@ class DesignWriter(BasePredictionWriter):
                 unique_mask = np.ones_like(token_to_res, dtype=bool)
                 unique_mask[1:] = token_to_res[1:] != token_to_res[:-1]
                 design_color_features = design_color_features[unique_mask]
-                open(gen_path, "w").write(
+                Path(gen_path).write_text(
                     to_mmcif(
                         structure,
                         design_coloring=True,
@@ -495,7 +505,7 @@ class DesignWriter(BasePredictionWriter):
                     traj = trajs[n]
                     aligned = [traj[0]]
                     for frame in traj[1:]:
-                        with torch.autocast("cuda", enabled=False):
+                        with torch.autocast(device_type=frame.device.type, enabled=False):
                             aligned.append(
                                 weighted_rigid_align(
                                     frame.float().unsqueeze(0),
@@ -533,7 +543,7 @@ class DesignWriter(BasePredictionWriter):
                         )
                         atom_idx += len(str_frame.coords)
 
-                    open(self.outdir / f"{file_name}_traj.pdb", "w").write(
+                    (self.outdir / f"{file_name}_traj.pdb").write_text(
                         self.combine_pdb_models(pdbs)
                     )
 
@@ -543,7 +553,7 @@ class DesignWriter(BasePredictionWriter):
                     traj = trajs[n]
                     aligned = [traj[0]]
                     for frame in traj[1:]:
-                        with torch.autocast("cuda", enabled=False):
+                        with torch.autocast(device_type=frame.device.type, enabled=False):
                             aligned.append(
                                 weighted_rigid_align(
                                     frame.float().unsqueeze(0),
@@ -581,7 +591,7 @@ class DesignWriter(BasePredictionWriter):
                         )
                         atom_idx += len(str_frame.coords)
 
-                    open(self.outdir / f"{file_name}_x0_traj.pdb", "w").write(
+                    (self.outdir / f"{file_name}_x0_traj.pdb").write_text(
                         self.combine_pdb_models(pdbs)
                     )
 

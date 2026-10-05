@@ -299,16 +299,16 @@ class PredictionDataset(torch.utils.data.Dataset):
 
         # Try to find molecules in the dataset moldir if provided
         # Find missing ones in global moldir and check if all found
+        # Note: self.canonicals may lose atom-level RDKit properties when pickled
+        # by the DataLoader for worker processes (Python pickle does not preserve
+        # RDKit atom SetProp values). Load all molecules fresh from moldir instead.
         molecules = {}
-        molecules.update(self.canonicals)
         mol_names = set(tokenized.tokens["res_name"].tolist())
-        mol_names = mol_names - set(self.canonicals.keys())
         mol_names = mol_names - set(parsed.extra_mols.keys())
         if self.moldir is not None:
             molecules.update(load_molecules(self.moldir, mol_names))
-
-        mol_names = mol_names - set(molecules.keys())
-        molecules.update(load_molecules(self.moldir, mol_names))
+        else:
+            molecules.update({k: v for k, v in self.canonicals.items() if k in mol_names})
         molecules.update(parsed.extra_mols)
 
         # Finalize input data
@@ -451,11 +451,13 @@ class FromYamlDataModule(pl.LightningDataModule):
             The training dataloader.
 
         """
+        pin_memory = self.pin_memory and not torch.backends.mps.is_available()
         return DataLoader(
             self.predict_set,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
+            pin_memory=pin_memory,
+            persistent_workers=self.num_workers > 0,
             shuffle=False,
             collate_fn=collate,
         )
@@ -504,5 +506,8 @@ class FromYamlDataModule(pl.LightningDataModule):
                 "data_sample_idx",
                 "source_context",
             ]:
+                #Convert torch.float64 to torch.float for mps compatibility
+                if torch.is_tensor(batch[key]) and batch[key].dtype == torch.float64 and torch.backends.mps.is_available():
+                    batch[key] = batch[key].float()
                 batch[key] = batch[key].to(device)
         return batch
