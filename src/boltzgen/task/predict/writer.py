@@ -118,43 +118,73 @@ class FoldingWriter(BasePredictionWriter):
         sample_id: str = None,
     ) -> None:
         """Write the predictions to disk."""
+        exception = prediction.get("exception", False)
+        if isinstance(exception, list):
+            exception = exception[0]
+        if exception:
+            self.failed += 1
+            return
+        skip = prediction.get("skip", False)
+        if isinstance(skip, list):
+            skip = skip[0]
+        if skip:
+            return
+
+        # Folding preserves the input molecule identities even when the model
+        # masks them internally. Keep those identities in both NPZ and CIF.
+        prediction = prediction.copy()
+        for key in (
+            "res_type",
+            "ccd",
+            "ref_element",
+            "ref_charge",
+            "ref_atom_name_chars",
+        ):
+            if key in batch:
+                prediction[key] = batch[key]
+
         pred_dict = {}
         for key, value in prediction.items():
             # check object is tensor
             if key in const.eval_keys:
                 pred_dict[key] = value.cpu().numpy()
-        np.savez_compressed(self.outdir / f"{batch['id'][0]}.npz", **pred_dict)
-
-        # Get best sample
-        confidence = 0.8 * pred_dict["iptm"] + 0.2 * pred_dict["ptm"]
+        # Match the sample selected by analyze_utils.get_best_folding_sample.
+        confidence = (
+            0.8 * pred_dict["design_to_target_iptm"] + 0.2 * pred_dict["design_ptm"]
+        )
         best_idx = np.argmax(confidence)
-        best_sample_coords = pred_dict["coords"][best_idx]
 
         prediction_out = {}
         for k in prediction:
-            if k == "coords":
-                prediction_out[k] = torch.from_numpy(best_sample_coords)
+            # Coordinates and pLDDT have a sample axis; structure features have
+            # a batch axis and are shared by all samples of this input.
+            if k in ("coords", "plddt"):
+                prediction_out[k] = prediction[k][best_idx]
+            elif k in ("exception", "skip", "token_level_confidence"):
+                continue
             else:
                 prediction_out[k] = prediction[k][0]
 
         # Write structure
         structure, _, _ = Structure.from_feat(prediction_out)
-        plddt_atom = (
-            prediction_out["atom_to_token"].float() @ prediction_out["plddt"].float()
-        )
+        if prediction.get("token_level_confidence", True):
+            plddt_atom = (
+                prediction_out["atom_to_token"].float()
+                @ prediction_out["plddt"].float()
+            )
+        else:
+            plddt_atom = prediction_out["plddt"].float()
         structure.atoms["bfactor"] = (
             plddt_atom[prediction_out["atom_pad_mask"].bool()].float().cpu().numpy()
         )
         cif_text = to_mmcif(structure)
-        open(self.refold_cif_dir / f"{batch['id'][0]}.cif", "w").write(cif_text)
-
-        # Failed prediction handling
-        if isinstance(prediction["exception"], bool):
-            if prediction["exception"]:
-                self.failed += 1
-        elif isinstance(prediction["exception"], list):
-            if prediction["exception"][0]:
-                self.failed += 1
+        # Publish the complete archive last. An interrupted overwrite must not
+        # leave an old completion marker paired with a new or partial CIF.
+        archive_path = self.outdir / f"{batch['id'][0]}.npz"
+        archive_path.unlink(missing_ok=True)
+        with open(self.refold_cif_dir / f"{batch['id'][0]}.cif", "w") as cif_file:
+            cif_file.write(cif_text)
+        _write_npz_atomically(archive_path, **pred_dict)
 
     def on_predict_epoch_end(
         self,
@@ -192,19 +222,24 @@ class AffinityWriter(BasePredictionWriter):
         sample_id: str = None,
     ) -> None:
         """Write the predictions to disk."""
+        exception = prediction.get("exception", False)
+        if isinstance(exception, list):
+            exception = exception[0]
+        if exception:
+            self.failed += 1
+            return
+        skip = prediction.get("skip", False)
+        if isinstance(skip, list):
+            skip = skip[0]
+        if skip:
+            return
+
         pred_dict = {}
         for key, value in prediction.items():
             # check object is tensor
             if key in const.eval_keys:
                 pred_dict[key] = value.cpu().numpy()
-        np.savez_compressed(self.outdir / f"{batch['id'][0]}.npz", **pred_dict)
-
-        if isinstance(prediction["exception"], bool):
-            if prediction["exception"]:
-                self.failed += 1
-        elif isinstance(prediction["exception"], list):
-            if prediction["exception"][0]:
-                self.failed += 1
+        _write_npz_atomically(self.outdir / f"{batch['id'][0]}.npz", **pred_dict)
 
     def on_predict_epoch_end(
         self,

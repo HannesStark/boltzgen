@@ -710,7 +710,9 @@ class FromGeneratedDataModule(pl.LightningDataModule):
                 )
                 return [
                     output_dir / f"{input_path.stem}.npz",
-                    output_dir / f"{input_path.stem}.npz",
+                    output_dir.parent
+                    / const.refold_cif_dirname
+                    / f"{input_path.stem}.cif",
                 ]
 
             def output_path_design_folded(input_path):
@@ -721,6 +723,9 @@ class FromGeneratedDataModule(pl.LightningDataModule):
                 )
                 return [
                     output_dir / f"{input_path.stem}.cif",
+                    output_dir.parent
+                    / const.folding_design_dirname
+                    / f"{input_path.stem}.npz",
                 ]
 
             def output_path_affinity(input_path):

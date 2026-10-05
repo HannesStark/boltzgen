@@ -227,6 +227,11 @@ class RefoldingValidator(design.DesignValidator):
 
         start = time.time()
         refolded = self.folding_model.predict_step(batch_gen, batch_idx=batch_idx)
+        # Failed/skipped predict_step results contain a scalar status only.
+        # Let the writer count failures, then avoid analyzing missing outputs.
+        if refolded.get("exception") is True or refolded.get("skip") is True:
+            self.writer.write_on_batch_end(prediction=refolded, batch=batch_gen)
+            return
 
         # Affinity prediction
         self.init_affinity_model(model, logname)
@@ -235,7 +240,7 @@ class RefoldingValidator(design.DesignValidator):
             aff_pred = self.affinity_model.predict_step(batch_gen, batch_idx=batch_idx)
 
             for k, v in aff_pred.items():
-                if k not in refolded:
+                if k not in ("exception", "skip") and k not in refolded:
                     refolded[k] = v
 
             self.aff_writer.write_on_batch_end(
@@ -269,11 +274,17 @@ class RefoldingValidator(design.DesignValidator):
         if logname == "val_ligand" and self.ligand_plip:
             self.analyze_task.noncovalents_original = True
 
-        self.analyze_task.compute_metrics(
+        analyzed_sample_id = self.analyze_task.compute_metrics(
             sample_id=sample_id,
             suffix=Path(f"rank{model.trainer.global_rank}"),
             design_dir=Path(design_dir),
         )
+
+        (Path(design_dir) / const.folding_dirname / f"{sample_id}.npz").unlink(
+            missing_ok=True
+        )
+        if analyzed_sample_id is None:
+            return
 
         data = np.load(self.analyze_task.metrics_dir / f"data_{sample_id}.npz")
         metrics = np.load(self.analyze_task.metrics_dir / f"metrics_{sample_id}.npz")
@@ -284,10 +295,6 @@ class RefoldingValidator(design.DesignValidator):
             k: v.item() if v.shape == () else torch.tensor(v)
             for k, v in metrics.items()
         }
-
-        (Path(design_dir) / const.folding_dirname / f"{sample_id}.npz").unlink(
-            missing_ok=True
-        )
 
         if metrics is not None:
             self.all_refold_metrics[logname].append(metrics)
@@ -335,6 +342,17 @@ class RefoldingValidator(design.DesignValidator):
         self.analyze_task.init_datasets(design_dir)
 
         all_metrics = self.gather_lists(model, self.all_refold_metrics[logname])
+        if not all_metrics:
+            self.all_refold_metrics[logname] = []
+            self.all_refolding_data[logname] = []
+            model.log(f"{logname}/num_targets", 0, prog_bar=False, sync_dist=True)
+            model.log(
+                f"{logname}/one_epoch_end_refolding_dur",
+                time.time() - start,
+                sync_dist=True,
+            )
+            return
+
         df, histograms = self.analyze_task.make_histograms(all_metrics)
         avg_metrics = df.mean(numeric_only=True).round(5).to_dict()
         avg_metrics["num_targets"] = len(all_metrics)
