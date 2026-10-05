@@ -13,9 +13,16 @@ and metadata/native companions are preserved, using modern filenames in the
 destination even for legacy inputs. Replacing a merged design also removes its
 optional companions when they are absent from the replacement source. Merged files are
 independent copies, so rewriting a merged prediction cannot change a source run.
-Custom molecule definitions are copied too. Different serialized definitions
-sharing one CCD name are rejected, since selecting either definition silently
-could change how the other source is interpreted.
+Custom molecule definitions are copied too. Definitions sharing one CCD name must
+agree in ordered atoms, bonds, stereochemistry, and saved properties. Reference
+conformers can differ because parsing the same SMILES generates them stochastically;
+the first source's definition and conformers are retained. This preserves chemical
+identity, but does not promise identical numerical reference features if inference
+is rerun. Other definition differences are rejected rather than silently choosing
+between different molecules. An existing destination must also contain compatible
+definitions, since old coordinates may still refer to them; use a fresh output
+directory when changing molecule identities. An equivalent old reference conformer
+is replaced by the first current source's definition.
 
 For inverse folding, `--reuse` skips a backbone when every expected sequence has
 both a regular CIF file and a regular NPZ file. Incomplete backbones remain

@@ -38,6 +38,7 @@ import subprocess
 import os
 import time
 import math
+import pickle  # noqa: E402
 import re
 import shutil
 import sys
@@ -49,6 +50,7 @@ import yaml
 import hydra
 import omegaconf
 import torch
+from rdkit import Chem  # noqa: E402
 
 from boltzgen.data import const
 from boltzgen.data.mol import load_canonicals
@@ -1655,6 +1657,7 @@ def merge_command(args: argparse.Namespace) -> None:
         metrics_frames: list[pd.DataFrame] = []
         seq_frames: list[pd.DataFrame] = []
         per_target_frames: list[pd.DataFrame] = []
+        molecule_sources: dict[str, Path] = {}
         merged_count = 0
 
         for root in sources:
@@ -1731,16 +1734,32 @@ def merge_command(args: argparse.Namespace) -> None:
 
             for molecule in sorted((src_dir / const.molecules_dirname).glob("*.pkl")):
                 destination = dest_dir / const.molecules_dirname / molecule.name
-                if (
-                    destination.exists()
-                    and destination.read_bytes() != molecule.read_bytes()
-                ):
-                    message = (
-                        f"Conflicting molecule definition for {molecule.stem}: "
-                        f"{molecule} and {destination}"
-                    )
-                    raise ValueError(message)
+                previous = molecule_sources.get(molecule.name)
+                if previous is None and destination.exists():
+                    previous = destination
+                if previous is not None:
+                    previous_bytes = previous.read_bytes()
+                    current_bytes = molecule.read_bytes()
+                    if previous_bytes != current_bytes:
+                        # Repeated SMILES parsing generates different reference
+                        # conformers. Preserve all ordered chemistry/properties
+                        # while allowing those stochastic coordinates to differ.
+                        flags = (
+                            Chem.PropertyPickleOptions.AllProps
+                            | Chem.PropertyPickleOptions.NoConformers
+                        )
+                        previous_mol = pickle.loads(previous_bytes)  # noqa: S301
+                        current_mol = pickle.loads(current_bytes)  # noqa: S301
+                        if previous_mol.ToBinary(flags) != current_mol.ToBinary(flags):
+                            message = (
+                                f"Conflicting molecule definition for {molecule.stem}: "
+                                f"{molecule} and {previous}"
+                            )
+                            raise ValueError(message)
+                    if molecule.name in molecule_sources:
+                        continue
                 _copy_path(molecule, destination, required=True)
+                molecule_sources[molecule.name] = molecule
 
             seq_path = src_dir / "ca_coords_sequences.pkl.gz"
             if seq_path.exists():

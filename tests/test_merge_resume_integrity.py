@@ -15,6 +15,7 @@ from test_folding_export_consistency import _features
 
 from boltzgen.cli import boltzgen as cli
 from boltzgen.data import const
+from boltzgen.data.parse.schema import parse_entity
 from boltzgen.task.esmfold2.contract import (
     ESM_VERSION,
     ESMC_REVISION,
@@ -301,6 +302,93 @@ def test_merge_preserves_custom_molecules_without_overwriting(
         / "LIG0.pkl"
     )
     assert (output / relative).read_bytes() == (sources[0] / relative).read_bytes()
+
+
+@pytest.mark.parametrize("existing_destination", [False, True])
+def test_merge_accepts_same_molecule_with_different_reference_conformers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing_destination: bool
+) -> None:
+    sources = [tmp_path / "first", tmp_path / "second"]
+    extra_mols, *_ = parse_entity(
+        {"ligand": {"id": "L", "smiles": "CCO"}},
+        {},
+        tmp_path,
+        0,
+        is_msa_custom=False,
+        is_msa_auto=False,
+    )
+    molecule = extra_mols["LIG0"]
+    copies = [Chem.Mol(molecule), Chem.Mol(molecule)]
+    # Reference conformers vary between normal parses of the same design spec.
+    conformer = copies[1].GetConformer()
+    position = conformer.GetAtomPosition(0)
+    conformer.SetAtomPosition(0, (position.x + 0.1, position.y, position.z))
+    relative = Path("intermediate_designs") / const.molecules_dirname / "LIG0.pkl"
+    for source, copy in zip(sources, copies, strict=True):
+        _pair(source / "intermediate_designs", "candidate", source.name)
+        path = source / relative
+        path.parent.mkdir()
+        path.write_bytes(pickle.dumps(copy))
+    assert (sources[0] / relative).read_bytes() != (sources[1] / relative).read_bytes()
+    output = tmp_path / "merged"
+    if existing_destination:
+        (output / relative).parent.mkdir(parents=True)
+        (output / relative).write_bytes((sources[1] / relative).read_bytes())
+    _merge(monkeypatch, sources, output)
+    assert (output / relative).read_bytes() == (sources[0] / relative).read_bytes()
+    _merge(monkeypatch, sources, output)
+    assert (output / relative).read_bytes() == (sources[0] / relative).read_bytes()
+
+
+def test_merge_rejects_incompatible_old_destination_molecule_definitions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "merged"
+    relative = Path("intermediate_designs") / const.molecules_dirname / "LIG0.pkl"
+    for index, smiles in enumerate(("CCO", "CCN")):
+        source = tmp_path / str(index) / "run"
+        _pair(source / "intermediate_designs", "candidate", source.name)
+        path = source / relative
+        path.parent.mkdir()
+        path.write_bytes(pickle.dumps(Chem.MolFromSmiles(smiles)))
+        if index == 0:
+            _merge(monkeypatch, [source], output)
+            assert (output / relative).read_bytes() == path.read_bytes()
+        else:
+            before = (output / relative).read_bytes()
+            with pytest.raises(ValueError, match="Conflicting molecule definition"):
+                _merge(monkeypatch, [source], output)
+            assert (output / relative).read_bytes() == before
+
+
+@pytest.mark.parametrize("difference", ["atom_order", "atom_name", "charge", "stereo"])
+def test_merge_rejects_molecule_identity_differences(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, difference: str
+) -> None:
+    original = Chem.MolFromSmiles("F[C@H](Cl)Br")
+    changed = Chem.Mol(original)
+    if difference == "atom_order":
+        changed = Chem.RenumberAtoms(changed, [3, 2, 1, 0])
+    elif difference == "atom_name":
+        changed.GetAtomWithIdx(0).SetProp("name", "changed")
+    elif difference == "charge":
+        changed.GetAtomWithIdx(0).SetFormalCharge(-1)
+    else:
+        changed = Chem.MolFromSmiles("F[C@@H](Cl)Br")
+    sources = [tmp_path / "first", tmp_path / "second"]
+    previous_flags = Chem.GetDefaultPickleProperties()
+    try:
+        Chem.SetDefaultPickleProperties(Chem.PropertyPickleOptions.AllProps)
+        for source, molecule in zip(sources, (original, changed), strict=True):
+            designs = source / "intermediate_designs"
+            _pair(designs, "candidate", source.name)
+            molecule_dir = designs / const.molecules_dirname
+            molecule_dir.mkdir()
+            (molecule_dir / "LIG0.pkl").write_bytes(pickle.dumps(molecule))
+    finally:
+        Chem.SetDefaultPickleProperties(previous_flags)
+    with pytest.raises(ValueError, match=r"Conflicting molecule definition.*LIG0"):
+        _merge(monkeypatch, sources, tmp_path / "merged")
 
 
 def test_generated_reader_prefers_modern_gen_sidecar(
