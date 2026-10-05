@@ -47,7 +47,7 @@ Sequence logos and composition plots are grouped by chain. The existing choice
 between a scaffold's full sequence and its designed residues is made separately
 for each chain. Nanobody and antibody protocols default to the antibody panel
 in both analysis and reporting; explicit step configuration overrides still
-apply. Protein/peptide defaults are unchanged.
+apply only to that pipeline instance. Protein/peptide defaults are unchanged.
 
 Optional numbered CDR logos require `abnumber` and its dependencies. If these
 are unavailable, the PDF still includes ordinary sequence logos, composition

@@ -211,6 +211,16 @@ def test_protocol_analysis_and_reporting_agree(
     expected = "peptide" if override or protocol == "peptide-anything" else "antibody"
     assert steps["analysis"].liability_modality == expected
     assert steps["filtering"].modality == expected
+    if override:
+        # A second pipeline in the same process must start from protocol defaults.
+        args.config = None
+        next_steps = {
+            step.name: step.get_config()
+            for step in cli.BinderDesignPipeline(args, Path("/mols")).steps
+        }
+        default = "peptide" if protocol == "peptide-anything" else "antibody"
+        assert next_steps["analysis"].liability_modality == default
+        assert next_steps["filtering"].modality == default
 
 
 def test_pdf_liabilities_use_full_chains_instead_of_joined_cdrs(

@@ -1524,7 +1524,9 @@ def get_artifact_path(
 
 def parse_config_args(base_config, config_args, valid_step_names):
     config_args_by_step = collections.defaultdict(list)
-    config_args_by_step.update(base_config)
+    config_args_by_step.update(
+        {step: list(values) for step, values in base_config.items()}
+    )
     if config_args:
         for config in config_args:
             if len(config) < 2:
