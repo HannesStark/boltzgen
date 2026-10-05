@@ -303,13 +303,14 @@ class AcceleratedInference:
         self.masks = MaskCache()
         self.graphs: dict[str, _Graph] = {}
         self.disabled: set[str] = set()
-        self.originals: list[tuple[object, str, Callable]] = []
+        self.originals: list[tuple[object, str, bool, object]] = []
         self.stats = Counter()
         self.ready = False
         self.capture_stream = getattr(model, "_boltzgen_capture_stream", None)
 
     def _patch(self, module, name: str, function: Callable) -> None:
-        self.originals.append((module, name, getattr(module, name)))
+        attributes = vars(module)
+        self.originals.append((module, name, name in attributes, attributes.get(name)))
         setattr(module, name, function)
 
     def configure(self) -> None:
@@ -468,7 +469,10 @@ class AcceleratedInference:
     def close(self) -> None:
         """Restore native execution, including after a failed request."""
         self.reset()
-        for module, name, function in reversed(self.originals):
-            setattr(module, name, function)
+        for module, name, had_override, original in reversed(self.originals):
+            if had_override:
+                setattr(module, name, original)
+            else:
+                delattr(module, name)
         self.originals.clear()
         self.ready = False

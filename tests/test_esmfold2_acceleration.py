@@ -5,6 +5,7 @@ Full checkpoint comparisons live in the public benchmark harness.
 """
 
 from functools import wraps
+from contextlib import nullcontext
 from types import MethodType
 
 import pytest
@@ -158,9 +159,39 @@ def test_context_restores_methods_and_releases_state_after_failure():
         model.attn.forward,
         model.structure_head.sample,
     ) == originals
+    assert model.structure_head.__dict__["sample"] is originals[2]
     with acceleration_context(model, options) as execution:
         pass
     assert execution["effective"] == "cached"
+
+
+@pytest.mark.parametrize("request_fails", [False, True])
+def test_cleanup_restores_class_method_lookup(monkeypatch, request_fails):
+    model = torch.nn.Module()
+    model.folding_trunk = layers.FoldingTrunk(n_layers=1, d_pair=32)
+    model.structure_head, _, _ = _sampling_case(1, 2, None, 0.0, False)
+    model.eval().requires_grad_(False)
+    native = layers.FoldingTrunk.forward
+    pair = torch.randn(1, 4, 4, 32)
+
+    @wraps(native)
+    def instrumented(self, *args, **kwargs):
+        return native(self, *args, **kwargs) + 1
+
+    with torch.inference_mode():
+        expected = model.folding_trunk(pair)
+        monkeypatch.setattr(layers.FoldingTrunk, "forward", instrumented)
+        options = dict(acceleration="auto", acceleration_revision=ACCELERATION_REVISION)
+        error = pytest.raises(RuntimeError, match="request failed") if request_fails else nullcontext()
+        with error:
+            with acceleration_context(model, options):
+                torch.testing.assert_close(model.folding_trunk(pair), expected + 1)
+                if request_fails:
+                    raise RuntimeError("request failed")
+        monkeypatch.setattr(layers.FoldingTrunk, "forward", native)
+        # Removing temporary class instrumentation must affect the same instance.
+        torch.testing.assert_close(model.folding_trunk(pair), expected, atol=0, rtol=0)
+    assert "forward" not in model.folding_trunk.__dict__
 
 
 def test_mask_cache_budget_does_not_retain_large_masks():
