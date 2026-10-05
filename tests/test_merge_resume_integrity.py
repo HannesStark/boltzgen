@@ -143,7 +143,12 @@ def test_merge_disambiguates_source_tags_without_overwriting(
 
 
 def _module(
-    inputs: Path, outputs: Path, monkeypatch: pytest.MonkeyPatch, multiplicity: int
+    inputs: Path,
+    outputs: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    multiplicity: int,
+    *,
+    return_native: bool = False,
 ) -> data_from_generated.FromGeneratedDataModule:
     # Canonical molecule loading is unrelated to discovery/reuse; no structures
     # are fetched when inspecting the real prediction dataset's scheduled work.
@@ -164,6 +169,7 @@ def _module(
         cfg,
         design_dir=str(inputs),
         output_dir=str(outputs),
+        return_native=return_native,
         skip_existing=True,
         skip_existing_kind="inverse_fold",
     )
@@ -263,8 +269,8 @@ def test_merge_preserves_legacy_companions(
     assert after.predict_set.metadata_paths[0].read_bytes() == (
         before.predict_set.metadata_paths[0].read_bytes()
     )
-    assert (merged / "run_target_native.cif").read_text() == "native"
-    assert (merged / "run_target_native.pdb").read_text() == "native-pdb"
+    assert (merged / "run_target_gen_native.cif").read_text() == "native"
+    assert (merged / "run_target_gen_native.pdb").read_text() == "native-pdb"
 
 
 @pytest.mark.parametrize("conflict", [False, True])
@@ -304,6 +310,62 @@ def test_generated_reader_prefers_modern_gen_sidecar(
     _pair(inputs, "target_gen", "modern")
     module = _module(inputs, tmp_path / "outputs", monkeypatch, multiplicity=1)
     assert module.predict_set.metadata_paths == [inputs / "target_gen.npz"]
+
+
+@pytest.mark.parametrize("first_legacy", [False, True])
+def test_merge_replaces_metadata_when_source_layout_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first_legacy: bool
+) -> None:
+    output = tmp_path / "merged"
+    for index, legacy in enumerate((first_legacy, not first_legacy)):
+        source = tmp_path / str(index) / "run"
+        designs = source / "intermediate_designs"
+        _pair(designs, "target_gen", str(index))
+        native_stem = "target" if legacy else "target_gen"
+        (designs / f"{native_stem}_native.cif").write_text(f"native-{index}")
+        if legacy:
+            (designs / "target_gen.npz").rename(designs / "target_metadata.npz")
+        _merge(monkeypatch, [source], output)
+        module = _module(
+            output / designs.name,
+            tmp_path / "unused",
+            monkeypatch,
+            1,
+            return_native=True,
+        )
+        assert module.predict_set.generated_paths[0].read_text() == str(index)
+        with np.load(module.predict_set.metadata_paths[0]) as metadata:
+            assert metadata["identity"].item() == str(index)
+        assert module.predict_set.native_paths[0].read_text() == f"native-{index}"
+
+
+def test_merge_removes_missing_optional_companions_on_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "merged"
+    for index in range(2):
+        source = tmp_path / str(index) / "run"
+        designs = source / "intermediate_designs"
+        _pair(designs, "target", str(index))
+        if index == 0:
+            (designs / "target_native.cif").write_text("old native")
+            (designs / "target_native.pdb").write_text("old native pdb")
+            for folder in (const.refold_cif_dirname, const.refold_design_cif_dirname):
+                (designs / folder).mkdir()
+                (designs / folder / "target.cif").write_text("old refold")
+        else:
+            (designs / "target.npz").unlink()
+        _merge(monkeypatch, [source], output)
+    merged = output / designs.name
+    assert (merged / "run_target.cif").read_text() == "1"
+    for filename in (
+        "run_target.npz",
+        "run_target_native.cif",
+        "run_target_native.pdb",
+    ):
+        assert not (merged / filename).exists()
+    for folder in (const.refold_cif_dirname, const.refold_design_cif_dirname):
+        assert not (merged / folder / "run_target.cif").exists()
 
 
 def test_merge_rejects_empty_metrics_instead_of_silently_omitting_files(

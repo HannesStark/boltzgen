@@ -1796,26 +1796,23 @@ def merge_command(args: argparse.Namespace) -> None:
         legacy_source = source_stem.endswith("_gen") and not (
             src_dir / f"{source_stem}.npz"
         ).is_file()
-        legacy_destination = legacy_source and new_id.endswith("_gen")
         source_prefix = source_stem[:-4] if legacy_source else original_id
-        destination_prefix = new_id[:-4] if legacy_destination else new_id
         source_metadata_suffix = "_metadata.npz" if legacy_source else ".npz"
-        destination_metadata_suffix = (
-            "_metadata.npz" if legacy_destination else ".npz"
-        )
+        # Publish one canonical layout even for legacy inputs, so replacing a
+        # design cannot leave a competing metadata/native alias selected later.
         _copy_path(
             src_dir / f"{source_prefix}{source_metadata_suffix}",
-            dest_dir / f"{destination_prefix}{destination_metadata_suffix}",
+            dest_dir / f"{new_id}.npz",
             required=False,
         )
         _copy_path(
             src_dir / f"{source_prefix}_native.cif",
-            dest_dir / f"{destination_prefix}_native.cif",
+            dest_dir / f"{new_id}_native.cif",
             required=False,
         )
         _copy_path(
             src_dir / f"{source_prefix}_native.pdb",
-            dest_dir / f"{destination_prefix}_native.pdb",
+            dest_dir / f"{new_id}_native.pdb",
             required=False,
         )
         if include_refold:
@@ -1849,6 +1846,9 @@ def merge_command(args: argparse.Namespace) -> None:
             shutil.copy2(src, dst)
         elif required:
             raise FileNotFoundError(f"Required file missing during merge: {src}")
+        else:
+            # Missing companions in a replacement must not retain old data.
+            dst.unlink(missing_ok=True)
 
     if not args.sources:
         raise ValueError("Provide at least one source directory to merge.")

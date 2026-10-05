@@ -9,7 +9,9 @@ available for filtering.
 
 Source names are normalized into unique prefixes. Repeated source paths are
 included once. Dotted and numeric-looking design IDs keep their exact identity,
-and modern and legacy metadata/native companions are preserved. Merged files are
+and metadata/native companions are preserved, using modern filenames in the
+destination even for legacy inputs. Replacing a merged design also removes its
+optional companions when they are absent from the replacement source. Merged files are
 independent copies, so rewriting a merged prediction cannot change a source run.
 Custom molecule definitions are copied too. Different serialized definitions
 sharing one CCD name are rejected, since selecting either definition silently
