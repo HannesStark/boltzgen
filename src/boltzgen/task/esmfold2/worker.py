@@ -32,9 +32,12 @@ from boltzgen.task.esmfold2.contract import (
     REDESIGN_SCORE_KEY,
     PTM_KEY,
     fingerprint,
+    validate_acceleration,
+    validate_fused_size,
 )
 from boltzgen.task.esmfold2.crop import crop_features, polymer_representatives
 from boltzgen.task.esmfold2.ipsae import score_chain_vs_rest, score_interface
+from boltzgen.task.esmfold2.acceleration import acceleration_context
 
 
 def configure_ccd() -> None:
@@ -44,6 +47,19 @@ def configure_ccd() -> None:
     os.environ["ESMCFOLD_CCD_PATH"] = hf_hub_download(
         MODEL_REPO, "ccd.pkl", revision=MODEL_REVISION
     )
+
+
+def configure_backend(model, acceleration: str) -> None:
+    """Select a fixed numerical backend once, before any request is seeded."""
+    validate_acceleration(acceleration)
+    if getattr(model, "_boltzgen_fused_backend", False):
+        if acceleration != "fused":
+            raise ValueError("Create a separate ESMFold2 model for native execution")
+        return
+    if acceleration == "fused":
+        model.set_kernel_backend("fused")
+        model.set_chunk_size(None)
+        model._boltzgen_fused_backend = True
 
 
 def restore_smiles_atom_names(features: dict, infos: list, chains: list[dict]) -> None:
@@ -266,6 +282,12 @@ def run_request(model, builder, request: dict, output: Path, device: str) -> Non
     design = [i for chain in request["design_chains"] for i in representatives[chain]]
     target = [i for chain in request["target_chains"] for i in representatives[chain]]
     options = request["options"]
+    if options.get("acceleration") == "fused":
+        validate_fused_size(
+            audit["crop_tokens"],
+            options["diffusion_samples"],
+            model.config.pairwise_hidden_size,
+        )
     torch.manual_seed(options["seed"])
     torch.cuda.manual_seed_all(options["seed"])
     full = {k: v.to(device) for k, v in full.items()}
@@ -287,7 +309,9 @@ def run_request(model, builder, request: dict, output: Path, device: str) -> Non
         audit["full_lm_shape"] = list(full_lm.shape)
         audit["crop_lm_shape"] = list(crop_lm.shape)
         del full_lm, full
-        with lm_dropout_context(model, options["lm_dropout"]):
+        with lm_dropout_context(model, options["lm_dropout"]), acceleration_context(
+            model, options
+        ) as execution:
             prediction = model(
                 **cropped,
                 lm_hidden_states=crop_lm,
@@ -390,6 +414,7 @@ def run_request(model, builder, request: dict, output: Path, device: str) -> Non
         "esmc_revision": ESMC_REVISION,
         "esm_version": ESM_VERSION,
         "options": options,
+        "execution": execution,
         "selected_sample": best,
         "sample_selection": "maximum_" + score_metric,
         "scoring_mode": mode,
@@ -420,6 +445,13 @@ def main() -> None:
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--device", default="cuda:0")
     args = parser.parse_args()
+    paths = json.loads(args.manifest.read_text())
+    requests = [json.loads(Path(path).read_text()) for path in paths]
+    fused_modes = {
+        request["options"].get("acceleration", "off") == "fused" for request in requests
+    }
+    if len(fused_modes) > 1:
+        raise ValueError("Fused and native requests must use separate ESMFold2 workers")
     if version("esm") != ESM_VERSION:
         raise RuntimeError(
             f"Install esm=={ESM_VERSION} in the --esmfold2_python environment"
@@ -463,10 +495,10 @@ def main() -> None:
     model.load_esmc(esmc_path)
     print(f"Moving ESMFold2 and ESMC to {args.device}...", flush=True)
     model = model.to(args.device).eval().requires_grad_(False)
+    configure_backend(model, "fused" if fused_modes == {True} else "off")
     builder = ESMFold2InputBuilder()
     print(f"ESMFold2 ready for scoring on {args.device}.", flush=True)
-    for path in json.loads(args.manifest.read_text()):
-        request = json.loads(Path(path).read_text())
+    for path, request in zip(paths, requests, strict=True):
         if (
             request["model_revision"] != MODEL_REVISION
             or request["esmc_revision"] != ESMC_REVISION
@@ -474,6 +506,10 @@ def main() -> None:
         ):
             raise ValueError("Request does not match the pinned ESMFold2 runtime")
         print(f"Scoring {request['design_id']} with ESMFold2", flush=True)
+        print(
+            f"ESMFold2 acceleration: {request['options'].get('acceleration', 'off')}",
+            flush=True,
+        )
         run_request(model, builder, request, Path(path).parent, args.device)
 
 
