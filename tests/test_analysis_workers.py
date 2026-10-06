@@ -109,6 +109,8 @@ def test_spawn_serializes_dataset_once_per_worker_and_sets_threads(
     if setting is not None:
         monkeypatch.setenv(setting, threads)
     analyzer = _transport(tmp_path)
+    # Initialization must preserve properties even if the caller did not opt in.
+    Chem.SetDefaultPickleProperties(Chem.PropertyPickleOptions.NoProps)
     before_threads = (torch.get_num_threads(), torch.get_num_interop_threads())
     results = analyzer.run_parallel(8, 2)
     assert sorted(result[0] for result in results) == list(range(8))
