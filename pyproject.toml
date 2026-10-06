@@ -14,8 +14,8 @@ readme = { file = "PYPI_DESCRIPTION.md", content-type = "text/markdown" }
 description = "Protein design"
 dependencies = [
     # Add runtime dependencies here
-    "numpy==2.0.2",
-    "numba==0.61.0",
+    "numpy>=2.0.2",
+    "numba>=0.61.0",
     "matplotlib",
     "hydride",
     "biotite",
