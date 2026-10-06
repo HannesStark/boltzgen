@@ -14,8 +14,18 @@ from boltzgen.task.esmfold2.contract import (
     SCORE_KEY,
     fingerprint,
     load_result,
+    validate_fused_size,
 )
 from boltzgen.task.esmfold2.ipsae import score_interface
+
+
+def test_fused_size_rejects_index_overflow_before_gpu_execution():
+    validate_fused_size(1295, 5, 256)
+    with pytest.raises(ValueError, match="32-bit indexing limit"):
+        validate_fused_size(1296, 5, 256)
+    validate_fused_size(2896, 1, 256)
+    with pytest.raises(ValueError, match="32-bit indexing limit"):
+        validate_fused_size(2897, 1, 256)
 
 
 @pytest.mark.parametrize("cached", [False, True])
@@ -153,6 +163,7 @@ def test_protocol_routing_keeps_boltz_structural_checks(
     else:
         assert steps["esmfold2_scoring"].python == python_override
         assert steps["esmfold2_scoring"].diffusion_samples == 5
+        assert steps["esmfold2_scoring"].acceleration == "auto"
         assert not steps["analysis"].data.skip_existing
         redesign = protocol == "protein-redesign"
         assert steps["esmfold2_scoring"].scoring_mode == (
@@ -164,6 +175,25 @@ def test_protocol_routing_keeps_boltz_structural_checks(
             task = hydra.utils.instantiate(steps["filtering"])
             assert task.esmfold2_score_key == "esmfold2_score"
             assert task.metrics == {"esmfold2_score": 1, "neg_filter_rmsd_design": 4}
+
+
+def test_acceleration_changes_request_identity_and_rejects_invalid_mode(tmp_path, monkeypatch):
+    from boltzgen.task.esmfold2.score import ESMFold2Score
+    from boltzgen.task.esmfold2.contract import ACCELERATION_REVISION
+    from boltzgen.cli import boltzgen as cli
+
+    monkeypatch.setattr(cli.torch.cuda, "get_device_capability", lambda: (9, 0))
+    monkeypatch.setattr(cli, "get_artifact_path", lambda args, artifact, **kwargs: Path("/weights") / artifact.rsplit(":", 1)[-1])
+
+    native = ESMFold2Score(None, str(tmp_path), acceleration="off")
+    accelerated = ESMFold2Score(None, str(tmp_path))
+    assert fingerprint(native.options) != fingerprint(accelerated.options)
+    assert accelerated.options["acceleration_revision"] == ACCELERATION_REVISION
+    with pytest.raises(ValueError, match="acceleration must be auto, fused, or off"):
+        ESMFold2Score(None, str(tmp_path), acceleration="invalid")
+    args = cli.build_parser().parse_args(["configure", "input.yaml", "--output", str(tmp_path), "--esmfold2_acceleration", "off"])
+    scoring = next(s for s in cli.BinderDesignPipeline(args, Path("/mols")).steps if s.name == "esmfold2_scoring")
+    assert scoring.get_config().acceleration == "off"
 
 
 def test_ranking_and_tiebreak_follow_esmfold2(tmp_path):

@@ -15,6 +15,22 @@ SCORE_KEY = "esmfold2_ipsae_min"
 REDESIGN_SCORE_KEY = "esmfold2_score"
 PTM_KEY = "esmfold2_ptm"
 SCHEMA_VERSION = 1
+ACCELERATION_REVISION = "anthropic-native-v1"
+
+
+def validate_acceleration(mode: str) -> None:
+    """Validate execution mode before provisioning the GPU runtime."""
+    if mode not in ("auto", "fused", "off"):
+        raise ValueError("ESMFold2 acceleration must be auto, fused, or off")
+
+
+def validate_fused_size(tokens: int, samples: int, pair_width: int) -> None:
+    """Keep the pinned fused pair-bias kernel within its signed int32 offsets."""
+    if samples * tokens * tokens * pair_width >= 2**31:
+        raise ValueError(
+            "This crop and sample count exceed the pinned ESMFold2 fused kernel's "
+            "32-bit indexing limit; use --esmfold2_acceleration auto or off"
+        )
 
 
 def validate_scoring_mode(mode: str, target_chains: list[str] | None) -> None:

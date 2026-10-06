@@ -327,7 +327,13 @@ class DesignWriter(BasePredictionWriter):
                     pickle.dump(v, f)
 
         # write samples to disk
-        cfg = getattr(getattr(trainer, "datamodule", None), "cfg", None)
+        datamodule = getattr(trainer, "datamodule", None)
+        cfg = getattr(datamodule, "cfg", None)
+        resume_inverse_fold = (
+            self.inverse_fold
+            and getattr(datamodule, "skip_existing", False)
+            and getattr(datamodule, "skip_existing_kind", None) == "inverse_fold"
+        )
         for n in range(n_samples):
             if sample_id is not None:
                 file_name = f"{sample_id}_{n}{self.file_suffix}"
@@ -353,7 +359,12 @@ class DesignWriter(BasePredictionWriter):
             native_path = f"{self.outdir}/{file_name}_native.cif"
             gen_path = f"{self.outdir}/{file_name}.cif"
             metadata_path = f"{self.outdir}/{file_name}.npz"
-            if getattr(cfg, "skip_existing", False):
+            if resume_inverse_fold:
+                # Completed siblings must keep their sequence and cached refolds
+                # when another item makes the whole backbone run again.
+                if Path(gen_path).is_file() and Path(metadata_path).is_file():
+                    continue
+            elif getattr(cfg, "skip_existing", False):
                 output_dir = Path(self.outdir)
                 if sample_id is None:
                     alias, complete = _existing_output_alias(

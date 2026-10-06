@@ -12,6 +12,7 @@ sampling_steps: 200
 diffusion_samples: 5
 lm_dropout: 0.3
 seed: 0
+acceleration: auto
 
 data:
   _target_: boltzgen.task.predict.data_from_generated.FromGeneratedDataModule
