@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
+import gemmi
 import numpy as np
 import pytest
 from rdkit import Chem
@@ -21,6 +22,7 @@ from boltzgen.data import const
 from boltzgen.data.crop.multimer import MultimerCropper
 from boltzgen.data.data import Bond, Input, Structure, Target
 from boltzgen.data.feature.featurizer import Featurizer
+from boltzgen.data.parse.mmcif import parse_mmcif
 from boltzgen.data.parse.schema import YamlDesignParser
 from boltzgen.data.tokenize.tokenizer import Tokenizer
 from boltzgen.data.write.mmcif import to_mmcif
@@ -31,16 +33,72 @@ pytestmark = pytest.mark.filterwarnings(
 )
 
 
-def parse_entities(tmp_path: Path, entities: list[dict]) -> Target:
-    """Use the actual parser with a deterministic minimal molecule dictionary."""
-    mol = Chem.MolFromSequence("G")
+def molecule(letter: str = "G") -> Chem.Mol:
+    """Create the named atoms and conformer needed by the real parser."""
+    mol = Chem.MolFromSequence(letter)
     for atom in mol.GetAtoms():
         atom.SetProp("name", atom.GetPDBResidueInfo().GetName().strip())
     mol = Chem.AddHs(mol)
     AllChem.EmbedMolecule(mol, randomSeed=0)
+    return mol
+
+
+def parse_entities(
+    tmp_path: Path, entities: list[dict], constraints: list[dict] | None = None
+) -> Target:
+    """Use the actual parser with a deterministic minimal molecule dictionary."""
+    schema = {"entities": entities}
+    if constraints is not None:
+        schema["constraints"] = constraints
     return YamlDesignParser(tmp_path).parse_boltzgen_schema(
-        "boundaries", {"entities": entities}, {"GLY": mol}, tmp_path, tmp_path
+        "boundaries",
+        schema,
+        {"GLY": molecule(), "CYS": molecule("C")},
+        tmp_path,
+        tmp_path,
     )
+
+
+@pytest.mark.parametrize("chain_name", ["A", "B", "C"])
+@pytest.mark.parametrize("position", [-1, 4])
+def test_insert_rejects_positions_outside_target_chain(
+    chain_name: str, position: int
+) -> None:
+    source = make_structure()
+    original = deepcopy(source)
+    with pytest.raises(ValueError, match=r"Insertion position .* outside"):
+        Structure.insert(source, chain_name, position, 1)
+    assert_unmodified(source, original)
+
+
+@pytest.mark.parametrize("position", [0, 5])
+def test_yaml_rejects_positions_outside_target_chain(
+    position: int, tmp_path: Path
+) -> None:
+    path = tmp_path / "input.cif"
+    path.write_text(to_mmcif(make_structure()))
+    original = path.read_bytes()
+    with pytest.raises(ValueError, match=r"Insertion position .* outside"):
+        parse_entities(
+            tmp_path,
+            [
+                {
+                    "file": {
+                        "path": str(path),
+                        "design_insertions": [
+                            {
+                                "insertion": {
+                                    "id": "A",
+                                    "res_index": position,
+                                    "num_residues": "1..1",
+                                }
+                            }
+                        ],
+                    }
+                }
+            ],
+        )
+    assert path.read_bytes() == original
 
 
 @pytest.mark.parametrize("chain_idx", [0, 1, 2])
@@ -181,6 +239,140 @@ def test_concatenate_preserves_explicit_empty_chain() -> None:
     assert_consistent(result)
 
 
+@pytest.mark.parametrize("models", [1, 2])
+@pytest.mark.parametrize("side", ["left", "right"])
+@pytest.mark.parametrize("declared", [False, True])
+def test_empty_concatenation_preserves_parsed_coordinate_models(
+    models: int, side: str, *, declared: bool, tmp_path: Path
+) -> None:
+    source_path = tmp_path / "source.cif"
+    source_path.write_text(to_mmcif(make_structure(1)))
+    raw = gemmi.read_structure(str(source_path))
+    if models == 2:
+        second = raw[0].clone()
+        second.num = 2
+        for chain in second:
+            for residue in chain:
+                for atom in residue:
+                    atom.pos += gemmi.Position(100, 200, 300)
+        raw.add_model(second)
+    raw.make_mmcif_document().write_file(str(source_path))
+    source = parse_mmcif(
+        str(source_path), {"GLY": molecule()}, str(tmp_path), use_assembly=False
+    ).data
+    empty = Structure.empty_protein(0)
+    empty.chains["name"] = "E"
+    if not declared:
+        empty = replace(empty, chains=empty.chains[:0], mask=empty.mask[:0])
+    originals = deepcopy((empty, source))
+    operands = (empty, source) if side == "left" else (source, empty)
+    result, _ = Structure.concatenate(*operands, return_renaming=True)
+    np.testing.assert_array_equal(result.ensemble, source.ensemble)
+    np.testing.assert_array_equal(result.coords, source.coords)
+    edited = Structure.insert(result, "A", 1, 1)
+    assert len(edited.ensemble) == models
+    for model in range(models):
+        expected = np.concatenate(
+            [
+                source.coords["coords"][model * 12 : model * 12 + 4],
+                np.zeros((4, 3)),
+                source.coords["coords"][model * 12 + 4 : (model + 1) * 12],
+            ]
+        )
+        np.testing.assert_array_equal(
+            edited.coords["coords"][model * 16 : (model + 1) * 16], expected
+        )
+    assert_unmodified(empty, originals[0])
+    assert_unmodified(source, originals[1])
+
+
+@pytest.mark.parametrize("copied", [False, True])
+@pytest.mark.parametrize("cyclic", [False, True])
+@pytest.mark.parametrize("prefix", [False, True])
+@pytest.mark.parametrize("fusion_target", [None, "A", "B"])
+def test_inline_constraints_and_copied_cycles_follow_final_atoms(
+    *,
+    copied: bool,
+    cyclic: bool,
+    prefix: bool,
+    fusion_target: str | None,
+    tmp_path: Path,
+) -> None:
+    entities = [{"protein": {"id": "P", "sequence": "GG"}}] if prefix else []
+    ids = [["A", "B"]] if copied else ["A", "B"]
+    entities.extend(
+        {"protein": {"id": value, "sequence": "CGC", "cyclic": cyclic}} for value in ids
+    )
+    if fusion_target is not None:
+        entities.append(
+            {"protein": {"id": "D", "sequence": "2", "fuse": fusion_target}}
+        )
+    result = parse_entities(
+        tmp_path,
+        entities,
+        [
+            {"bond": {"atom1": ["B", 1, "SG"], "atom2": ["B", 3, "SG"]}},
+            {"bond": {"atom1": ["A", 1, "SG"], "atom2": ["B", 3, "SG"]}},
+        ],
+    ).structure
+    for bond, names, positions in zip(
+        result.bonds[-2:], [("B", "B"), ("A", "B")], [(0, 2), (0, 2)], strict=True
+    ):
+        for end, name, position in zip((1, 2), names, positions, strict=True):
+            chain_idx = result.chains["name"].tolist().index(name)
+            residue_idx = int(result.chains[chain_idx]["res_idx"]) + position
+            residue = result.residues[residue_idx]
+            atoms = result.atoms[
+                residue["atom_idx"] : residue["atom_idx"] + residue["atom_num"]
+            ]
+            atom_idx = (
+                residue["atom_idx"] + np.flatnonzero(atoms["name"] == "SG").item()
+            )
+            assert bond[f"chain_{end}"] == chain_idx
+            assert bond[f"res_{end}"] == residue_idx
+            assert bond[f"atom_{end}"] == atom_idx
+    if cyclic:
+        for bond, name in zip(result.bonds[:2], ("A", "B"), strict=True):
+            chain_idx = result.chains["name"].tolist().index(name)
+            chain = result.chains[chain_idx]
+            assert bond["res_1"] == chain["res_idx"]
+            assert bond["res_2"] == chain["res_idx"] + chain["res_num"] - 1
+            assert bond["chain_1"] == bond["chain_2"] == chain_idx
+            assert result.atoms["name"][bond["atom_1"]] == "N"
+            assert result.atoms["name"][bond["atom_2"]] == "C"
+    to_mmcif(result)
+
+
+@pytest.mark.parametrize("target", ["A", "B"])
+def test_constraint_donor_alias_survives_repeated_fusion(
+    target: str, tmp_path: Path
+) -> None:
+    result = parse_entities(
+        tmp_path,
+        [
+            {"protein": {"id": "A", "sequence": "GG"}},
+            {"protein": {"id": "B", "sequence": "GGG"}},
+            {"protein": {"id": "D", "sequence": "CGC", "fuse": target}},
+            {"protein": {"id": "E", "sequence": "2", "fuse": target}},
+        ],
+        [{"bond": {"atom1": ["D", 1, "SG"], "atom2": ["D", 3, "SG"]}}],
+    ).structure
+    chain_idx = result.chains["name"].tolist().index(target)
+    start = int(result.chains[chain_idx]["res_idx"]) + (2 if target == "A" else 3)
+    bond = result.bonds[0]
+    for end, position in ((1, start), (2, start + 2)):
+        residue = result.residues[position]
+        assert bond[f"chain_{end}"] == chain_idx
+        assert bond[f"res_{end}"] == position
+        assert (
+            residue["atom_idx"]
+            <= bond[f"atom_{end}"]
+            < residue["atom_idx"] + residue["atom_num"]
+        )
+        assert result.atoms["name"][bond[f"atom_{end}"]] == "SG"
+    to_mmcif(result)
+
+
 @pytest.mark.parametrize("selected_chain", [0, 1, 2])
 def test_fused_donor_bonds_use_chain_table_indices(selected_chain: int) -> None:
     source = make_structure()
@@ -225,8 +417,9 @@ def test_fused_donor_bonds_use_chain_table_indices(selected_chain: int) -> None:
 
 
 @pytest.mark.parametrize("position", [0, 1, 3])
+@pytest.mark.parametrize("period", [-1, 0, 3])
 def test_insert_keeps_non_backbone_cyclic_connections(
-    position: int, tmp_path: Path
+    position: int, period: int, tmp_path: Path
 ) -> None:
     source = replace(
         make_structure(1),
@@ -241,6 +434,7 @@ def test_insert_keeps_non_backbone_cyclic_connections(
     path.write_text(to_mmcif(source))
     source = parse_entities(tmp_path, [{"file": {"path": str(path)}}]).structure
     assert source.chains[0]["cyclic_period"] == 3
+    source.chains[0]["cyclic_period"] = period
     result = Structure.insert(source, "A", position, 2)
     bond = result.bonds[0]
     assert result.atoms["name"][bond["atom_1"]] == "CA"
@@ -250,6 +444,50 @@ def test_insert_keeps_non_backbone_cyclic_connections(
     assert result.chains[0]["cyclic_period"] == source.chains[0]["cyclic_period"]
     assert_consistent(result)
     to_mmcif(result)
+
+
+@pytest.mark.parametrize("position", [0, 1, 3, None])
+def test_cropped_cycle_uses_real_bond_when_period_is_missing(
+    position: int | None, tmp_path: Path
+) -> None:
+    source = parse_entities(
+        tmp_path,
+        [
+            {"protein": {"id": "A", "sequence": "GGG"}},
+            {"protein": {"id": "B", "sequence": "GGG", "cyclic": True}},
+        ],
+    ).structure
+    tokenized = Tokenizer().tokenize(source)
+    cropped = MultimerCropper([3]).crop(
+        tokenized, max_tokens=3, random=np.random.default_rng(0), initial_crop=[3, 4, 5]
+    )
+    features = Featurizer().process(
+        Input(cropped.tokens, cropped.bonds, cropped.token_to_res, source, {}, {}),
+        random=np.random.default_rng(0),
+        molecules={"GLY": Chem.RemoveHs(molecule())},
+        training=False,
+        max_seqs=1,
+    )
+    features["id"] = "cyclic_crop"
+    target, _, _ = Structure.from_feat(features)
+    assert target.chains[0]["cyclic_period"] == 0
+    assert target.chains[0]["asym_id"] == 1
+    snapshot = deepcopy(target)
+    name = str(target.chains[0]["name"])
+    if position is None:
+        result = Structure.fuse(target, make_structure(1), name, res_reindex=True)
+        count = 6
+    else:
+        result = Structure.insert(target, name, position, 2)
+        count = 5
+    assert result.chains[0]["cyclic_period"] == count
+    bond = result.bonds[0]
+    assert bond["res_1"] == 0
+    assert bond["res_2"] == count - 1
+    assert result.atoms["name"][bond["atom_1"]] == "N"
+    assert result.atoms["name"][bond["atom_2"]] == "C"
+    assert_consistent(result)
+    assert_unmodified(target, snapshot)
 
 
 @pytest.mark.parametrize("chain_idx", [0, 1, 2])

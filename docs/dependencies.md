@@ -26,9 +26,10 @@ file insertion, protein fusion and file fusion, with unaffected controls.
 This is CPU application qualification, not a guarantee for every version pair,
 operating system, Python release or GPU stack. Tests that require external ESM
 or SolubleMPNN assets were skipped. Model inference and training were not run.
-Numba's dependency metadata alone does not establish BoltzGen compatibility;
-new NumPy or Numba minor releases should pass this qualification before their
-upper bounds are raised.
+Numba's dependency metadata alone does not establish BoltzGen compatibility.
+The tested combinations above qualify these bounds, including their endpoints;
+intermediate versions and every resolver-compatible pair were not individually
+tested. Extending either upper bound requires new application qualification.
 
 To reproduce the repository tests in a compatible development environment:
 

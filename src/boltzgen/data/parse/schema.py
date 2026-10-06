@@ -1542,16 +1542,14 @@ class YamlDesignParser:
                             for atom in res.atoms:
                                 # Add atom to map
                                 atom_idx_map[(chain_name, res.idx, atom.name)] = (
-                                    global_asym_id,
-                                    data.residues.shape[0]
-                                    + asym_id * res_num
-                                    + res_idx,
-                                    data.atoms.shape[0] + asym_id * atom_num + atom_idx,
+                                    global_asym_id + asym_id,
+                                    data.residues.shape[0] + res_idx,
+                                    data.atoms.shape[0] + atom_idx,
                                 )
                                 local_atom_idx_map[(chain_name, res.idx, atom.name)] = (
                                     asym_id,
-                                    asym_id * res_num + res_idx,
-                                    asym_id * atom_num + atom_idx,
+                                    res_idx,
+                                    atom_idx,
                                 )
 
                                 # Add atom to data
@@ -1573,8 +1571,10 @@ class YamlDesignParser:
                                 (
                                     asym_id,
                                     asym_id,
-                                    0,
-                                    chain.cyclic_period - 1,
+                                    local_atom_idx_map[(chain_name, 0, "N")][1],
+                                    local_atom_idx_map[
+                                        (chain_name, chain.cyclic_period - 1, "C")
+                                    ][1],
                                     local_atom_idx_map[(chain_name, 0, "N")][2],
                                     local_atom_idx_map[
                                         (chain_name, chain.cyclic_period - 1, "C")
@@ -1720,9 +1720,10 @@ class YamlDesignParser:
                 if fuse_info["fuse"]:
                     # Structure.fuse inserts after the target chain, while each
                     # parser branch initially appends the donor's metadata.
-                    fused_chain = data.chains[
+                    fused_chain_idx = np.flatnonzero(
                         data.chains["name"] == fuse_info["target_id"]
-                    ][0]
+                    ).item()
+                    fused_chain = data.chains[fused_chain_idx]
                     donor_count = len(new_data.residues)
                     old_count = len(data.residues) - donor_count
                     boundary = int(
@@ -1738,6 +1739,34 @@ class YamlDesignParser:
                     res_bind_type = res_bind_type[order]
                     ss_type = ss_type[order]
                     res_aa_constraint_mask = res_aa_constraint_mask[order]
+                    # Constraint keys retain the original specification's
+                    # chain names, including aliases for fused inline donors.
+                    atom_count = len(new_data.atoms)
+                    atom_boundary = int(
+                        fused_chain["atom_idx"] + fused_chain["atom_num"]
+                    ) - atom_count
+                    donor_name = (
+                        str(new_data.chains[0]["name"])
+                        if entity_type != "file"
+                        else None
+                    )
+                    for key, endpoint in atom_idx_map.items():
+                        chain_index, residue_index, atom_index = endpoint
+                        if key[0] == donor_name:
+                            _, local_residue, local_atom = local_atom_idx_map[key]
+                            atom_idx_map[key] = (
+                                fused_chain_idx,
+                                boundary + local_residue,
+                                atom_boundary + local_atom,
+                            )
+                        else:
+                            atom_idx_map[key] = (
+                                chain_index,
+                                residue_index
+                                + (donor_count if residue_index >= boundary else 0),
+                                atom_index
+                                + (atom_count if atom_index >= atom_boundary else 0),
+                            )
             if "total_len" in constraints[0]:
                 if len(res_bind_type) >= min_len and len(res_bind_type) <= max_len:
                     break

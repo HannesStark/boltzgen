@@ -358,7 +358,8 @@ def _update_backbone_cyclization(
 ) -> None:
     """Keep an existing N/C closure on the edited chain's actual termini."""
     old_chain = before.chains[chain_idx]
-    if old_chain["cyclic_period"] <= 0:
+    # Feature reconstruction can retain the closure while resetting its period.
+    if old_chain["res_num"] == 0 or len(before.bonds) == 0:
         return
     new_chain = after.chains[chain_idx]
     old_first = old_chain["res_idx"]
@@ -576,7 +577,8 @@ class Structure(NumpySerializable):
         mask = np.concatenate([str_1.mask.copy(), str_2.mask.copy()])
 
         # Build new ensemble
-        ensemble = str_1.ensemble.copy()
+        # A retained empty leading chain contributes no coordinate models.
+        ensemble = (str_2.ensemble if num_atoms1 == 0 else str_1.ensemble).copy()
         ensemble["atom_num"] = atoms.shape[0]
 
         # Build new coords
@@ -646,6 +648,12 @@ class Structure(NumpySerializable):
         target_chain_idx = _unique_chain_index(chains, chain_name)
         # Scalar records are views: retain the original values as chains change.
         target_chain = chains[target_chain_idx].copy()
+        if not 0 <= res_idx <= int(target_chain["res_num"]):
+            msg = (
+                f"Insertion position {res_idx} outside chain {chain_name!r}: "
+                f"expected 0 <= position <= {target_chain['res_num']}."
+            )
+            raise ValueError(msg)
 
         # Absolute residue index in the full `residues` array
         res_insert_idx = int(target_chain["res_idx"]) + res_idx
