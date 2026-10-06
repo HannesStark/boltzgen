@@ -223,9 +223,13 @@ def test_persistent_worker_crashes_fail_instead_of_looping(tmp_path: Path) -> No
     assert analyzer.data.predict_set.pickles == 3
 
 
-def test_small_work_avoids_idle_workers_and_empty_work(tmp_path: Path) -> None:
+def test_small_work_avoids_idle_workers_and_empty_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     analyzer = _transport(tmp_path, 0)
-    assert analyzer.run_parallel(0, 32) == []
+    with monkeypatch.context() as patch:
+        patch.setattr(tempfile, "tempdir", str(tmp_path / "missing-temp-parent"))
+        assert analyzer.run_parallel(0, 32) == []
     assert analyzer.data.predict_set.pickles == 0
     analyzer.data.predict_set.generated_paths.append(tmp_path / "one.cif")
     analyzer.distribute_tasks()

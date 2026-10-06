@@ -233,6 +233,8 @@ class Analyze(Task):
 
         # Preserve RDKit atom properties in the worker snapshot.
         rdkit.Chem.SetDefaultPickleProperties(rdkit.Chem.PropertyPickleOptions.AllProps)
+        if not all_task_ids:
+            return sample_ids
         stalled_pools = 0
         with TemporaryDirectory(prefix="boltzgen-analysis-") as state_dir, tqdm(
             total=num, desc="Processing samples"
