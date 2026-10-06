@@ -1411,7 +1411,13 @@ class YamlDesignParser:
         # Convert parsed chains to tables
 
         while True:
-            data = Structure.empty_protein(0)
+            # The accumulator has no chains; explicit zero-length entities may
+            # still be named fusion targets later in the specification.
+            data = replace(
+                Structure.empty_protein(0),
+                chains=np.array([], dtype=Chain),
+                mask=np.array([], dtype=bool),
+            )
             source_context = {"version": 1, "chains": []}
 
             chain_to_idx = {}
@@ -1711,6 +1717,27 @@ class YamlDesignParser:
                                 chain_to_msa[chain_id] = file_msa_flag
                             else:
                                 chain_to_msa[chain_id] = -1
+                if fuse_info["fuse"]:
+                    # Structure.fuse inserts after the target chain, while each
+                    # parser branch initially appends the donor's metadata.
+                    fused_chain = data.chains[
+                        data.chains["name"] == fuse_info["target_id"]
+                    ][0]
+                    donor_count = len(new_data.residues)
+                    old_count = len(data.residues) - donor_count
+                    boundary = int(
+                        fused_chain["res_idx"] + fused_chain["res_num"]
+                    ) - donor_count
+                    order = np.concatenate([
+                        np.arange(boundary),
+                        np.arange(old_count, len(data.residues)),
+                        np.arange(boundary, old_count),
+                    ])
+                    structure_groups = structure_groups[order]
+                    res_design_mask = res_design_mask[order]
+                    res_bind_type = res_bind_type[order]
+                    ss_type = ss_type[order]
+                    res_aa_constraint_mask = res_aa_constraint_mask[order]
             if "total_len" in constraints[0]:
                 if len(res_bind_type) >= min_len and len(res_bind_type) <= max_len:
                     break

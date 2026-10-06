@@ -34,7 +34,7 @@ To reproduce the repository tests in a compatible development environment:
 
 ```sh
 python -m pytest tests -q
-python -m pytest tests/test_structure_insert_fuse.py -q
+python -m pytest tests/test_structure_insert_fuse.py tests/test_structure_transform_boundaries.py -q
 ```
 
 The structure regressions treat deprecated array-to-scalar conversions as

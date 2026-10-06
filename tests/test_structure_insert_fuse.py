@@ -23,6 +23,7 @@ from boltzgen.data.data import (
     Interface,
     Residue,
     Structure,
+    Target,
 )
 from boltzgen.data.parse.schema import YamlDesignParser
 from boltzgen.data.write.mmcif import to_mmcif
@@ -372,3 +373,77 @@ def test_fuse_moves_cyclic_bond_to_new_terminal_atom(chain_idx: int) -> None:
     assert bond["res_2"] == start + 5
     assert bond["atom_2"] == (start + 5) * 4 + 2
     assert result.atoms["name"][bond["atom_2"]] == "C"
+
+
+@pytest.mark.parametrize("targets", [("A",), ("B",), ("C",), ("A", "A"), ("A", "B")])
+@pytest.mark.parametrize("donor_kind", ["protein", "file"])
+def test_yaml_fusion_keeps_metadata_with_its_residues(
+    targets: tuple[str, ...], donor_kind: str, tmp_path: Path
+) -> None:
+    """Fusing before another chain must move all conditioning with the donor."""
+    mol = Chem.MolFromSequence("G")
+    for atom in mol.GetAtoms():
+        atom.SetProp("name", atom.GetPDBResidueInfo().GetName().strip())
+    mol = Chem.AddHs(mol)
+    AllChem.EmbedMolecule(mol, randomSeed=0)
+    mols = {"GLY": mol}
+    parser = YamlDesignParser(tmp_path)
+    (tmp_path / "base.cif").write_text(to_mmcif(make_structure()))
+    entities = [{"file": {"path": "base.cif"}}]
+
+    def parse(items: list[dict]) -> Target:
+        return parser.parse_boltzgen_schema(
+            "metadata", {"entities": items}, mols, tmp_path, tmp_path
+        )
+
+    current = parse(entities)
+    names = (
+        "res_design_mask",
+        "res_structure_groups",
+        "res_binding_type",
+        "res_ss_types",
+        "res_aa_constraint_mask",
+    )
+    for index, target in enumerate(targets):
+        donor_id = chr(ord("D") + index)
+        if donor_kind == "protein":
+            donor = {
+                "id": donor_id,
+                "sequence": "G2..2",
+                "binding_types": "buu",
+                "secondary_structure": "uhs",
+                "residue_constraints": [{"position": 2, "allowed": "G"}],
+            }
+        else:
+            structure = make_structure(1)
+            structure.chains["name"] = donor_id
+            path = tmp_path / f"{donor_id}.cif"
+            path.write_text(to_mmcif(structure))
+            donor = {
+                "path": str(path),
+                "design": [{"chain": {"id": donor_id, "res_index": "2..3"}}],
+                "structure_groups": [{"group": {"id": donor_id, "visibility": 2}}],
+                "binding_types": [{"chain": {"id": donor_id, "binding": "1"}}],
+                "secondary_structure": [
+                    {"chain": {"id": donor_id, "helix": "2", "sheet": "3"}}
+                ],
+            }
+        standalone = parse([{donor_kind: donor}])
+        chain = current.structure.chains[current.structure.chains["name"] == target][0]
+        boundary = int(chain["res_idx"] + chain["res_num"])
+        expected = {
+            name: np.concatenate(
+                [
+                    getattr(current.design_info, name)[:boundary],
+                    getattr(standalone.design_info, name),
+                    getattr(current.design_info, name)[boundary:],
+                ]
+            )
+            for name in names
+        }
+        entities.append({donor_kind: {**donor, "fuse": target}})
+        current = parse(entities)
+        for name in names:
+            np.testing.assert_array_equal(
+                getattr(current.design_info, name), expected[name], err_msg=name
+            )

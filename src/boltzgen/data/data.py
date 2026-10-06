@@ -353,6 +353,45 @@ def _insert_coordinate_models(
     return np.concatenate(result)
 
 
+def _update_backbone_cyclization(
+    before: "Structure", after: "Structure", chain_idx: int
+) -> None:
+    """Keep an existing N/C closure on the edited chain's actual termini."""
+    old_chain = before.chains[chain_idx]
+    if old_chain["cyclic_period"] <= 0:
+        return
+    new_chain = after.chains[chain_idx]
+    old_first = old_chain["res_idx"]
+    old_last = old_first + old_chain["res_num"] - 1
+    # Bond chain fields index the chain table, independently of asym_id.
+    same_chain = (before.bonds["chain_1"] == chain_idx) & (
+        before.bonds["chain_2"] == chain_idx
+    )
+    for n_end, c_end in ((1, 2), (2, 1)):
+        matches = np.flatnonzero(
+            same_chain
+            & (before.bonds[f"res_{n_end}"] == old_first)
+            & (before.bonds[f"res_{c_end}"] == old_last)
+            & (before.atoms["name"][before.bonds[f"atom_{n_end}"]] == "N")
+            & (before.atoms["name"][before.bonds[f"atom_{c_end}"]] == "C")
+        )
+        for bond_idx in matches:
+            for end, res_idx, name in (
+                (n_end, new_chain["res_idx"], "N"),
+                (c_end, new_chain["res_idx"] + new_chain["res_num"] - 1, "C"),
+            ):
+                residue = after.residues[res_idx]
+                atoms = after.atoms[
+                    residue["atom_idx"] : residue["atom_idx"] + residue["atom_num"]
+                ]
+                atom_offset = np.flatnonzero(atoms["name"] == name).item()
+                after.bonds[bond_idx][f"res_{end}"] = res_idx
+                after.bonds[bond_idx][f"atom_{end}"] = residue["atom_idx"] + atom_offset
+            after.chains[chain_idx]["cyclic_period"] = new_chain["res_num"]
+    # Other terminal connections can also carry a cyclic flag. Their original
+    # endpoints keep the ordinary remapping; they are not backbone closures.
+
+
 @dataclass(frozen=True, slots=True)
 class Structure(NumpySerializable):
     """Structure datatype."""
@@ -414,10 +453,10 @@ class Structure(NumpySerializable):
 
         str_2 : Structure
         """
-        if str_1.atoms.shape[0] == 0:
-            return str_2, {} if return_renaming else str_2
-        elif str_2.atoms.shape[0] == 0:
-            return str_1, {} if return_renaming else str_1
+        if len(str_1.chains) == 0:
+            return (str_2, {}) if return_renaming else str_2
+        elif len(str_2.chains) == 0:
+            return (str_1, {}) if return_renaming else str_1
 
         # get size protein
         num_atoms1 = str_1.atoms.shape[0]
@@ -615,9 +654,15 @@ class Structure(NumpySerializable):
         if res_idx == target_chain["res_num"]:
             # Inserting at the very end of the chain
             atom_insert_idx = target_chain["atom_idx"] + target_chain["atom_num"]
+            next_res_idx = (
+                int(residues["res_idx"][res_insert_idx - 1]) + 1
+                if target_chain["res_num"]
+                else 0
+            )
         else:
             # Inserting before an existing residue
             atom_insert_idx = residues[res_insert_idx]["atom_idx"]
+            next_res_idx = int(residues["res_idx"][res_insert_idx])
         atom_insert_idx = atom_insert_idx.item()
 
         # Create new atoms and residues to be inserted
@@ -630,7 +675,7 @@ class Structure(NumpySerializable):
                 (
                     "GLY",  # name
                     const.token_ids["GLY"],  # res_type
-                    res_idx + i,  # res_idx (within the chain)
+                    next_res_idx + i,  # retain existing offsets and gaps
                     atom_creation_idx,  # atom_idx (absolute)
                     num_atoms_per_gly,  # atom_num
                     atom_creation_idx
@@ -726,6 +771,7 @@ class Structure(NumpySerializable):
             coords=final_coords,
             ensemble=ensemble,
         )
+        _update_backbone_cyclization(structure, result, target_chain_idx)
         return result
 
     @classmethod
@@ -782,7 +828,11 @@ class Structure(NumpySerializable):
         if res_reindex and num_new_residues:
             # Crops can retain leading offsets and internal residue-index gaps.
             # Append after the last retained index, rather than the residue count.
-            last_res_idx = residues["res_idx"][res_insert_idx - 1]
+            last_res_idx = (
+                residues["res_idx"][res_insert_idx - 1]
+                if target_chain["res_num"]
+                else -1
+            )
             res_index_offset = int(last_res_idx) + 1 - int(insert_residues["res_idx"][0])
         for residue in insert_residues:
             if res_reindex:
@@ -823,41 +873,10 @@ class Structure(NumpySerializable):
         # Donor bonds retain their chemistry and move into the target chain.
         insert_bonds = structure2.bonds.copy()
         for end in (1, 2):
-            insert_bonds[f"chain_{end}"] = target_chain["asym_id"]
+            insert_bonds[f"chain_{end}"] = target_chain_idx
             insert_bonds[f"res_{end}"] += res_insert_idx
             insert_bonds[f"atom_{end}"] += atom_insert_idx
         bonds = np.concatenate([bonds, insert_bonds])
-
-        # Handle the cyclic bond in case the fusion target is cyclic
-        if target_chain["cyclic_period"] > 0:
-            chains["cyclic_period"][target_chain_idx] = chains["res_num"][
-                target_chain_idx
-            ]
-            cyclic_bond_idx = np.where(
-                (structure1.bonds["chain_1"] == target_chain["asym_id"])
-                & (structure1.bonds["chain_2"] == target_chain["asym_id"])
-                & (structure1.bonds["res_1"] == target_chain["res_idx"])
-                & (
-                    structure1.bonds["res_2"]
-                    == (target_chain["res_idx"] + target_chain["res_num"] - 1)
-                )
-                & (atoms[structure1.bonds["atom_1"]]["name"] == "N")
-                & (atoms[structure1.bonds["atom_2"]]["name"] == "C")
-            )[0].item()
-
-            bonds[cyclic_bond_idx]["res_2"] = (
-                chains["res_idx"][target_chain_idx]
-                + chains["res_num"][target_chain_idx]
-                - 1
-            )
-
-            # Get atom indices
-            res2 = final_residues[bonds[cyclic_bond_idx]["res_2"]]
-            atoms2 = final_atoms[res2["atom_idx"] : res2["atom_idx"] + res2["atom_num"]]
-            assert "C" in atoms2["name"]
-            idx_in_res2 = np.where(atoms2["name"] == "C")[0].item()
-            atom_idx2 = res2["atom_idx"] + idx_in_res2
-            bonds[cyclic_bond_idx]["atom_2"] = atom_idx2
 
         # Update ensemble: Reflect the new total number of atoms.
         if ensemble.size > 0:
@@ -877,6 +896,7 @@ class Structure(NumpySerializable):
             coords=final_coords,
             ensemble=ensemble,
         )
+        _update_backbone_cyclization(structure1, fused, target_chain_idx)
         return fused
 
     @classmethod
