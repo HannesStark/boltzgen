@@ -399,8 +399,8 @@ class MultimerCropper(Cropper):
         cropped_indices: List[int],
     ) -> Tokenized:
         token_data = data.tokens
-        token_ids_mol = token_data[token_data["mol_type"] == 3]["token_idx"].tolist()  # noqa: PLR2004
-        cropped_indices = sorted({*token_ids_mol, *cropped_indices})
+        ligand_rows = np.flatnonzero(token_data["mol_type"] == 3).tolist()  # noqa: PLR2004
+        cropped_indices = sorted({*ligand_rows, *cropped_indices})
         token_data = token_data[cropped_indices]
         indices = token_data["token_idx"]
         token_bonds = data.bonds

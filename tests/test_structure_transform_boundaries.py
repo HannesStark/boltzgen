@@ -128,6 +128,49 @@ def test_explicit_crop_maps_automatically_retained_ligands(
     np.testing.assert_array_equal(result.token_to_res, tokenized.token_to_res[selected])
 
 
+@pytest.mark.parametrize(
+    ("first_method", "has_mapping"),
+    [("explicit", True), ("normal", True), ("explicit", False)],
+)
+def test_explicit_crop_accepts_retained_ligand_token_ids(
+    first_method: str, has_mapping: bool, tmp_path: Path
+) -> None:
+    source = parse_entities(
+        tmp_path,
+        [
+            {"protein": {"id": "A", "sequence": "GGG"}},
+            {"ligand": {"id": "L", "smiles": "CC"}},
+        ],
+    ).structure
+    tokenized = Tokenizer().tokenize(source)
+    cropper = MultimerCropper([3])
+    if first_method == "normal":
+        first = cropper.crop(
+            tokenized,
+            max_tokens=4,
+            random=np.random.default_rng(0),
+            initial_crop=[1, 2, 3, 4],
+        )
+    else:
+        first = cropper.crop_indices(tokenized, [1, 2])
+    if not has_mapping:
+        first = replace(first, token_to_res=None)
+    original = deepcopy(first)
+
+    second = cropper.crop_indices(first, [0])
+
+    np.testing.assert_array_equal(second.tokens, original.tokens[[0, 2, 3]])
+    if has_mapping:
+        np.testing.assert_array_equal(second.token_to_res, [1, 3, 3])
+        np.testing.assert_array_equal(first.token_to_res, original.token_to_res)
+    else:
+        assert second.token_to_res is None
+        assert first.token_to_res is None
+    np.testing.assert_array_equal(first.tokens, original.tokens)
+    np.testing.assert_array_equal(first.bonds, original.bonds)
+    assert_unmodified(first.structure, original.structure)
+
+
 @pytest.mark.parametrize("chain_name", ["A", "B", "C"])
 @pytest.mark.parametrize("position", [-1, 4])
 def test_insert_rejects_positions_outside_target_chain(
