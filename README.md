@@ -15,6 +15,9 @@ In an environment with python >=3.11:
 pip install boltzgen
 ```
 
+See [NumPy and Numba compatibility](docs/dependencies.md) for dependency bounds
+and tested Python 3.11 and 3.13 combinations.
+
 <details>
   <summary style="font-size: 1.3em; font-weight: 600;">
     Click for detailed installation instructions
