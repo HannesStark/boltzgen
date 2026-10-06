@@ -10,7 +10,7 @@ import hydride
 from sklearn.cluster import DBSCAN
 from Bio import PDB
 from biotite import structure
-from Bio.Seq import Seq
+from itertools import zip_longest
 
 
 from matplotlib import pyplot as plt
@@ -514,6 +514,26 @@ def vendi_scores(
     return scores
 
 
+def sequence_identity(
+    seq1: str, seq2: str, aligner: Align.PairwiseAligner | None = None
+) -> float:
+    """Align corresponding colon-separated chains without cross-chain matches.
+
+    Chains correspond in feature order. Unmatched chains contribute length but
+    no matches; delimiters never count as amino acids. Single-chain scoring is
+    unchanged.
+    """
+    if aligner is None:
+        aligner = Align.PairwiseAligner()
+    score = 0.0
+    length = 0
+    for chain1, chain2 in zip_longest(seq1.split(":"), seq2.split(":"), fillvalue=""):
+        length += max(len(chain1), len(chain2))
+        if chain1 and chain2:
+            score += aligner.score(chain1, chain2)
+    return score / length if length else 0.0
+
+
 def vendi_sequences(all_seqs: List[np.ndarray], diversity_subset: int = None) -> float:
     if diversity_subset is not None and diversity_subset < len(all_seqs):
         all_seqs = random.sample(all_seqs, diversity_subset)
@@ -523,11 +543,7 @@ def vendi_sequences(all_seqs: List[np.ndarray], diversity_subset: int = None) ->
     aligner = Align.PairwiseAligner()
     for i in tqdm(range(N), desc="Computing sequence diversity."):
         for j in range(i + 1, N):
-            seq1 = Seq(all_seqs[i])
-            seq2 = Seq(all_seqs[j])
-            alignments = aligner.align(seq1, seq2)
-
-            similarity = alignments[0].score / max(len(seq1), len(seq2))
+            similarity = sequence_identity(all_seqs[i], all_seqs[j], aligner)
             sims[i, j] = similarity
 
     return {
@@ -1146,10 +1162,6 @@ def compute_liability_metrics(sequence, liability_modality, liability_peptide_ty
         motif = v["motif"]
         violation_counts[motif] = violation_counts.get(motif, 0) + 1
 
-    # Store individual violation type counts as metrics
-    for motif, count in violation_counts.items():
-        metrics[f"liability_{motif}_count"] = count
-
     # Add detailed violation information
     # Group violations by type for intelligent reporting
     violations_by_type = {}
@@ -1167,9 +1179,16 @@ def compute_liability_metrics(sequence, liability_modality, liability_peptide_ty
             peptide_type=liability_peptide_type,
         ).keys()
     )
+    all_motifs.update(violation_counts)
+    if liability_modality == "antibody":
+        all_motifs.update({"UnpairedCys", "HighNetCharge"})
+    elif liability_peptide_type in {"linear", "cyclic"}:
+        all_motifs.add("UnpairedCys")
+        if liability_peptide_type == "cyclic":
+            all_motifs.update({"LowHydrophilic", "ConsecIdentical", "LongHydrophobic"})
     for motif in all_motifs:
         # Initialize all possible fields with default values
-        metrics[f"liability_{motif}_count"] = 0
+        metrics[f"liability_{motif}_count"] = violation_counts.get(motif, 0)
         metrics[
             f"liability_{motif}_position"
         ] = -1  # use -1 for no position (keeps int dtype)
@@ -1183,6 +1202,7 @@ def compute_liability_metrics(sequence, liability_modality, liability_peptide_ty
 
     # Store detailed violation information
     for motif, motif_violations in violations_by_type.items():
+        metrics[f"liability_{motif}_severity"] = motif_violations[0]["severity"]
         if len(motif_violations) == 1:
             # Single violation - store all details
             v = motif_violations[0]
@@ -1191,7 +1211,6 @@ def compute_liability_metrics(sequence, liability_modality, liability_peptide_ty
                 int(v["pos"]) if v["pos"] is not None else -1
             )
             metrics[f"liability_{motif}_length"] = v["len"]
-            metrics[f"liability_{motif}_severity"] = v["severity"]
             if "details" in v:
                 metrics[f"liability_{motif}_details"] = v["details"]
             else:
@@ -1257,5 +1276,101 @@ def compute_liability_metrics(sequence, liability_modality, liability_peptide_ty
 
     metrics["liability_violations_summary"] = (
         "; ".join(violation_summary) if violation_summary else ""
+    )
+    return metrics
+
+
+def chain_hydrophobicity(sequences: dict[int, str]) -> float:
+    """Return the residue-weighted mean of independently scored protein chains.
+
+    This is a summary of chain scores, not a retention prediction for a complex.
+    Each chain retains its own terminal, neighbor and length corrections.
+    """
+    if len(sequences) == 1:
+        # Preserve exact single-chain values rather than rounding through n*h/n.
+        return calc_hydrophobicity(next(iter(sequences.values())))
+    length = sum(len(seq) for seq in sequences.values())
+    if not length:
+        return float("nan")
+    return (
+        sum(len(seq) * calc_hydrophobicity(seq) for seq in sequences.values()) / length
+    )
+
+
+def compute_chain_liability_metrics(
+    sequences: dict[int, str], liability_modality: str, liability_peptide_type: str
+) -> dict:
+    """Sum independent chain scans, keeping all positions in per-chain fields.
+
+    Aggregate positions use -1 (no shared coordinate system). Chain IDs are
+    feature asym_id values, matching the full_sequence_<id> CSV columns.
+    """
+    by_chain = {
+        chain_id: compute_liability_metrics(
+            seq, liability_modality, liability_peptide_type
+        )
+        for chain_id, seq in sequences.items()
+    }
+    if len(by_chain) == 1:
+        return next(iter(by_chain.values()))
+    metrics = {
+        f"{key}_{chain_id}": value
+        for chain_id, values in by_chain.items()
+        for key, value in values.items()
+    }
+    for key in (
+        "liability_score",
+        "liability_num_violations",
+        "liability_high_severity_violations",
+        "liability_medium_severity_violations",
+        "liability_low_severity_violations",
+    ):
+        metrics[key] = sum(values[key] for values in by_chain.values())
+    count_keys = {
+        key for values in by_chain.values() for key in values if key.endswith("_count")
+    }
+    for key in sorted(count_keys):
+        prefix = key.removesuffix("_count")
+        count = sum(values.get(key, 0) for values in by_chain.values())
+        details = []
+        for chain_id, values in by_chain.items():
+            if values.get(key, 0):
+                position = values.get(f"{prefix}_position", -1)
+                positions = values.get(f"{prefix}_positions", "")
+                location = f"pos{position}" if position >= 0 else positions
+                detail = values.get(f"{prefix}_details", "") or values.get(
+                    f"{prefix}_global_details", ""
+                )
+                details.append(
+                    f"chain {chain_id}: {values[key]} ({location or 'non-positional'})"
+                    + (f" [{detail}]" if detail else "")
+                )
+        metrics.update(
+            {
+                key: count,
+                f"{prefix}_position": -1,
+                f"{prefix}_length": 0,
+                f"{prefix}_severity": severity_score(prefix.removeprefix("liability_"))
+                if count
+                else 0,
+                f"{prefix}_details": "; ".join(details),
+                f"{prefix}_positions": "",
+                f"{prefix}_num_positions": sum(
+                    values.get(f"{prefix}_num_positions", 0)
+                    + int(values.get(f"{prefix}_position", -1) >= 0)
+                    for values in by_chain.values()
+                ),
+                f"{prefix}_global_details": "",
+                f"{prefix}_avg_severity": float(
+                    severity_score(prefix.removeprefix("liability_"))
+                )
+                if count
+                else 0.0,
+            }
+        )
+    metrics["liability_violations_summary"] = "; ".join(
+        f"chain {chain_id}: {values['liability_violations_summary']}"
+        for chain_id, values in by_chain.items()
+        if values["liability_violations_summary"]
     )
     return metrics

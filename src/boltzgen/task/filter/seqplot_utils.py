@@ -1,5 +1,6 @@
 import os
 import tempfile
+import warnings
 from matplotlib import pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.patches import Patch
@@ -92,6 +93,13 @@ def aa_composition_pie(sequences, name):
         for aa in seq:
             if aa in AA20:
                 hydrophobicity_counts[_hydropathy_class(aa)] += 1
+
+    if not any(hydrophobicity_counts.values()):
+        for ax in (ax1, ax2):
+            ax.text(0.5, 0.5, "No recognized amino acids", ha="center", va="center")
+            ax.set_axis_off()
+        fig.suptitle(name)
+        return fig
 
     ax1.pie(
         hydrophobicity_counts.values(),
@@ -265,7 +273,15 @@ def draw_logo(counts, title, width=10):
 
 
 def cdr_logo(sequences, name):
-    from abnumber import Chain
+    try:
+        from abnumber import Chain
+    except ImportError:
+        warnings.warn(
+            "Skipping optional CDR logos: the abnumber package and its dependencies "
+            "are required. Other sequence and liability plots are still available.",
+            stacklevel=2,
+        )
+        return None
 
     # Create temporary FASTA
     names = [f"seq_{i + 1}" for i in range(len(sequences))]
@@ -392,40 +408,59 @@ def plot_seq_liabilities(
     )
     norm = mcolors.Normalize(vmin=0, vmax=max(const.liability_severity.values()))
 
-    # Better figure size calculation to prevent letter cropping
-    # Ensure minimum width for short sequences and proper height
-    min_width = max(8, n * 0.3)  # At least 8 inches wide, or 0.3 inches per residue
-    fig_height = 4  # Fixed height for consistency
-
-    # Create figure with space for legend
-    fig, (ax, ax_legend) = plt.subplots(
-        2, 1, figsize=(min_width, fig_height), gridspec_kw={"height_ratios": [2.5, 1]}
+    # Wrap the already-scored full sequence to keep glyphs legible at PDF width.
+    columns = 40
+    row_count = max(1, (n + columns - 1) // columns)
+    legend_columns = 2
+    legend_rows = (len(violation_types) + legend_columns - 1) // legend_columns
+    legend_height = max(1.5, 0.35 * legend_rows)
+    fig, axes = plt.subplots(
+        row_count + 2,
+        1,
+        figsize=(8.5, 1.2 * row_count + legend_height + 1),
+        gridspec_kw={"height_ratios": [1.2] * row_count + [0.3, legend_height]},
+        squeeze=False,
     )
-
-    # Main sequence plot
-    for idx, aa in enumerate(sequence):
-        color = cmap(norm(sev_arr[idx]))
-        ax.text(
-            idx,
-            0.5,
-            aa,
-            ha="center",
-            va="center",
-            fontsize=12,
-            bbox=dict(facecolor=color, edgecolor="none", boxstyle="square,pad=0.1"),
-        )
-    ax.set_xlim(-0.5, n - 0.5)
-    ax.set_ylim(0, 1)
-    ax.axis("off")
+    sequence_axes = axes[:row_count, 0]
+    ax_colorbar, ax_legend = axes[-2:, 0]
+    for row, ax in enumerate(sequence_axes):
+        start = row * columns
+        stop = min(start + columns, n)
+        for idx in range(start, stop):
+            ax.text(
+                idx - start,
+                0.4,
+                sequence[idx],
+                ha="center",
+                va="center",
+                fontsize=12,
+                bbox=dict(
+                    facecolor=cmap(norm(sev_arr[idx])),
+                    edgecolor="none",
+                    boxstyle="square,pad=0.1",
+                ),
+            )
+        ax.set_xlim(-0.5, max(1, min(n, columns)) - 0.5)
+        ax.set_ylim(0, 1)
+        ax.axis("off")
+        if n:
+            ax.text(
+                0,
+                0.95,
+                f"Residues {start + 1}-{stop}",
+                transform=ax.transAxes,
+                fontsize=8,
+                va="top",
+            )
 
     if total_score is not None:
         name += f" (Score: {total_score})"
-    ax.set_title(name)
+    sequence_axes[0].set_title(name)
 
     # Colorbar
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
-    plt.colorbar(sm, ax=ax, orientation="horizontal", pad=0.2, label="Severity")
+    plt.colorbar(sm, cax=ax_colorbar, orientation="horizontal", label="Severity")
 
     # Legend showing violation types with motif patterns
     if violation_types:
@@ -482,7 +517,7 @@ def plot_seq_liabilities(
             legend_labels,
             loc="center",
             title="Violations",
-            ncol=1,
+            ncol=legend_columns,
             fontsize=8,
         )
     else:

@@ -97,12 +97,20 @@ protocol_configs = {
         "filtering": ["use_affinity=true"],
     },
     "nanobody-anything": {
-        "analysis": ["largest_hydrophobic=false", "largest_hydrophobic_refolded=false"],
-        "filtering": ["filter_cysteine=true"],
+        "analysis": [
+            "largest_hydrophobic=false",
+            "largest_hydrophobic_refolded=false",
+            "liability_modality=antibody",
+        ],
+        "filtering": ["filter_cysteine=true", "modality=antibody"],
     },
     "antibody-anything": {
-        "analysis": ["largest_hydrophobic=false", "largest_hydrophobic_refolded=false"],
-        "filtering": ["filter_cysteine=true"],
+        "analysis": [
+            "largest_hydrophobic=false",
+            "largest_hydrophobic_refolded=false",
+            "liability_modality=antibody",
+        ],
+        "filtering": ["filter_cysteine=true", "modality=antibody"],
     },
     "protein-redesign": {
         "esmfold2_scoring": ["scoring_mode=redesign"],
@@ -1526,7 +1534,9 @@ def get_artifact_path(
 
 def parse_config_args(base_config, config_args, valid_step_names):
     config_args_by_step = collections.defaultdict(list)
-    config_args_by_step.update(base_config)
+    config_args_by_step.update(
+        {step: list(values) for step, values in base_config.items()}
+    )
     if config_args:
         for config in config_args:
             if len(config) < 2:
@@ -1678,8 +1688,22 @@ def merge_command(args: argparse.Namespace) -> None:
 
             metrics_path = src_dir / "aggregate_metrics_analyze.csv"
             if metrics_path.exists():
+                # Preserve identifiers and valid "NA" sequences when merging.
+                sequence_columns = [
+                    column
+                    for column in pd.read_csv(metrics_path, nrows=0).columns
+                    if column == "designed_chain_sequence"
+                    or column.startswith(("designed_sequence", "full_sequence_"))
+                ]
                 df = pd.read_csv(
-                    metrics_path, converters={"id": str, "file_name": str}
+                    metrics_path,
+                    converters={
+                        "id": str,
+                        "file_name": str,
+                        **dict.fromkeys(
+                            sequence_columns, lambda value: value or None
+                        ),
+                    },
                 )
                 if df.empty:
                     message = (
