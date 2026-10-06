@@ -669,7 +669,7 @@ class FromGeneratedDataModule(pl.LightningDataModule):
             p
             for p in design_dir.iterdir()
             if p.suffix in {".cif", ".pdb"}
-            and "_native.cif" not in p.name
+            and not p.stem.endswith("_native")
             and "_metadata.npz" not in p.name
         )
         if self.fail_if_no_designs and len(generated_paths) == 0:
@@ -693,13 +693,52 @@ class FromGeneratedDataModule(pl.LightningDataModule):
             generated_paths = filtered_generated_paths
 
         if self.skip_existing:
+            if (
+                self.skip_existing_kind == "inverse_fold"
+                and self.cfg.multiplicity > 1
+                and self.output_dir is not None
+            ):
+                input_stems = {path.stem for path in generated_paths}
+                num_digits = len(str(self.cfg.multiplicity - 1))
+                for path in self.output_dir.glob("*.cif"):
+                    stem, _, suffix = path.stem.rpartition("_")
+                    if (
+                        stem in input_stems
+                        and suffix.isascii()
+                        and suffix.isdecimal()
+                        and path.is_file()
+                        and path.with_suffix(".npz").is_file()
+                    ):
+                        index = int(suffix)
+                        if (
+                            index < self.cfg.multiplicity
+                            and suffix != f"{index:0{num_digits}d}"
+                        ):
+                            message = (
+                                "Existing inverse-fold outputs use different numeric "
+                                f"padding from the requested multiplicity: {path}. "
+                                "Use a fresh output directory when changing padding."
+                            )
+                            raise ValueError(message)
+
             # Functions to map an input path to a list of output paths.
             # If all output paths exist, the input path is skipped.
             def output_path_inverse_fold(input_path):
                 assert self.output_dir is not None
+                # Inverse folding emits one diffusion sample per dataset item.
+                # Match DesignWriter's multiplicity suffix and zero padding.
+                if self.cfg.multiplicity > 1:
+                    num_digits = len(str(self.cfg.multiplicity - 1))
+                    stems = [
+                        f"{input_path.stem}_{sample:0{num_digits}d}"
+                        for sample in range(self.cfg.multiplicity)
+                    ]
+                else:
+                    stems = [input_path.stem]
                 return [
-                    self.output_dir / f"{input_path.stem}.cif",
-                    self.output_dir / f"{input_path.stem}.npz",
+                    self.output_dir / f"{stem}{suffix}"
+                    for stem in stems
+                    for suffix in (".cif", ".npz")
                 ]
 
             def output_path_folded(input_path):
@@ -764,7 +803,7 @@ class FromGeneratedDataModule(pl.LightningDataModule):
             generated_paths = [
                 p
                 for p in generated_paths
-                if not all(output_path.exists() for output_path in selected_mapping(p))
+                if not all(output_path.is_file() for output_path in selected_mapping(p))
             ]
             msg = f"[Info] Skipped already {self.skip_existing_kind} IDs. Number of files after filtering: {len(generated_paths)}"
             print(msg)
@@ -810,16 +849,20 @@ class FromGeneratedDataModule(pl.LightningDataModule):
         # Sort the paths to make sure each subprocess (when using multiple GPUs) has the same order and the index distribution when fetching from the dataset fetches the correct paths instead of fetching the same paths multiple times.
         filtered_paths = sorted(filtered_paths)
         for path in filtered_paths:
-            ext = path.suffix
-
-            # Legacy files contain "_gen" before the extension.
-            if path.stem.endswith("_gen"):
-                metadata_path = path.with_name(
-                    path.name.replace(f"_gen{ext}", "_metadata.npz")
-                )
-                native_path = path.with_name(
-                    path.name.replace(f"_gen{ext}", "_native.cif")
-                )
+            # Prefer modern matching sidecars; old files used "_gen"/"_metadata".
+            if path.stem.endswith("_gen") and not path.with_suffix(".npz").is_file():
+                metadata_path = path.with_name(f"{path.stem[:-4]}_metadata.npz")
+                if metadata_path.is_file() and any(
+                    metadata_path.with_suffix(suffix).is_file()
+                    for suffix in (".cif", ".pdb")
+                ):
+                    message = (
+                        f"Ambiguous legacy metadata for {path}: {metadata_path} "
+                        "also belongs to a separate coordinate file. Restore the "
+                        "matching metadata before loading."
+                    )
+                    raise ValueError(message)
+                native_path = path.with_name(f"{path.stem[:-4]}_native.cif")
             else:
                 metadata_path = path.with_suffix(".npz")
                 native_path = path.with_name(f"{path.stem}_native.cif")
