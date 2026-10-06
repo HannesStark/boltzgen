@@ -59,6 +59,75 @@ def parse_entities(
     )
 
 
+@pytest.mark.parametrize(
+    "indices", [(0, 1, 2, 3, 4, 5), (1, 2, 3, 4, 5), (3, 4, 5), (0, 2, 3, 5)]
+)
+def test_explicit_crop_preserves_residue_mapping(
+    indices: tuple[int, ...], tmp_path: Path
+) -> None:
+    source = parse_entities(
+        tmp_path,
+        [{"protein": {"id": ["A", "B"], "sequence": "GGG", "cyclic": True}}],
+    ).structure
+    original = deepcopy(source)
+    tokenized = Tokenizer().tokenize(source)
+    original_mapping = tokenized.token_to_res.copy()
+    cropped = MultimerCropper([3]).crop_indices(tokenized, list(indices))
+    np.testing.assert_array_equal(cropped.token_to_res, indices)
+    np.testing.assert_array_equal(tokenized.token_to_res, original_mapping)
+    features = Featurizer().process(
+        Input(cropped.tokens, cropped.bonds, cropped.token_to_res, source, {}, {}),
+        random=np.random.default_rng(0),
+        molecules={"GLY": Chem.RemoveHs(molecule())},
+        training=False,
+        max_seqs=1,
+    )
+    features["id"] = "explicit_crop"
+    result, _, _ = Structure.from_feat(features)
+    retained = [
+        bond
+        for bond in source.bonds
+        if bond["res_1"] in indices and bond["res_2"] in indices
+    ]
+    assert len(result.bonds) == len(retained)
+    for actual, before in zip(result.bonds, retained, strict=True):
+        for end, atom_name in ((1, "N"), (2, "C")):
+            expected_residue = indices.index(int(before[f"res_{end}"]))
+            assert actual[f"res_{end}"] == expected_residue
+            residue = result.residues[expected_residue]
+            assert residue["atom_idx"] <= actual[f"atom_{end}"]
+            assert actual[f"atom_{end}"] < residue["atom_idx"] + residue["atom_num"]
+            assert result.atoms[actual[f"atom_{end}"]]["name"] == atom_name
+    to_mmcif(result)
+    assert_unmodified(source, original)
+
+
+@pytest.mark.parametrize("indices", [(), (2, 0, 2)])
+def test_explicit_crop_preserves_optional_mapping(indices: tuple[int, ...]) -> None:
+    tokenized = replace(Tokenizer().tokenize(make_structure(1)), token_to_res=None)
+    result = MultimerCropper([3]).crop_indices(tokenized, list(indices))
+    assert result.token_to_res is None
+    np.testing.assert_array_equal(result.tokens["token_idx"], sorted(set(indices)))
+
+
+@pytest.mark.parametrize("indices", [(), (1,)])
+def test_explicit_crop_maps_automatically_retained_ligands(
+    indices: tuple[int, ...], tmp_path: Path
+) -> None:
+    source = parse_entities(
+        tmp_path,
+        [
+            {"protein": {"id": "A", "sequence": "GGG"}},
+            {"ligand": {"id": "L", "smiles": "CC"}},
+        ],
+    ).structure
+    tokenized = Tokenizer().tokenize(source)
+    selected = sorted(set(indices) | {3, 4})
+    result = MultimerCropper([3]).crop_indices(tokenized, list(indices))
+    np.testing.assert_array_equal(result.tokens["token_idx"], selected)
+    np.testing.assert_array_equal(result.token_to_res, tokenized.token_to_res[selected])
+
+
 @pytest.mark.parametrize("chain_name", ["A", "B", "C"])
 @pytest.mark.parametrize("position", [-1, 4])
 def test_insert_rejects_positions_outside_target_chain(

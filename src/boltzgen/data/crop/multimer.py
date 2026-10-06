@@ -407,4 +407,13 @@ class MultimerCropper(Cropper):
         token_bonds = token_bonds[np.isin(token_bonds["token_1"], indices)]
         token_bonds = token_bonds[np.isin(token_bonds["token_2"], indices)]
 
-        return replace(data, tokens=token_data, bonds=token_bonds)
+        return replace(
+            data,
+            tokens=token_data,
+            bonds=token_bonds,
+            token_to_res=(
+                data.token_to_res[cropped_indices]
+                if data.token_to_res is not None
+                else None
+            ),
+        )
