@@ -1,3 +1,7 @@
+import os
+import pickle
+from tempfile import TemporaryDirectory
+
 from boltzgen.utils.quiet import quiet_startup
 
 
@@ -58,6 +62,29 @@ from boltzgen.task.esmfold2.contract import (
     fingerprint,
     load_result,
 )
+
+
+_WORKER_ANALYZE: "Analyze | None" = None
+_MAX_STALLED_POOLS = 3
+
+
+def _init_worker(state_path: Path) -> None:
+    """Keep one analysis task per spawned worker and configure its CPU pools."""
+    global _WORKER_ANALYZE  # noqa: PLW0603
+    # Spawned workers do not inherit torch settings from the parent. Let Torch
+    # honor explicit OMP/MKL settings; otherwise avoid nested CPU parallelism.
+    if not any(os.environ.get(key) for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS")):
+        torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
+    rdkit.Chem.SetDefaultPickleProperties(rdkit.Chem.PropertyPickleOptions.AllProps)
+    with state_path.open("rb") as handle:
+        _WORKER_ANALYZE = pickle.load(handle)  # noqa: S301 -- trusted parent snapshot
+
+
+def _worker_compute_metrics(idx: int) -> str | None:
+    """Submit only the sample index after initialization transfers the dataset."""
+    assert _WORKER_ANALYZE is not None
+    return _WORKER_ANALYZE.compute_metrics(idx)
 
 
 class Analyze(Task):
@@ -164,10 +191,6 @@ class Analyze(Task):
         self.diversity_subset = diversity_subset
         self.use_design_mask_for_target = use_design_mask_for_target
 
-        # Prevent each worker process from spawning its own multithreaded pools
-        torch.set_num_threads(1)
-        torch.set_num_interop_threads(1)
-
         if design_dir is not None:
             self.init_datasets(design_dir, load_dataset=False)
 
@@ -198,8 +221,10 @@ class Analyze(Task):
 
     def run_parallel(self, num, num_processes):
         """
-        Run tasks  in parallel. If a worker crashes and the pool breaks,
-        restart a fresh pool and only rerun tasks that truly didn't finish.
+        Run tasks in parallel, retrying unconfirmed work after a worker crashes.
+
+        Stop after three consecutive broken pools make no progress. A task whose
+        result was lost with its worker may execute again, even if it wrote files.
         """
         ctx = multiprocessing.get_context("spawn")
 
@@ -207,41 +232,63 @@ class Analyze(Task):
         completed_task_ids = set()
         sample_ids = []
 
-        pbar = tqdm(total=num, desc="Processing samples")
-
-        while completed_task_ids != all_task_ids:
-            remaining = sorted(all_task_ids - completed_task_ids)
-
-            try:
+        # Preserve RDKit atom properties in the worker snapshot.
+        rdkit.Chem.SetDefaultPickleProperties(rdkit.Chem.PropertyPickleOptions.AllProps)
+        if not all_task_ids:
+            return sample_ids
+        stalled_pools = 0
+        with TemporaryDirectory(prefix="boltzgen-analysis-") as state_dir, tqdm(
+            total=num, desc="Processing samples"
+        ) as pbar:
+            state_path = Path(state_dir) / "analysis.pkl"
+            while completed_task_ids != all_task_ids:
+                remaining = sorted(all_task_ids - completed_task_ids)
+                completed_before = len(completed_task_ids)
+                # Large initargs block spawn while each child imports modules.
+                # A small path lets workers start and load their state in parallel.
+                # Ordinary pickle is read-many; multiprocessing's tensor reducers
+                # can instead encode handles that only one reader may consume.
+                with state_path.open("wb") as handle:
+                    pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
                 with ProcessPoolExecutor(
-                    max_workers=num_processes, mp_context=ctx
+                    max_workers=min(num_processes, len(remaining)),
+                    mp_context=ctx,
+                    initializer=_init_worker,
+                    initargs=(state_path,),
                 ) as ex:
-                    fut2idx = {ex.submit(self.compute_metrics, i): i for i in remaining}
+                    fut2idx = {}
+                    try:
+                        for idx in remaining:
+                            fut2idx[ex.submit(_worker_compute_metrics, idx)] = idx
+                    except BrokenProcessPool:
+                        # Still collect every confirmed result submitted so far.
+                        pass
 
-                    # Iterate over futures that actually *completed* (finished or raised)
-                    for f in as_completed(fut2idx):
-                        idx = fut2idx[f]
+                    for future in as_completed(fut2idx):
                         try:
-                            sid = f.result()
-                            if sid is not None:
-                                sample_ids.append(sid)
-                            # Count successful completion
-                            completed_task_ids.add(idx)
-                            pbar.update(1)
-
+                            sid = future.result()
                         except BrokenProcessPool:
-                            # Pool is dead, mark this idx completed.
-                            # Let the outer except restart a fresh pool for all unfinished.
-                            completed_task_ids.add(idx)
-                            pbar.update(1)
-                            raise
+                            # A broken future does not identify the crashed task.
+                            # Retry all unconfirmed tasks in the next pool.
+                            continue
+                        if sid is not None:
+                            sample_ids.append(sid)
+                        completed_task_ids.add(fut2idx[future])
+                        pbar.update(1)
 
-            except BrokenProcessPool:
-                print("\nPOOL BROKEN: A worker died. Restarting with remaining tasks…")
-                # Nothing else to do: the while-loop will retry only the unfinished tasks.
-                continue
+                if completed_task_ids != all_task_ids:
+                    stalled_pools = (
+                        stalled_pools + 1
+                        if len(completed_task_ids) == completed_before
+                        else 0
+                    )
+                    if stalled_pools >= _MAX_STALLED_POOLS:
+                        raise BrokenProcessPool(
+                            "Analysis workers failed in three consecutive pools "
+                            "without completing a task."
+                        )
+                    print("\nPOOL BROKEN: A worker died. Restarting with remaining tasks…")
 
-        pbar.close()
         return sample_ids
 
     def run(self, config=None, run_prediction=False):
@@ -259,7 +306,7 @@ class Analyze(Task):
             msg = "There were 0 samples to compute metrics for. Skipping the distribute_tasks step that calls compute_metrics"
             print(msg)
             return
-        num_processes = min(self.num_processes, multiprocessing.cpu_count())
+        num_processes = min(self.num_processes, multiprocessing.cpu_count(), num)
         if num_processes == 1:
             for idx in tqdm(range(num)):
                 sample_id = self.compute_metrics(idx)
