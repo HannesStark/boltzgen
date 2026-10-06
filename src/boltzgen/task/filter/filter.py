@@ -1415,9 +1415,7 @@ class Filter(Task):
                     show(aa_composition_pie(sequences, title))
                     if self.modality == "antibody":
                         full_sequences = [
-                            seq
-                            for full, _ in views
-                            if (seq := full.get(chain_id))
+                            seq for full, _ in views if (seq := full.get(chain_id))
                         ]
                         show(cdr_logo(full_sequences, title))
 

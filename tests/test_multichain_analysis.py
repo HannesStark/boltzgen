@@ -12,7 +12,10 @@ import pandas as pd
 import pytest
 import torch
 from Bio import Align
+from matplotlib.backend_bases import RendererBase
+from matplotlib.backends.backend_pdf import RendererPdf
 from matplotlib.figure import Figure
+from matplotlib.legend import Legend
 from test_atom_confidence_export import _real_confidence_features
 from test_filter_rule_integrity import _load_filter
 from torch.nn.functional import one_hot
@@ -481,6 +484,69 @@ def test_wrapped_liability_plot_preserves_full_sequence_coordinates() -> None:
     assert "Residues 41-80" in labels
     assert "Residues 81-85" in labels
     filter_module.plt.close(figure)
+
+
+@pytest.mark.parametrize("length", [120, 240])
+def test_dense_liability_legend_fits_saved_pdf(
+    length: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Exercise the largest supported legend through the real scanner and report.
+    sequence = "NGNASNNSTDDDPTSWMNPRGDGGFHWHYFCKKKKKK"
+    sequence = sequence.ljust(length, "A")
+    task = Filter(
+        str(tmp_path), use_affinity=True, num_liability_plots=1, modality="antibody"
+    )
+    task.df = pd.DataFrame(
+        [
+            {
+                "id": "legend",
+                "designed_sequence": "AA",
+                "designed_chain_sequence": sequence,
+            }
+        ]
+    )
+    task.df_div = task.df.copy()
+    task.filters = [{"feature": "id", "lower_is_better": True, "threshold": "z"}]
+    original_draw = Legend.draw
+    measured = []
+
+    def record(legend: Legend, renderer: RendererBase) -> None:
+        original_draw(legend, renderer)
+        if not isinstance(getattr(renderer, "_vector_renderer", renderer), RendererPdf):
+            return
+        figure = legend.figure
+        frame = legend.get_window_extent(renderer)
+        label = figure.axes[-2].xaxis.label.get_window_extent(renderer)
+        overlaps = 0
+        for ax in figure.axes[:-2]:
+            ranges = [
+                text for text in ax.texts if text.get_text().startswith("Residues ")
+            ]
+            letters = [text for text in ax.texts if len(text.get_text()) == 1]
+            overlaps += sum(
+                title.get_window_extent(renderer).overlaps(
+                    letter.get_window_extent(renderer)
+                )
+                for title in ranges
+                for letter in letters
+            )
+        measured.append(
+            (
+                len(legend.get_texts()),
+                frame.y0 - figure.bbox.y0,
+                label.y0 - frame.y1,
+                overlaps,
+            )
+        )
+
+    monkeypatch.setattr(Legend, "draw", record)
+    task.make_visualization([], [], [], [], [["score", 1]], "test", [["id", "ID"]])
+    assert measured
+    for entries, bottom_margin, label_gap, overlaps in measured:
+        assert entries == 17
+        assert bottom_margin >= 0
+        assert label_gap >= 0
+        assert overlaps == 0
 
 
 @pytest.mark.parametrize(
