@@ -7,6 +7,9 @@ from __future__ import annotations
 import copy
 import json
 import os
+import tempfile
+import threading
+import time
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -34,9 +37,19 @@ from boltzgen.task.esmfold2.contract import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
     from boltzgen.task.predict.data_from_generated import FromGeneratedDataset
+
+
+@pytest.fixture(autouse=True)
+def isolate_snapshot_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[None]:
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    yield
+    assert not list(tmp_path.glob("boltzgen-analysis-*"))
 
 
 @dataclass
@@ -50,6 +63,25 @@ class _CountedDataset:
     def __getstate__(self) -> dict:
         self.pickles += 1
         return self.__dict__.copy()
+
+
+def _restore_startup_gate(directory: Path) -> None:
+    """Wait for the parent to observe workers loading state concurrently."""
+    (directory / f"loaded-{os.getpid()}").touch()
+    deadline = time.monotonic() + 90
+    while not (directory / "release").exists():
+        if time.monotonic() > deadline:
+            msg = "Parent did not release worker startup"
+            raise TimeoutError(msg)
+        time.sleep(0.02)
+
+
+@dataclass
+class _StartupGate:
+    directory: Path
+
+    def __reduce__(self) -> tuple:
+        return _restore_startup_gate, (self.directory,)
 
 
 class _TransportAnalyze(Analyze):
@@ -68,6 +100,7 @@ class _TransportAnalyze(Analyze):
             raise ValueError("metric failed")
         if idx == 1 and self.failure == "skip":
             return None
+        torch.testing.assert_close(self.tensor, torch.tensor([1, 2, 3]))
         atom = self.molecule.GetAtomWithIdx(0)
         return (
             idx,
@@ -94,14 +127,47 @@ def _transport(tmp_path: Path, count: int = 8) -> _TransportAnalyze:
     analyzer.num_processes = 2
     analyzer.molecule = Chem.MolFromSmiles("CC")
     analyzer.molecule.GetAtomWithIdx(0).SetProp("name", "C1")
+    analyzer.tensor = torch.tensor([1, 2, 3])
     return analyzer
+
+
+def test_large_state_loads_concurrently_in_workers(tmp_path: Path) -> None:
+    analyzer = _transport(tmp_path, 2)
+    startup = tmp_path / "startup"
+    startup.mkdir()
+    analyzer.startup_gate = _StartupGate(startup)
+    # State after the gate must exceed the spawn pipe and pickle frame sizes.
+    analyzer.large_payload = b"x" * (1024 * 1024)
+    both_loading = threading.Event()
+
+    def release_workers() -> None:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if len(list(startup.glob("loaded-*"))) == 2:
+                both_loading.set()
+                break
+            if (startup / "release").exists():
+                break
+            time.sleep(0.02)
+        (startup / "release").touch()
+
+    observer = threading.Thread(target=release_workers, daemon=True)
+    observer.start()
+    try:
+        results = analyzer.run_parallel(2, 2)
+    finally:
+        (startup / "release").touch()
+        observer.join(timeout=35)
+    assert not observer.is_alive()
+    assert both_loading.is_set(), "Starting a worker waited for another to load state"
+    assert sorted(result[0] for result in results) == [0, 1]
 
 
 @pytest.mark.parametrize(
     ("setting", "threads"),
     [(None, "1"), ("OMP_NUM_THREADS", "2"), ("MKL_NUM_THREADS", "3")],
 )
-def test_spawn_serializes_dataset_once_per_worker_and_sets_threads(
+def test_spawn_serializes_dataset_once_per_pool_and_sets_threads(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, setting: str | None, threads: str
 ) -> None:
     monkeypatch.delenv("MKL_NUM_THREADS", raising=False)
@@ -114,7 +180,7 @@ def test_spawn_serializes_dataset_once_per_worker_and_sets_threads(
     before_threads = (torch.get_num_threads(), torch.get_num_interop_threads())
     results = analyzer.run_parallel(8, 2)
     assert sorted(result[0] for result in results) == list(range(8))
-    assert analyzer.data.predict_set.pickles == 2
+    assert analyzer.data.predict_set.pickles == 1
     assert all(result[2] != os.getpid() for result in results)
     assert all(
         result[3:] == (int(threads), 1, "C1", Chem.PropertyPickleOptions.AllProps)
@@ -126,7 +192,7 @@ def test_spawn_serializes_dataset_once_per_worker_and_sets_threads(
     analyzer.label = "second"
     results = analyzer.run_parallel(2, 1)
     assert all(result[1] == "second" for result in results)
-    assert analyzer.data.predict_set.pickles == 3
+    assert analyzer.data.predict_set.pickles == 2
 
 
 def test_spawn_retries_crashed_work_without_losing_successes(tmp_path: Path) -> None:

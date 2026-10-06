@@ -1,4 +1,6 @@
 import os
+import pickle
+from tempfile import TemporaryDirectory
 
 from boltzgen.utils.quiet import quiet_startup
 
@@ -65,16 +67,17 @@ _WORKER_ANALYZE: "Analyze | None" = None
 _MAX_STALLED_POOLS = 3
 
 
-def _init_worker(analyze: "Analyze") -> None:
+def _init_worker(state_path: Path) -> None:
     """Keep one analysis task per spawned worker and configure its CPU pools."""
     global _WORKER_ANALYZE  # noqa: PLW0603
-    _WORKER_ANALYZE = analyze
     # Spawned workers do not inherit torch settings from the parent. Let Torch
     # honor explicit OMP/MKL settings; otherwise avoid nested CPU parallelism.
     if not any(os.environ.get(key) for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS")):
         torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
     rdkit.Chem.SetDefaultPickleProperties(rdkit.Chem.PropertyPickleOptions.AllProps)
+    with state_path.open("rb") as handle:
+        _WORKER_ANALYZE = pickle.load(handle)  # noqa: S301 -- trusted parent snapshot
 
 
 def _worker_compute_metrics(idx: int) -> str | None:
@@ -228,18 +231,27 @@ class Analyze(Task):
         completed_task_ids = set()
         sample_ids = []
 
-        # Set this before spawning: RDKit atom properties must survive initargs.
+        # Preserve RDKit atom properties in the worker snapshot.
         rdkit.Chem.SetDefaultPickleProperties(rdkit.Chem.PropertyPickleOptions.AllProps)
         stalled_pools = 0
-        with tqdm(total=num, desc="Processing samples") as pbar:
+        with TemporaryDirectory(prefix="boltzgen-analysis-") as state_dir, tqdm(
+            total=num, desc="Processing samples"
+        ) as pbar:
+            state_path = Path(state_dir) / "analysis.pkl"
             while completed_task_ids != all_task_ids:
                 remaining = sorted(all_task_ids - completed_task_ids)
                 completed_before = len(completed_task_ids)
+                # Large initargs block spawn while each child imports modules.
+                # A small path lets workers start and load their state in parallel.
+                # Ordinary pickle is read-many; multiprocessing's tensor reducers
+                # can instead encode handles that only one reader may consume.
+                with state_path.open("wb") as handle:
+                    pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
                 with ProcessPoolExecutor(
                     max_workers=min(num_processes, len(remaining)),
                     mp_context=ctx,
                     initializer=_init_worker,
-                    initargs=(self,),
+                    initargs=(state_path,),
                 ) as ex:
                     fut2idx = {}
                     try:
