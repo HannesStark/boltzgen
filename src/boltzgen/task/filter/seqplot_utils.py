@@ -413,7 +413,7 @@ def plot_seq_liabilities(
     row_count = max(1, (n + columns - 1) // columns)
     legend_columns = 2
     legend_rows = (len(violation_types) + legend_columns - 1) // legend_columns
-    legend_height = max(1.5, 0.30 * legend_rows)
+    legend_height = max(1.5, 0.35 * legend_rows)
     fig, axes = plt.subplots(
         row_count + 2,
         1,

@@ -486,7 +486,7 @@ def test_wrapped_liability_plot_preserves_full_sequence_coordinates() -> None:
     filter_module.plt.close(figure)
 
 
-@pytest.mark.parametrize("length", [120, 240])
+@pytest.mark.parametrize("length", [120, 240, 1000])
 def test_dense_liability_legend_fits_saved_pdf(
     length: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
