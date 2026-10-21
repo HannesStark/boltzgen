@@ -191,8 +191,8 @@ class DesignValidator(Validator):
                     structure = Structure.add_side_chains(
                         structure, residue_mask=res_design_mask
                     )
-                open(gen_path, "w").write(to_mmcif(structure))
-                open(native_path, "w").write(to_mmcif(str_native))
+                Path(gen_path).write_text(to_mmcif(structure))
+                Path(native_path).write_text(to_mmcif(str_native))
 
                 # Write metadata
                 metadata_path = f"{basename}.npz"

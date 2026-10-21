@@ -193,6 +193,15 @@ def make_request(
     return request
 
 
+def _worker_device(index: int) -> str:
+    """One worker per CUDA device; Metal exposes a single unified-memory GPU."""
+    import torch
+
+    if torch.cuda.is_available() or not torch.backends.mps.is_available():
+        return f"cuda:{index}"
+    return "mps"
+
+
 class ESMFold2Score(Task):
     """Run the pinned model once per process, retaining five samples per design."""
 
@@ -294,17 +303,19 @@ class ESMFold2Score(Task):
                 )
                 pending_requests.append((request_path, pending_path, request))
 
+            # Metal has one GPU: a second worker would only duplicate the weights.
+            num_workers = 1 if _worker_device(0) == "mps" else self.devices
             try:
-                for index in range(min(self.devices, len(pending_requests))):
+                for index in range(min(num_workers, len(pending_requests))):
                     manifest = staging_dir / f"worker_{index}.json"
                     worker_requests = [
                         str(pending_path)
-                        for _, pending_path, _ in pending_requests[index :: self.devices]
+                        for _, pending_path, _ in pending_requests[index :: num_workers]
                     ]
                     manifest.write_text(json.dumps(worker_requests))
                     workers.append(
                         subprocess.Popen(
-                            worker_command(python, manifest, f"cuda:{index}"),
+                            worker_command(python, manifest, _worker_device(index)),
                         )
                     )
                 codes = [worker.wait() for worker in workers]

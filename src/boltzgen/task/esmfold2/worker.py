@@ -18,6 +18,9 @@ if not __package__:
     package.__path__ = [str(Path(__file__).resolve().parents[2])]
     sys.modules["boltzgen"] = package
 
+# Apple Metal: let the rare operator without an MPS kernel run on the CPU.
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
 import numpy as np
 import torch
 
@@ -38,6 +41,30 @@ from boltzgen.task.esmfold2.contract import (
 from boltzgen.task.esmfold2.crop import crop_features, polymer_representatives
 from boltzgen.task.esmfold2.ipsae import score_chain_vs_rest, score_interface
 from boltzgen.task.esmfold2.acceleration import acceleration_context
+
+
+def resolve_device(requested: str) -> str:
+    """Map "auto" to CUDA, else Metal (MPS); validate an explicit device."""
+    if requested == "auto":
+        if torch.cuda.is_available():
+            return "cuda:0"
+        if torch.backends.mps.is_available():
+            return "mps"
+        raise RuntimeError("ESMFold2 scoring requires a CUDA GPU or Apple Metal (MPS)")
+    kind = requested.split(":")[0]
+    available = {
+        "cuda": torch.cuda.is_available(),
+        "mps": torch.backends.mps.is_available(),
+    }
+    if not available.get(kind):
+        raise RuntimeError(f"ESMFold2 device {requested!r} is not available")
+    return requested
+
+
+def seed_everything(seed: int, device: str) -> None:
+    torch.manual_seed(seed)  # also seeds the MPS generator
+    if device.startswith("cuda"):
+        torch.cuda.manual_seed_all(seed)
 
 
 def configure_ccd() -> None:
@@ -288,8 +315,7 @@ def run_request(model, builder, request: dict, output: Path, device: str) -> Non
             options["diffusion_samples"],
             model.config.pairwise_hidden_size,
         )
-    torch.manual_seed(options["seed"])
-    torch.cuda.manual_seed_all(options["seed"])
+    seed_everything(options["seed"], str(device))
     full = {k: v.to(device) for k, v in full.items()}
     cropped = {k: v.to(device) for k, v in cropped.items()}
     # The native model controls mixed precision around its LM and trunk. An
@@ -443,7 +469,7 @@ def run_request(model, builder, request: dict, output: Path, device: str) -> Non
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
-    parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--device", default="auto")
     args = parser.parse_args()
     paths = json.loads(args.manifest.read_text())
     requests = [json.loads(Path(path).read_text()) for path in paths]
@@ -456,8 +482,16 @@ def main() -> None:
         raise RuntimeError(
             f"Install esm=={ESM_VERSION} in the --esmfold2_python environment"
         )
-    if not torch.cuda.is_available():
-        raise RuntimeError("ESMFold2 scoring requires a CUDA GPU")
+    args.device = resolve_device(args.device)
+    if args.device == "mps":
+        from boltzgen.task.esmfold2 import metal
+
+        metal.install()
+    if args.device == "mps" and True in fused_modes:
+        raise ValueError(
+            "The fused Triton/BF16 backend needs CUDA; use --esmfold2_acceleration "
+            "auto or off on Apple Metal"
+        )
     from huggingface_hub import constants, snapshot_download
 
     print(

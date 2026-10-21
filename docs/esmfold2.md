@@ -68,7 +68,7 @@ First use requires network access and approximately 33 GB of additional disk
 space (about 27 GB of ESM weights and 6 GB for the runtime), plus temporary
 installation space. This is in addition to BoltzGen's existing downloads.
 ESMFold2's upstream
-runtime requires a CUDA 13 compatible NVIDIA driver; automatic environment
+runtime requires a CUDA 13 compatible NVIDIA driver (or Apple Metal, below); automatic environment
 setup cannot upgrade the host driver. Each worker loads its model once and
 scores its shard of designs. `--devices` controls the number of workers over
 the visible GPUs. Weights use Hugging Face's ordinary cache (`HF_HOME`), and
@@ -107,6 +107,23 @@ LM masking 0, and seed 0. No homologous MSA is searched for or loaded. ESMC
 encodes complete source chains; the folding model receives only the requested
 structural crop and the corresponding ESMC states. No target coordinate
 template is supplied to ESMFold2.
+
+## Apple Silicon (Metal)
+
+Without a CUDA GPU, ESMFold2 scoring runs on Apple's Metal backend (PyTorch
+MPS) in the same isolated runtime; no flags are needed. The worker selects
+`cuda:N` when available, otherwise `mps`. Metal exposes one GPU, so a single
+worker is used regardless of `--devices`. The pinned `esm` package is not
+modified: `boltzgen/task/esmfold2/metal.py` adapts the torch entry points it
+relies on (its hard-coded CUDA bf16 autocast regions run as MPS autocast, and
+integer `scatter_reduce`/`index_reduce`, which MPS lacks, run on the CPU).
+
+Limits on Metal: `--esmfold2_acceleration fused` needs CUDA (Triton) and is
+rejected, and CUDA-graph replay is skipped, so `auto` uses only the cached
+attention masks. The weights (about 25 GB) need roughly that much unified memory
+plus working space. Scores come from a different numerical backend and RNG than
+CUDA, so they are not bit-identical; repeated Metal runs of the same design
+agreed to about 3e-4 in `esmfold2_ipsae_min` in testing.
 
 ## Inference acceleration
 

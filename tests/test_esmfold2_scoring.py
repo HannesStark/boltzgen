@@ -44,7 +44,7 @@ def test_runtime_uses_cache_offline_and_provisions_only_when_needed(
         return subprocess.CompletedProcess(command, 0, "/isolated/python\n")
 
     monkeypatch.setattr(runtime.subprocess, "run", probe)
-    assert runtime.resolve_python(require_cuda=True) == "/isolated/python"
+    assert runtime.resolve_python(require_gpu=True) == "/isolated/python"
     assert "--offline" in calls[0]
     assert len(calls) == (2 if cached else 3)
     assert calls[-1][0] == "/isolated/python"
@@ -68,7 +68,7 @@ def test_cached_runtime_validation_failure_does_not_trigger_online_install(monke
 
     monkeypatch.setattr(runtime.subprocess, "run", probe)
     with pytest.raises(RuntimeError, match="Could not prepare"):
-        runtime.resolve_python(require_cuda=True)
+        runtime.resolve_python(require_gpu=True)
     assert len(calls) == 2
 
 
@@ -286,7 +286,7 @@ def test_configure_validates_settings_before_runtime_setup(
         assert not (args.output / "config/esmfold2_scoring.yaml").exists()
         return
     cli.configure_command(args)
-    assert calls == ([] if reuse else [(None, {"require_cuda": True})])
+    assert calls == ([] if reuse else [(None, {"require_gpu": True})])
     assert (args.output / "config/esmfold2_scoring.yaml").is_file()
 
 

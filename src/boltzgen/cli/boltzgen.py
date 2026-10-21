@@ -717,7 +717,7 @@ def configure_command(args: argparse.Namespace) -> None:
     * `<output_dir>/steps.yaml` — manifest of steps and config file paths.
 
     This stage prepares the YAMLs used by `execute_command(...)`. Fresh polymer
-    runs also prepare the isolated ESM runtime and check CUDA availability;
+    runs also prepare the isolated ESM runtime and check GPU (CUDA or Metal) availability;
     they do not load model weights or run inference here.
 
     Usually this is executed by `boltzgen run ...` but it can be used like:
@@ -760,7 +760,7 @@ def configure_command(args: argparse.Namespace) -> None:
             # Reuse can finish entirely from saved scores. Provision that run's
             # runtime only if the scoring task finds work still to compute.
             if not esm_config.reuse:
-                resolve_python(esm_config.python, require_cuda=True)
+                resolve_python(esm_config.python, require_gpu=True)
 
     # Make the config subdir in output
     config_dir = output_dir / "config"
@@ -1022,8 +1022,8 @@ class BinderDesignPipeline:
         protocol = args.protocol
         use_solublempnn = _resolve_inverse_fold_model(args) == "solublempnn"
 
-        # Handle use_kernels argument
-        device_capability = torch.cuda.get_device_capability()
+        # Handle use_kernels argument, defaulting to (0,0) for CPU/MPS
+        device_capability = torch.cuda.get_device_capability() if torch.cuda.is_available() else (0, 0)
         use_kernels = None
         if args.use_kernels == "auto":
             use_kernels = device_capability[0] >= 8
@@ -1042,9 +1042,9 @@ class BinderDesignPipeline:
         config_args_by_step = parse_config_args(
             protocol_config, args.config, step_names
         )
-
+        # Determine number of devices to use, defaulting to 1 for MPS/CPU
         devices = (
-            args.devices if args.devices is not None else torch.cuda.device_count()
+            args.devices if args.devices is not None else torch.cuda.device_count() if torch.cuda.is_available() else 1
         )
         print(f"Using {devices} devices")
 

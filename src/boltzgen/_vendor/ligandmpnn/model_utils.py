@@ -7,6 +7,11 @@ import numpy as np
 import torch
 
 
+def _to_float64(x):
+    # MPS has no float64: do this small [B,21] computation on the CPU instead.
+    return x.cpu().double() if x.device.type == "mps" else x.double()
+
+
 class ProteinMPNN(torch.nn.Module):
     def __init__(
         self,
@@ -317,11 +322,11 @@ class ProteinMPNN(torch.nn.Module):
 
                 # Center before scaling and use float64 so every finite,
                 # positive temperature works with hard (-inf) exclusions.
-                sampling_logits = (logits + bias_t).double()
+                sampling_logits = _to_float64(logits + bias_t)
                 sampling_logits -= sampling_logits.amax(dim=-1, keepdim=True)
                 probs = torch.nn.functional.softmax(
                     sampling_logits / temperature, dim=-1
-                ).float()  # [B,21]
+                ).to(device=bias_t.device, dtype=torch.float32)  # [B,21]
                 probs_sample = probs[:, :20] / torch.sum(
                     probs[:, :20], dim=-1, keepdim=True
                 )  # hard omit X #[B,20]
@@ -447,11 +452,11 @@ class ProteinMPNN(torch.nn.Module):
                     ).float()  # [B,21]
                     total_logits += symmetry_weights[t] * logits
 
-                sampling_logits = (total_logits + bias_t).double()
+                sampling_logits = _to_float64(total_logits + bias_t)
                 sampling_logits -= sampling_logits.amax(dim=-1, keepdim=True)
                 probs = torch.nn.functional.softmax(
                     sampling_logits / temperature, dim=-1
-                ).float()  # [B,21]
+                ).to(device=bias_t.device, dtype=torch.float32)  # [B,21]
                 probs_sample = probs[:, :20] / torch.sum(
                     probs[:, :20], dim=-1, keepdim=True
                 )  # hard omit X #[B,20]

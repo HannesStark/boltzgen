@@ -134,7 +134,7 @@ def sample_without_scalar_sync(
             diff_atom_intermediates = dm_out.get("atom_intermediates")
 
         # Reverse diffusion alignment (Kabsch)
-        with torch.autocast(device_type="cuda", enabled=False):
+        with torch.autocast(device_type=x_noisy.device.type, enabled=False):
             x_noisy = self._weighted_rigid_align(
                 x_noisy.float(), x_denoised.float(), atom_mask, atom_mask
             )

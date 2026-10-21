@@ -6,7 +6,7 @@ import subprocess
 from boltzgen.task.esmfold2.contract import ESM_VERSION
 
 
-def resolve_python(python: str | None = None, *, require_cuda: bool = False) -> str:
+def resolve_python(python: str | None = None, *, require_gpu: bool = False) -> str:
     """Return a checked interpreter, provisioning a cached runtime when needed.
 
     uv owns dependency resolution, environment locking and Python installation.
@@ -39,11 +39,13 @@ def resolve_python(python: str | None = None, *, require_cuda: bool = False) -> 
         f"assert version('esm') == {ESM_VERSION!r}; "
         "import torch; from esm.models.esmfold2 import EsmFold2Model; "
     )
-    if require_cuda:
+    if require_gpu:
         probe += (
-            "assert torch.cuda.is_available(), "
-            "'ESMFold2 requires a visible GPU and CUDA 13 compatible driver'; "
-            "torch.empty(1, device='cuda').add_(1); torch.cuda.synchronize(); "
+            "device = 'cuda' if torch.cuda.is_available() else "
+            "'mps' if torch.backends.mps.is_available() else None; "
+            "assert device, 'ESMFold2 requires a visible CUDA 13 GPU or Apple Metal (MPS)'; "
+            "torch.empty(1, device=device).add_(1); "
+            "getattr(torch, device).synchronize(); "
         )
     probe += "print(sys.executable)"
     try:
@@ -73,7 +75,7 @@ def resolve_python(python: str | None = None, *, require_cuda: bool = False) -> 
                 )
             python = cached.stdout.strip().splitlines()[-1]
         print(f"Checking ESMFold2 dependencies and device using {python}...", flush=True)
-        # Validate separately: import/CUDA failures in an existing environment
+        # Validate separately: import/GPU failures in an existing environment
         # must surface directly, never be mistaken for an installer cache miss.
         result = subprocess.run(
             [python, "-I", "-c", probe],
@@ -84,7 +86,7 @@ def resolve_python(python: str | None = None, *, require_cuda: bool = False) -> 
     except (OSError, subprocess.CalledProcessError) as exc:
         raise RuntimeError(
             "Could not prepare the ESMFold2 runtime. See the installer/import/CUDA "
-            "error above and check the interpreter, dependencies, and GPU driver. "
+            "error above and check the interpreter, dependencies, and GPU driver (CUDA or Metal). "
             "An uncached installation also needs network access and space in the uv "
             "cache. Managed installations may set --esmfold2_python."
         ) from exc
