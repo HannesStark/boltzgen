@@ -15,6 +15,11 @@ from omegaconf import OmegaConf, listconfig
 from pytorch_lightning import LightningModule, Trainer
 
 from pytorch_lightning.strategies import DDPStrategy
+from lightning_fabric.plugins.environments import (
+    ClusterEnvironment,
+    LightningEnvironment,
+    TorchElasticEnvironment,
+)
 
 from boltzgen.task.predict.data_from_generated import FromGeneratedDataModule
 from boltzgen.task.predict.writer import (
@@ -168,7 +173,20 @@ class Predict(Task):
             else devices
         )
         if num_devices > 1:
-            strategy = DDPStrategy()
+            # One SLURM task reserves GPUs but does not launch DDP workers.
+            environment = None
+            plugins = self.trainer.get("plugins") or []
+            if not isinstance(plugins, (list, tuple, listconfig.ListConfig)):
+                plugins = [plugins]
+            if (
+                not self.slurm
+                and os.environ.get("SLURM_NTASKS") == "1"
+                and self.trainer.get("num_nodes", 1) == 1
+                and not TorchElasticEnvironment.detect()
+                and not any(isinstance(plugin, ClusterEnvironment) for plugin in plugins)
+            ):
+                environment = LightningEnvironment()
+            strategy = DDPStrategy(cluster_environment=environment)
             if num_devices > len(self.data.predict_set):
                 devices = max(1, len(self.data.predict_set))
                 msg = f"Fewer designs than devices. Setting devices to {devices}."
@@ -191,4 +209,5 @@ class Predict(Task):
             self.lightning_trainer.predict(
                 self.model_module, datamodule=self.data, return_predictions=False
             )
+            self.lightning_trainer.strategy.barrier("prediction writes complete")
             del self.model_module
