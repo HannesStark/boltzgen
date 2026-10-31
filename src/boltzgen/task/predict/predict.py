@@ -3,6 +3,7 @@ from boltzgen.utils.quiet import quiet_startup
 quiet_startup()
 
 import os
+from collections.abc import Iterable
 
 # Disable Triton auto-tuning during inference
 os.environ.setdefault("CUEQ_DEFAULT_CONFIG", "1")
@@ -172,26 +173,37 @@ class Predict(Task):
             if isinstance(devices, (list, listconfig.ListConfig))
             else devices
         )
-        if num_devices > 1:
-            # One SLURM task reserves GPUs but does not launch DDP workers.
-            environment = None
-            plugins = self.trainer.get("plugins") or []
-            if not isinstance(plugins, (list, tuple, listconfig.ListConfig)):
-                plugins = [plugins]
-            if (
-                not self.slurm
-                and os.environ.get("SLURM_NTASKS") == "1"
-                and self.trainer.get("num_nodes", 1) == 1
-                and not TorchElasticEnvironment.detect()
-                and not any(isinstance(plugin, ClusterEnvironment) for plugin in plugins)
-            ):
-                environment = LightningEnvironment()
-            strategy = DDPStrategy(cluster_environment=environment)
+        if isinstance(num_devices, int) and num_devices > 1:
+            strategy = DDPStrategy()
             if num_devices > len(self.data.predict_set):
-                devices = max(1, len(self.data.predict_set))
+                count = max(1, len(self.data.predict_set))
+                devices = (
+                    devices[:count]
+                    if isinstance(devices, (list, listconfig.ListConfig))
+                    else count
+                )
                 msg = f"Fewer designs than devices. Setting devices to {devices}."
                 print(msg)
                 self.trainer["devices"] = devices
+
+        if (
+            not self.slurm
+            and os.environ.get("SLURM_NTASKS") == "1"
+            and self.trainer.get("num_nodes", 1) == 1
+            and not TorchElasticEnvironment.detect()
+        ):
+            # One SLURM task reserves GPUs but does not launch DDP workers.
+            # Materialize iterables once so checking cannot consume a generator.
+            plugins = self.trainer.get("plugins")
+            if plugins is None:
+                plugins = []
+            elif isinstance(plugins, Iterable):
+                plugins = list(plugins)
+            else:
+                plugins = [plugins]
+            if not any(isinstance(plugin, ClusterEnvironment) for plugin in plugins):
+                plugins.append(LightningEnvironment())
+            self.trainer["plugins"] = plugins
 
         self.lightning_trainer = Trainer(
             default_root_dir=self.output,

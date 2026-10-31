@@ -191,7 +191,9 @@ def test_every_rank_finishes_writes_before_predict_returns(
         }
 
 
-@pytest.mark.parametrize("form", ["single", "list", "tuple", "precision"])
+@pytest.mark.parametrize(
+    "form", ["single", "list", "tuple", "set", "generator", "dict_values", "precision"]
+)
 def test_explicit_environment_plugins_are_preserved(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, form: str
 ) -> None:
@@ -212,6 +214,9 @@ def test_explicit_environment_plugins_are_preserved(
         "single": explicit,
         "list": [explicit],
         "tuple": (explicit,),
+        "set": {explicit},
+        "generator": (item for item in [explicit]),
+        "dict_values": {"environment": explicit}.values(),
         "precision": [Precision()],
     }[form]
     monkeypatch.setattr(
