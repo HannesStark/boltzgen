@@ -1023,7 +1023,9 @@ class BinderDesignPipeline:
         use_solublempnn = _resolve_inverse_fold_model(args) == "solublempnn"
 
         # Handle use_kernels argument
-        device_capability = torch.cuda.get_device_capability()
+        device_capability = (
+            torch.cuda.get_device_capability() if torch.cuda.is_available() else (0, 0)
+        )
         use_kernels = None
         if args.use_kernels == "auto":
             use_kernels = device_capability[0] >= 8
@@ -1044,7 +1046,7 @@ class BinderDesignPipeline:
         )
 
         devices = (
-            args.devices if args.devices is not None else torch.cuda.device_count()
+            args.devices if args.devices is not None else max(1, torch.cuda.device_count())
         )
         print(f"Using {devices} devices")
 
