@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 import torch
-from lightning_fabric.plugins.environments import LightningEnvironment
+from lightning_fabric.plugins.environments import LightningEnvironment, SLURMEnvironment
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
 from pytorch_lightning.plugins.precision import Precision
 from torch.utils.data import DataLoader
@@ -192,7 +192,17 @@ def test_every_rank_finishes_writes_before_predict_returns(
 
 
 @pytest.mark.parametrize(
-    "form", ["single", "list", "tuple", "set", "generator", "dict_values", "precision"]
+    "form",
+    [
+        "single",
+        "list",
+        "tuple",
+        "set",
+        "generator",
+        "dict_values",
+        "precision",
+        "mismatched",
+    ],
 )
 def test_explicit_environment_plugins_are_preserved(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, form: str
@@ -209,7 +219,8 @@ def test_explicit_environment_plugins_are_preserved(
     }.items():
         monkeypatch.setenv(key, value)
     monkeypatch.delenv("TORCHELASTIC_RUN_ID", raising=False)
-    explicit = LightningEnvironment()
+    monkeypatch.delenv("SLURM_NTASKS_PER_NODE", raising=False)
+    explicit = SLURMEnvironment() if form == "mismatched" else LightningEnvironment()
     plugins = {
         "single": explicit,
         "list": [explicit],
@@ -218,6 +229,7 @@ def test_explicit_environment_plugins_are_preserved(
         "generator": (item for item in [explicit]),
         "dict_values": {"environment": explicit}.values(),
         "precision": [Precision()],
+        "mismatched": explicit,
     }[form]
     monkeypatch.setattr(
         predict.Boltz, "load_from_checkpoint", lambda *_args, **_kwargs: IdentityModel()
@@ -239,6 +251,10 @@ def test_explicit_environment_plugins_are_preserved(
         },
     )
     # Predict sets global grad mode; contain that side effect within this test.
+    if form == "mismatched":
+        with torch.enable_grad(), pytest.raises(ValueError, match="counts disagree"):
+            task.run(run_prediction=False)
+        return
     with torch.enable_grad():
         task.run(run_prediction=False)
     actual = task.lightning_trainer.strategy.cluster_environment

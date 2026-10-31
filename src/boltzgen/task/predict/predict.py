@@ -216,6 +216,22 @@ class Predict(Task):
             ),
             **self.trainer,
         )
+        expected_ranks = (
+            self.lightning_trainer.num_devices * self.lightning_trainer.num_nodes
+        )
+        if self.lightning_trainer.world_size != expected_ranks:
+            raise ValueError(
+                "Prediction launcher and device counts disagree: "
+                f"{self.lightning_trainer.world_size} launcher ranks for "
+                f"{expected_ranks} configured workers. Check the launcher, "
+                "devices and num_nodes settings."
+            )
+        if expected_ranks > len(self.data.predict_set):
+            raise ValueError(
+                f"Prediction has {len(self.data.predict_set)} records but "
+                f"{expected_ranks} workers. Set fewer devices or num_nodes so "
+                "each worker receives at least one record."
+            )
         if run_prediction:
             # Run training
             self.lightning_trainer.predict(

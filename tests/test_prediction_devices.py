@@ -80,3 +80,11 @@ def test_device_list_truncation_preserves_device_identity(
     trainer = build_trainer(monkeypatch, tmp_path, devices=[2, 3], records=1)
     assert trainer.num_devices == 1
     assert trainer.device_ids == [2]
+
+
+@pytest.mark.parametrize("devices", [-1, "auto", "0,2"])
+def test_resolved_device_count_fails_clearly_before_creating_empty_workers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, devices: int | str
+) -> None:
+    with pytest.raises(ValueError, match="Set fewer devices or num_nodes"):
+        build_trainer(monkeypatch, tmp_path, devices=devices, records=1)
