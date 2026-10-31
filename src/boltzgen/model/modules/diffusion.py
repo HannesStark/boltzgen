@@ -723,6 +723,7 @@ class AtomDiffusion(Module):
             # fake atom weighting
             fake_atom_mask = feats["fake_atom_mask"]
             fake_atom_weight = (1 - fake_atom_mask) + fake_atom_mask * fake_atom_weight
+            fake_atom_weight = fake_atom_weight.repeat_interleave(multiplicity, 0)
 
             # residue type weighting.
             if residue_type_weight > 0.0:
@@ -743,6 +744,7 @@ class AtomDiffusion(Module):
                     1.0 - design_atom_mask
                 ) + design_atom_mask * _res_type_weight
                 res_type_weight = res_type_weight**residue_type_weight
+                res_type_weight = res_type_weight.repeat_interleave(multiplicity, 0)
             else:
                 res_type_weight = 1.0
 
