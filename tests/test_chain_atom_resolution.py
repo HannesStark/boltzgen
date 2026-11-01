@@ -250,3 +250,72 @@ def test_excluded_file_residue_is_not_reindexed_to_neighbor(tmp_path, mols, acti
         YamlDesignParser(tmp_path).parse_boltzgen_schema(
             "test", schema, mols, tmp_path, tmp_path
         )
+
+
+@pytest.mark.parametrize("action", ["bond", "leaving"])
+@pytest.mark.parametrize("context", ["inline", "renamed", "fused"])
+@pytest.mark.parametrize(
+    "sequence,position",
+    [
+        ("G1..3G", 2),
+        ("1..3GG", 1),
+        ("GG1..3", 3),
+        ("1..3", 1),
+        ("G0..3G", 1),
+        ("2..3", 2),
+    ],
+)
+def test_expanded_ranges_keep_first_minimum_specification_match(
+    tmp_path, mols, action, context, sequence, position
+):
+    references = {**mols, "GLY": molecule()}
+    inline = {"protein": {"id": "R", "sequence": sequence}}
+    if context == "renamed":
+        path = write_pdb(tmp_path / "source.pdb", PROTEIN, {"R": [1, 2, 3, 4, 5, 6]})
+        entities = [{"file": {"path": str(path)}}, inline]
+        final_chain, offset = "A", 0
+    elif context == "fused":
+        inline["protein"]["fuse"] = "T"
+        entities = [{"protein": {"id": "T", "sequence": "GG"}}, inline]
+        final_chain, offset = "T", 2
+    else:
+        entities = [inline]
+        final_chain, offset = "R", 0
+    schema = {"entities": entities}
+    if action == "bond":
+        schema["constraints"] = [
+            {"bond": {"atom1": ["R", position, "O"], "atom2": ["R", 1, "N"]}}
+        ]
+    else:
+        schema["leaving_atoms"] = [{"atom": ["R", position, "O"]}]
+    np.random.seed(1 if sequence == "2..3" else 3)
+    result = YamlDesignParser(tmp_path).parse_boltzgen_schema(
+        "test", schema, references, tmp_path, tmp_path
+    )
+    structure = result.structure
+    chain_index = np.flatnonzero(structure.chains["name"] == final_chain).item()
+    chain = structure.chains[chain_index]
+    residue_index = int(chain["res_idx"]) + offset + position - 1
+    residue = structure.residues[residue_index]
+    atoms = structure.atoms[
+        residue["atom_idx"] : residue["atom_idx"] + residue["atom_num"]
+    ]
+    atom_index = int(residue["atom_idx"]) + np.flatnonzero(atoms["name"] == "O").item()
+    if action == "bond":
+        bond = structure.bonds[-1]
+        assert (bond["chain_1"], bond["res_1"], bond["atom_1"]) == (
+            chain_index,
+            residue_index,
+            atom_index,
+        )
+    else:
+        np.testing.assert_array_equal(
+            np.flatnonzero(
+                (structure.atoms["name"] == "O") & ~structure.atoms["is_present"]
+            ),
+            [atom_index],
+        )
+        entry = result.source_context["chains"][chain_index]
+        assert entry["omitted_atoms"] == [
+            [entry["indices"][offset + position - 1], "O"]
+        ]

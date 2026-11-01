@@ -1810,8 +1810,10 @@ class YamlDesignParser:
                     matches = np.flatnonzero(
                         parsed_chain.sampleidx_to_specidx == residue_index
                     )
-                    if len(matches) != 1:
-                        raise ValueError(f"Residue in atom selection {selection} is absent or ambiguous.")
+                    if len(matches) == 0:
+                        raise ValueError(f"Residue in atom selection {selection} does not exist.")
+                    # Expanded variable-length slots share a specification index.
+                    # Constraints use the first match, as in minimum-length input.
                     residue_index = int(matches[0])
                 try:
                     return atom_idx_map[(chain_name, residue_index, atom_name)]
