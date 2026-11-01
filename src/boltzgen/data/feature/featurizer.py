@@ -824,14 +824,19 @@ def process_token_features(  # noqa: C901, PLR0915, PLR0912
         for connection in data.structure.bonds:
             if not idx_chain == connection["chain_1"] == connection["chain_2"]:
                 continue
-            # Only the first N / last C bond closes the backbone. A terminal
-            # disulfide must not enable head-to-tail cyclic conditioning.
+            # Protein cyclization requires first N / last C, not a disulfide.
+            # Preserve the existing terminal-bond convention for other polymers.
             for n_end, c_end in ((1, 2), (2, 1)):
                 if (
                     connection[f"res_{n_end}"] == first_res
                     and connection[f"res_{c_end}"] == last_res
-                    and data.structure.atoms[connection[f"atom_{n_end}"]]["name"] == "N"
-                    and data.structure.atoms[connection[f"atom_{c_end}"]]["name"] == "C"
+                    and (
+                        chain["mol_type"] != const.chain_type_ids["PROTEIN"]
+                        or (
+                            data.structure.atoms["name"][connection[f"atom_{n_end}"]] == "N"
+                            and data.structure.atoms["name"][connection[f"atom_{c_end}"]] == "C"
+                        )
+                    )
                 ):
                     cyclic_ids[chain["asym_id"]] = chain["res_num"]
     cyclic = from_numpy(

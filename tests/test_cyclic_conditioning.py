@@ -1,14 +1,22 @@
-"""Explicit bonds only imply backbone cyclization at the N/C termini."""
+"""Protein cyclic conditioning distinguishes disulfides from backbone closures."""
+
+# Pytest injects the shared reference-molecule fixture.
+# ruff: noqa: F811
 
 from pathlib import Path
 
 import numpy as np
 import pytest
+from rdkit import Chem
+from rdkit.Chem import rdDepictor
+from test_pdb_parser_integrity import mols  # noqa: F401
 from test_structure_transform_boundaries import parse_entities
 
 from boltzgen.data.data import Input, Structure
 from boltzgen.data.feature.featurizer import process_token_features
+from boltzgen.data.parse.schema import YamlDesignParser
 from boltzgen.data.tokenize.tokenizer import Tokenizer
+from boltzgen.data.write.mmcif import to_mmcif
 
 
 def cyclic_features(structure: Structure) -> np.ndarray:
@@ -86,3 +94,40 @@ def test_cyclic_period_uses_asym_id_independently_of_chain_table_index(
     ).structure
     structure.chains["asym_id"] = [7, 3]
     np.testing.assert_array_equal(cyclic_features(structure), [0, 0, 0, 3, 3, 3])
+
+
+@pytest.mark.parametrize("kind", ["rna", "dna"])
+@pytest.mark.parametrize("prefix", [False, True])
+@pytest.mark.parametrize("from_file", [False, True])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_nucleic_terminal_bonds_preserve_cyclic_conditioning(
+    tmp_path: Path, mols, kind: str, prefix: bool, from_file: bool, reverse: bool
+) -> None:
+    molecules = {name: Chem.Mol(mol) for name, mol in mols.items()}
+    for mol in molecules.values():
+        rdDepictor.Compute2DCoords(mol)
+    entities = [{"protein": {"id": "P", "sequence": "GG"}}] if prefix else []
+    entities.append({kind: {"id": "R", "sequence": "ACG"}})
+    ends = [["R", 1, "P"], ["R", 3, "O3'"]]
+    if reverse:
+        ends.reverse()
+    schema = {
+        "entities": entities,
+        "constraints": [{"bond": {"atom1": ends[0], "atom2": ends[1]}}],
+    }
+    parser = YamlDesignParser(tmp_path)
+    target = parser.parse_boltzgen_schema(
+        "cycle", schema, molecules, tmp_path, tmp_path
+    )
+    if from_file:
+        path = tmp_path / "cycle.cif"
+        path.write_text(to_mmcif(target.structure))
+        target = parser.parse_boltzgen_schema(
+            "file",
+            {"entities": [{"file": {"path": str(path)}}]},
+            molecules,
+            tmp_path,
+            tmp_path,
+        )
+    expected = ([0, 0] if prefix else []) + [3, 3, 3]
+    np.testing.assert_array_equal(cyclic_features(target.structure), expected)
