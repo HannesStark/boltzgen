@@ -261,3 +261,18 @@ def test_ca_lookup_ignores_placeholder_center_and_ambiguous_names():
     ]
     atoms["name"][atoms["name"] == "CB"] = "CA"
     np.testing.assert_array_equal(ConsecutiveCA().filter(structure), [True])
+
+
+@pytest.mark.parametrize("middle_name", ["CA", "SEP"])
+@pytest.mark.parametrize("placeholder", [np.inf, 1e30])
+def test_excluded_or_missing_ca_coordinates_are_not_evaluated(middle_name, placeholder):
+    structure = parse_chain(["ALA", middle_name, "ALA"], [0, 100, 20])
+    middle = structure.residues[1]
+    atoms = structure.atoms[
+        middle["atom_idx"] : middle["atom_idx"] + middle["atom_num"]
+    ]
+    atoms["coords"][atoms["name"] == "CA"] = placeholder
+    if middle_name == "SEP":
+        atoms["is_present"][atoms["name"] == "CA"] = False
+    with np.errstate(over="raise", invalid="raise"):
+        np.testing.assert_array_equal(ConsecutiveCA().filter(structure), [True])

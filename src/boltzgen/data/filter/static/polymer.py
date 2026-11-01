@@ -197,14 +197,13 @@ class ConsecutiveCA(StaticFilter):
                     for a, b, kind in expected
                 )
 
-            # Compute distances between consecutive atoms
-            dist = np.linalg.norm(ca_coords[1:] - ca_coords[:-1], axis=1)
-            dist = dist > self._max_dist
             consecutive = residues["res_idx"][1:] == residues["res_idx"][:-1] + 1
-            dist = dist[ca_valid[1:] & ca_valid[:-1] & consecutive]
+            pairs = ca_valid[1:] & ca_valid[:-1] & consecutive
+            # Unresolved or excluded atoms may have meaningless coordinates.
+            dist = np.linalg.norm(ca_coords[1:][pairs] - ca_coords[:-1][pairs], axis=1)
 
             # Remove the chain if any valid pair is above threshold
-            if np.any(dist):
+            if np.any(dist > self._max_dist):
                 valid[i] = 0
 
         return valid
