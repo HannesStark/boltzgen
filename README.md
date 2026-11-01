@@ -164,7 +164,7 @@ The `protein-small_molecule` protocol instead uses BoltzIF and Boltz2 affinity.
 
 All configuration parameters can be overridden using the `--config` option; see `boltzgen run --help` or the `Advanced Users` section below for details.
 
-To require contact with an annotated binding site when rerunning filtering, add `--config filtering filter_bindingsite=true` to the `boltzgen run ... --steps filtering` command. `filter_bindingsite` is a filtering configuration option, not a top-level command-line flag. It keeps designs with `bindsite_under_8rmsd > 0.0001`.
+To require contact with an annotated binding site when rerunning filtering, add `--config filtering filter_bindingsite=true` to the `boltzgen run ... --steps filtering` command. `filter_bindingsite` is a filtering configuration option, not a top-level command-line flag. It keeps designs with `bindsite_under_8rmsd >= 0.0001`.
 
 The legacy metric names `bindsite_under_<threshold>rmsd` report a fraction, not RMSD: for each annotated binding-site token, analysis finds the nearest designed-token center and reports the fraction strictly closer than the threshold in angstroms. These metrics use the generated structure, not the refolded structure. The existing column names are retained for compatibility with filters and saved reports.
 

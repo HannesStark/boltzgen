@@ -905,7 +905,7 @@ class Analyze(Task):
 
         # Check binding site adherence. For each binding site token, find closest design token
         binding_site_mask = feat["binding_type"] == 1
-        if binding_site_mask.any():
+        if binding_site_mask.any() and feat["design_mask"].any():
             token_distances = torch.cdist(feat["center_coords"], feat["center_coords"])
             bindsite_design_distances = token_distances[binding_site_mask][
                 :, feat["design_mask"]

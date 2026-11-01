@@ -12,11 +12,14 @@ from boltzgen.task.analyze.analyze import Analyze
 
 
 @pytest.mark.parametrize("site_count", [0, 1, 2])
+@pytest.mark.parametrize("has_design", [False, True])
 def test_binding_site_fraction_uses_strict_distance_to_design(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, site_count: int
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, site_count: int, has_design: bool
 ) -> None:
     feat = _features(tmp_path / "site.cif", ("GGG", "GGG"))
     feat["design_mask"] = torch.tensor([False, False, False, True, True, True])
+    if not has_design:
+        feat["design_mask"][:] = False
     feat["chain_design_mask"] = feat["design_mask"].clone()
     feat["binding_type"][:site_count] = 1
     feat["center_coords"] = torch.tensor(
@@ -45,7 +48,7 @@ def test_binding_site_fraction_uses_strict_distance_to_design(
     with np.load(task.metrics_dir / f"metrics_{feat['id']}.npz") as metrics:
         for threshold in task.bindsite_adherence_thresholds:
             key = f"bindsite_under_{threshold}rmsd"
-            if site_count == 0:
+            if site_count == 0 or not has_design:
                 assert key not in metrics
             else:
                 expected = (1.0 / site_count) if threshold > 4 else 0.0
