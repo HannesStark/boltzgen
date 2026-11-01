@@ -1,7 +1,7 @@
 # How to make a design specification .yaml
 
 
-**IMPORTANT:** ⚠️ All residue indices are specified **starting at 1** and we use the canonical mmcif residue index `label_asym_id`, and **not** the `auth_asym_id` author residue index! 
+All residue indices start at 1. For mmCIF polymers with consecutive sequence numbering, use the residue's `label_seq_id`, not its author number `auth_seq_id`. The `*_asym_id` fields identify chains, not residue positions. See the [indexing notes](../README.md#how-to-make-a-design-specification-yaml) for PDB inputs with or without `SEQRES` and mmCIF files with gaps in their stored sequence numbering.
 You can check the indexing in your mmcif file by opening it in https://molstar.org/viewer/, hovering over a residue, and checking the index on the bottom right. You will see something like this where **41 is the index we use, the auth id 22 is incorrect**:
 
 ![](../assets/label_seq_id.png)
@@ -9,10 +9,12 @@ You can check the indexing in your mmcif file by opening it in https://molstar.o
 After you constructed your `.yaml` file we recommend that you run the `check` command on it:
 1. Run `boltzgen check example/vanilla_peptide_with_target_binding_site/beetletert.yaml`.  
 2. Visualize the resulting mmcif file in a protein structure viewer (e.g. PyMOL, Chimera, or online: https://molstar.org/viewer/).
-3. Your viewer should show the binding site in a different color than the rest of the target. 
+3. Select B-factor coloring in your viewer to inspect the design and binding annotations. These values encode input settings, not model confidence.
 
 
 # Example based explanation:
+
+See the [example directory index](EXAMPLES_GUIDE.md) for links to all example folders.
 We provide many example `.yaml` files in the `example/` directory, including:
 
 - [design_spec_showcasing_all_functionalities.yaml](design_spec_showcasing_all_functionalities.yaml)
