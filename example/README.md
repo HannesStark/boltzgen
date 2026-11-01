@@ -74,8 +74,11 @@ entities:
             not_binding: "all" 
       
       # Which regions of the target should have their structure specified.
-      # By default, everything is visibility 1 which means that the structure is specified.
-      # If the visibility is 0, then the structure is not specified.
+      # If structure_groups is omitted, all included residues use group 1.
+      # With a list (even an empty list), unlisted residues use group 0.
+      # Entries apply in order. visibility: 0 hides structure; positive values
+      # identify structure groups. Relative positions are specified within
+      # each group, not between different groups. id selects the chain.
       structure_groups:
         - group:
             visibility: 1
