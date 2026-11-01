@@ -685,8 +685,11 @@ def parse_range(ranges, c_start=0, c_end=None):
             msg = f"There is a 0 in the specified range(s) {ranges}. Residue indices are 1 indexed."
             raise ValueError(msg)
 
-        if c_end is not None and end > c_end - c_start:
-            msg = f"Specified end {ranges} is out of bounds: higher than the length of the chain."
+        if c_end is not None and (start >= c_end - c_start or end > c_end - c_start):
+            msg = (
+                f"Specified range {ranges} is out of bounds: "
+                "higher than the length of the chain."
+            )
             raise ValueError(msg)
     return indices
 
