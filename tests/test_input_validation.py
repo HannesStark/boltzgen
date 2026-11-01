@@ -285,3 +285,9 @@ def test_residue_constraints_reject_zero_range_endpoint(selection):
             const.canonical_tokens,
             const.prot_letter_to_token,
         )
+
+
+@pytest.mark.parametrize("selection", ["1ab3", "xx3", "3xx"])
+def test_range_separator_must_be_two_literal_dots(selection):
+    with pytest.raises(ValueError, match="Malformed residue range"):
+        parse_range(selection, c_start=0, c_end=10)
