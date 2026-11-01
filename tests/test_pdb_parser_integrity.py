@@ -211,6 +211,156 @@ def test_generated_pdb_without_seqres(
     assert_coverage(round_trip(parsed, mols), PROTEIN, coverage, seqres=False)
 
 
+@pytest.mark.parametrize(
+    "sequence", [PROTEIN, ["A", "C", "G", "U"], ["DA", "DC", "DG", "DT"]]
+)
+@pytest.mark.parametrize("seqres", [False, True])
+def test_hetero_polymer_residue_requires_declared_sequence(
+    tmp_path: Path, mols: dict[str, Chem.Mol], sequence: list[str], seqres: bool
+) -> None:
+    coverage = {"A": list(range(1, len(sequence) + 1))}
+    path = write_pdb(tmp_path / "hetero.pdb", sequence, coverage, seqres=seqres)
+    lines = path.read_text().splitlines()
+    path.write_text(
+        "\n".join(
+            "HETATM" + line[6:]
+            if line.startswith("ATOM") and int(line[22:26]) == 2
+            else line
+            for line in lines
+        )
+        + "\n"
+    )
+    if seqres:
+        assert_coverage(
+            parse_pdb(path, mols=mols, use_assembly=False), sequence, coverage
+        )
+    else:
+        with pytest.raises(
+            ValueError, match="HETATM.*without SEQRES.*explicit polymer membership"
+        ):
+            parse_pdb(path, mols=mols, use_assembly=False)
+
+
+@pytest.mark.parametrize("later_model", [False, True])
+def test_unsequenced_hetero_residue_in_later_chain_or_model_is_checked(
+    tmp_path: Path, mols: dict[str, Chem.Mol], later_model: bool
+) -> None:
+    path = write_pdb(
+        tmp_path / "later.pdb",
+        PROTEIN,
+        {"A": list(range(1, 7)), "B": list(range(1, 7))},
+        seqres=False,
+        models=2 if later_model else 1,
+    )
+    lines = path.read_text().splitlines()
+    model = 1
+    for i, line in enumerate(lines):
+        if line.startswith("MODEL"):
+            model = int(line[10:14])
+        if (
+            line.startswith("ATOM")
+            and line[21] == "B"
+            and int(line[22:26]) == 3
+            and model == (2 if later_model else 1)
+        ):
+            lines[i] = "HETATM" + line[6:]
+    path.write_text("\n".join(lines) + "\n")
+    with pytest.raises(ValueError, match="subchain B.*HETATM.*without SEQRES"):
+        parse_pdb(path, mols=mols, use_assembly=False)
+
+
+def test_another_chains_seqres_does_not_authorize_hetero_fallback(
+    tmp_path: Path, mols: dict[str, Chem.Mol]
+) -> None:
+    path = write_pdb(
+        tmp_path / "partial.pdb",
+        PROTEIN,
+        {"A": list(range(1, 7)), "B": list(range(1, 7))},
+    )
+    lines = []
+    for line in path.read_text().splitlines():
+        if line.startswith("SEQRES") and line[11] == "B":
+            continue
+        if line.startswith("ATOM") and line[21] == "B" and int(line[22:26]) == 3:
+            line = "HETATM" + line[6:]
+        lines.append(line)
+    path.write_text("\n".join(lines) + "\n")
+    with pytest.raises(ValueError, match="subchain B.*without SEQRES"):
+        parse_pdb(path, mols=mols, use_assembly=False)
+
+
+@pytest.mark.parametrize("selected_hetero", [False, True])
+def test_only_retained_alternate_conformations_need_seqres(
+    tmp_path: Path, mols: dict[str, Chem.Mol], selected_hetero: bool
+) -> None:
+    path = write_pdb(
+        tmp_path / "alternate.pdb",
+        PROTEIN,
+        {"A": list(range(1, 7))},
+        seqres=False,
+        alternate_chain="A",
+    )
+    alternate = "A" if selected_hetero else "B"
+    path.write_text(
+        "\n".join(
+            "HETATM" + line[6:]
+            if line.startswith("ATOM") and line[16] == alternate
+            else line
+            for line in path.read_text().splitlines()
+        )
+        + "\n"
+    )
+    if selected_hetero:
+        with pytest.raises(ValueError, match="HETATM.*without SEQRES"):
+            parse_pdb(path, mols=mols, use_assembly=False)
+    else:
+        parsed = parse_pdb(path, mols=mols, use_assembly=False)
+        assert parsed.data.residues["name"].tolist() == PROTEIN
+
+
+@pytest.mark.parametrize(
+    ("record", "seqres"), [("ATOM  ", False), ("HETATM", False), ("HETATM", True)]
+)
+def test_custom_polymer_component_needs_membership_not_a_residue_catalog(
+    tmp_path: Path, mols: dict[str, Chem.Mol], record: str, seqres: bool
+) -> None:
+    # A synthetic named component uses a real serine reference graph. ATOM or
+    # SEQRES declares sequence membership; an unsequenced HETATM does not.
+    path = write_pdb(
+        tmp_path / "custom.pdb", PROTEIN, {"A": list(range(1, 7))}, seqres=seqres
+    )
+    lines = []
+    for line in path.read_text().splitlines():
+        if line.startswith("ATOM") and line[17:20] == "SER":
+            line = record + line[6:17] + "ZZZ" + line[20:]
+        elif line.startswith("SEQRES"):
+            line = line.replace("SER", "ZZZ")
+        lines.append(line)
+    path.write_text("\n".join(lines) + "\n")
+    references = {**mols, "ZZZ": mols["SER"]}
+    if record == "HETATM" and not seqres:
+        with pytest.raises(ValueError, match="HETATM residue ZZZ.*without SEQRES"):
+            parse_pdb(path, mols=references, use_assembly=False)
+    else:
+        parsed = parse_pdb(path, mols=references, use_assembly=False)
+        assert parsed.data.residues[2]["name"] == "ZZZ"
+        assert not parsed.data.residues[2]["is_standard"]
+
+
+def test_separate_water_does_not_require_polymer_seqres(
+    tmp_path: Path, mols: dict[str, Chem.Mol]
+) -> None:
+    path = write_pdb(
+        tmp_path / "water.pdb",
+        PROTEIN,
+        {"A": list(range(1, 7))},
+        seqres=False,
+        water=True,
+    )
+    parsed = parse_pdb(path, mols=mols, use_assembly=False)
+    assert parsed.data.residues["name"].tolist() == PROTEIN
+
+
 @pytest.mark.parametrize("alternate_chain", ["A", "B"])
 @pytest.mark.parametrize(
     ("seqres", "alternate_identity"), [(True, True), (False, True), (True, False)]

@@ -48,6 +48,19 @@ def parse_pdb(  # noqa: C901, PLR0915, PLR0912
         # If full_sequence does not exist, we create it starting from 1 in the subchain.
         # This is needed for some .pdb files that are generated from other sources (e.g. solubleMPNN).
         if len(entity.full_sequence) < 1:
+            # HETATM can describe a modified polymer residue or a bound ligand.
+            # Gemmi can place both in a polymer subchain, so atom names and
+            # bonds alone cannot safely infer their sequence membership.
+            for sc in subchains:
+                for residue in sc:
+                    if residue.het_flag == "H":
+                        msg = (
+                            f"PDB polymer subchain {residue.subchain} in {path} "
+                            f"contains HETATM residue {residue.name} "
+                            f"{residue.seqid} without SEQRES. Supply SEQRES "
+                            "records or mmCIF with explicit polymer membership."
+                        )
+                        raise ValueError(msg)
             entity.full_sequence = next(
                 ([res.name for res in sc] for sc in subchains if len(sc)), []
             )

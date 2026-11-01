@@ -107,8 +107,10 @@ class ConsecutiveCA(StaticFilter):
 
     Modified residues use the conventional N-CA-C(=O) names and reference
     bonds to identify their backbone. Their atom_center is only a placeholder.
-    Other hetero groups, unrecognized backbones and missing CA atoms interrupt
+    Unrecognized hetero groups, backbones and missing CA atoms interrupt
     the trace; they must not create adjacency between the surrounding residues.
+    Polymer membership must already be established by the input records; the
+    backbone motif alone cannot distinguish a polymer residue from a ligand.
     """
 
     def __init__(self, max_dist: float = 10.0) -> None:
