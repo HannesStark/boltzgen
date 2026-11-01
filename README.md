@@ -336,6 +336,8 @@ constraints:
 
 ```
 
+Bond constraints and `leaving_atoms` use the same atom-selection rules. Use unique input chain IDs where possible. If a duplicate ID is automatically renamed, the original ID selects its most recently renamed occurrence; an unshadowed final ID can select an earlier occurrence. Renaming is applied once, so a later input that reuses a generated name does not redirect an earlier alias again. Sampled inline sequences use specification positions as described above; file chains keep their stored residue positions. A uniquely named fused inline donor can be selected by its donor ID. Donor IDs that conflict with another chain or alias are rejected.
+
 ## Symmetric complex design (inverse-folding only)
 
 For symmetric complexes (e.g., homo-dimers), the you can tie sequence generation during inverse folding by specifying the `symmetric_group` for each symmetric chain. The `protein-redesign` protocol allows for scoring complexes without separate binders/targets.
