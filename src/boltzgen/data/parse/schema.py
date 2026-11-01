@@ -14,12 +14,12 @@ from rdkit.Chem import AllChem
 from rdkit.Chem.rdchem import Conformer, Mol
 from rdkit.Chem.rdMolDescriptors import CalcNumHeavyAtoms
 from scipy.spatial.distance import cdist
-import yaml
 
 from boltzgen.data import const
 from boltzgen.data import source_context as source_context_utils
 from boltzgen.data.mol import load_molecules
 from boltzgen.data.parse.mmcif import parse_mmcif
+from boltzgen.data.parse.yaml import load_yaml
 from boltzgen.data.data import (
     Atom,
     Bond,
@@ -1270,7 +1270,7 @@ def parse_redesign_yaml(
     """parse a design mask override yaml file"""
     with path.open("r") as file:
         if path.suffix in {".yaml", ".yml"}:
-            data = yaml.safe_load(file)
+            data = load_yaml(file)
         else:
             raise ValueError(f"Unsupported file type: {str(path)}")
     target = parse_redesign_schema(data, tokenized)
@@ -1301,7 +1301,7 @@ class YamlDesignParser:
         """Parse a Boltz input yaml / json."""
         with path.open("r") as file:
             if path.suffix in {".yaml", ".yml"}:
-                data = yaml.safe_load(file)
+                data = load_yaml(file)
             elif path.suffix == ".pdb":
                 data = parse_pdb(file)
             else:
@@ -1959,7 +1959,7 @@ class YamlDesignParser:
 
             resolved_path = (base_file_path / path).resolve()
             with resolved_path.open("r") as f:
-                file = yaml.safe_load(f)
+                file = load_yaml(f)
                 base_file_path = resolved_path.parent
 
         # Extract values of file

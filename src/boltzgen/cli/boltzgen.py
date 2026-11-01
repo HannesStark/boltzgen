@@ -51,6 +51,7 @@ import hydra
 import omegaconf
 import torch
 from rdkit import Chem  # noqa: E402
+from boltzgen.data.parse.yaml import load_yaml  # noqa: E402
 
 from boltzgen.data import const
 from boltzgen.data.mol import load_canonicals
@@ -875,7 +876,7 @@ def execute_command(args: argparse.Namespace) -> None:
 
     # Load steps from steps.yaml
     with open(steps_yaml_path, "r") as f:
-        steps_data = yaml.safe_load(f)
+        steps_data = load_yaml(f)
 
     if not isinstance(steps_data, dict) or "steps" not in steps_data:
         raise ValueError(f"Invalid steps.yaml format in {steps_yaml_path}")
