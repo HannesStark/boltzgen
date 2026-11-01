@@ -147,6 +147,7 @@ class ConsecutiveCA(StaticFilter):
         }
         single = const.bond_type_ids["SINGLE"]
         double = const.bond_type_ids["DOUBLE"]
+        ca_ids = np.flatnonzero(structure.atoms["name"] == "CA")
 
         # Remove chain if consecutive CA atoms are above threshold
         for i, chain in enumerate(structure.chains):
@@ -160,35 +161,41 @@ class ConsecutiveCA(StaticFilter):
             residues = structure.residues[res_start:res_end]
 
             ca_valid = np.zeros(len(residues), dtype=bool)
-            ca_coords = np.zeros((len(residues), 3), dtype=structure.atoms["coords"].dtype)
-            for j, residue in enumerate(residues):
-                if not residue["is_present"]:
-                    continue
+            ca_coords = np.zeros(
+                (len(residues), 3), dtype=structure.atoms["coords"].dtype
+            )
+            # Count named CAs within each residue's atom slice without scanning
+            # every standard residue in Python. Empty or ambiguous slices have
+            # no eligible CA, including after atom extraction.
+            first = np.searchsorted(ca_ids, residues["atom_idx"])
+            end = np.searchsorted(ca_ids, residues["atom_idx"] + residues["atom_num"])
+            unique = np.flatnonzero((end - first == 1) & residues["is_present"])
+            ca_atoms = structure.atoms[ca_ids[first[unique]]]
+            ca_valid[unique] = ca_atoms["is_present"]
+            ca_coords[unique] = ca_atoms["coords"]
+
+            for j in np.flatnonzero(ca_valid & ~residues["is_standard"]):
+                residue = residues[j]
                 atom_start = residue["atom_idx"]
                 atoms = structure.atoms[atom_start : atom_start + residue["atom_num"]]
-                ca = np.flatnonzero(atoms["name"] == "CA")
-                if len(ca) != 1:
+                backbone = {}
+                for name in ("N", "CA", "C", "O"):
+                    indices = np.flatnonzero(atoms["name"] == name)
+                    if len(indices) == 1:
+                        backbone[name] = atom_start + indices[0]
+                if len(backbone) != 4:
+                    ca_valid[j] = False
                     continue
-
-                if not residue["is_standard"]:
-                    backbone = {}
-                    for name in ("N", "CA", "C", "O"):
-                        indices = np.flatnonzero(atoms["name"] == name)
-                        if len(indices) == 1:
-                            backbone[name] = atom_start + indices[0]
-                    if len(backbone) != 4:
-                        continue
-                    expected = (("N", "CA", single), ("CA", "C", single), ("C", "O", double))
-                    if any(
-                        (min(backbone[a], backbone[b]), max(backbone[a], backbone[b]), kind)
-                        not in bonds
-                        for a, b, kind in expected
-                    ):
-                        continue
-
-                ca_atom = atoms[ca[0]]
-                ca_valid[j] = ca_atom["is_present"]
-                ca_coords[j] = ca_atom["coords"]
+                expected = (
+                    ("N", "CA", single),
+                    ("CA", "C", single),
+                    ("C", "O", double),
+                )
+                ca_valid[j] = all(
+                    (min(backbone[a], backbone[b]), max(backbone[a], backbone[b]), kind)
+                    in bonds
+                    for a, b, kind in expected
+                )
 
             # Compute distances between consecutive atoms
             dist = np.linalg.norm(ca_coords[1:] - ca_coords[:-1], axis=1)
