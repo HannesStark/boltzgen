@@ -658,7 +658,7 @@ def parse_range(ranges, c_start=0, c_end=None):
         if re.fullmatch(r"\d+", spec):
             # Single number. Convert it from 1 indexed to 0 indexed.
             start = int(spec) - 1
-            end = int(spec) - 1
+            end = int(spec)
             indices.append(c_start + start)
         elif re.fullmatch(r"\d+\.\.\d+", spec):
             # Range with start and end. Convert the start from 1 indexed to 0 indexed. Leave the end untouched because the specification is inclusive (+1) but 1 indexed (-1).
