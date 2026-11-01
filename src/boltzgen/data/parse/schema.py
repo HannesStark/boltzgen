@@ -660,17 +660,17 @@ def parse_range(ranges, c_start=0, c_end=None):
             start = int(spec) - 1
             end = int(spec) - 1
             indices.append(c_start + start)
-        elif re.fullmatch(r"\d+..\d+", spec):
+        elif re.fullmatch(r"\d+\.\.\d+", spec):
             # Range with start and end. Convert the start from 1 indexed to 0 indexed. Leave the end untouched because the specification is inclusive (+1) but 1 indexed (-1).
             start, end = map(int, spec.split(".."))
             start -= 1
             indices += list(range(c_start + start, c_start + end))
-        elif re.fullmatch(r"..\d+", spec):
+        elif re.fullmatch(r"\.\.\d+", spec):
             # Range that is inclusive of the specified end (which is specified in a 1 indexed fashion).
             end = int(spec.replace("..", ""))
             start = 0
             indices += list(range(c_start, c_start + end))
-        elif re.fullmatch(r"\d+..", spec):
+        elif re.fullmatch(r"\d+\.\.", spec):
             assert c_end is not None
             # Range that is inclusive of the specified start (which is specified in a 1 indexed fashion).
             start = int(spec.replace("..", ""))
@@ -1018,6 +1018,8 @@ def parse_entity(item, mols, mol_dir, ligand_id, is_msa_custom, is_msa_auto):
             symmetric_group = 0
         seq = item[entity_type]["smiles"]
         mol = AllChem.MolFromSmiles(seq)
+        if mol is None:
+            raise ValueError(f"Failed to parse SMILES: {seq}")
         mol = AllChem.AddHs(mol)
         element_counts = defaultdict(int)
         for i, atom in enumerate(mol.GetAtoms()):
@@ -1263,7 +1265,7 @@ def parse_redesign_yaml(
 ) -> Target:
     """parse a design mask override yaml file"""
     with path.open("r") as file:
-        if path.suffix == ".yaml":
+        if path.suffix in {".yaml", ".yml"}:
             data = yaml.safe_load(file)
         else:
             raise ValueError(f"Unsupported file type: {str(path)}")
@@ -1294,7 +1296,7 @@ class YamlDesignParser:
     ) -> Target:
         """Parse a Boltz input yaml / json."""
         with path.open("r") as file:
-            if path.suffix == ".yaml":
+            if path.suffix in {".yaml", ".yml"}:
                 data = yaml.safe_load(file)
             elif path.suffix == ".pdb":
                 data = parse_pdb(file)
@@ -1944,7 +1946,7 @@ class YamlDesignParser:
 
         # Check if file points to another yaml file. If so, then use the contents of that other yaml file
         path = file["path"]
-        if isinstance(path, list) or Path(path).suffix == ".yaml":
+        if isinstance(path, list) or Path(path).suffix in {".yaml", ".yml"}:
             if isinstance(path, list):
                 path = random.choice(path)
 
@@ -1981,6 +1983,8 @@ class YamlDesignParser:
                 chain_id = chain["id"]
                 if "smiles" in chain:
                     mol = AllChem.MolFromSmiles(chain["smiles"])
+                    if mol is None:
+                        raise ValueError(f"Failed to parse SMILES: {chain['smiles']}")
                     mol = AllChem.AddHs(mol)
                     element_counts = defaultdict(int)
                     for i, atom in enumerate(mol.GetAtoms()):
