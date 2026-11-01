@@ -1,7 +1,7 @@
 # How to make a design specification .yaml
 
 
-All residue indices start at 1. For mmCIF input, use the residue's `label_seq_id`, not its author number `auth_seq_id`. The `*_asym_id` fields identify chains, not residue positions. See the [PDB indexing notes](../README.md#how-to-make-a-design-specification-yaml) for inputs with or without `SEQRES`.
+All residue indices start at 1. For mmCIF polymers with consecutive sequence numbering, use the residue's `label_seq_id`, not its author number `auth_seq_id`. The `*_asym_id` fields identify chains, not residue positions. See the [indexing notes](../README.md#how-to-make-a-design-specification-yaml) for PDB inputs with or without `SEQRES` and mmCIF files with gaps in their stored sequence numbering.
 You can check the indexing in your mmcif file by opening it in https://molstar.org/viewer/, hovering over a residue, and checking the index on the bottom right. You will see something like this where **41 is the index we use, the auth id 22 is incorrect**:
 
 ![](../assets/label_seq_id.png)

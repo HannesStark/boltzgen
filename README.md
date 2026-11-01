@@ -172,10 +172,12 @@ metrics, aggregation, liability defaults, and report conventions.
 # How to make a design specification .yaml
 A more detailed explanation of how our <code>.yaml</code> design specification files work is in <a href="example/README.md" target="_blank">example/README.md</a>. Below is an example based explanation, which is sufficient for most tasks.
 
-All residue indices start at 1. For mmCIF input, use the residue's `label_seq_id`, not its author number `auth_seq_id`. The `*_asym_id` fields identify chains, not residue positions.
+All residue indices start at 1. For mmCIF polymers with consecutive sequence numbering, use the residue's `label_seq_id`, not its author number `auth_seq_id`. The `*_asym_id` fields identify chains, not residue positions.
 You can check the indexing in your mmcif file by opening it in https://molstar.org/viewer/, hovering over a residue, and checking the index on the bottom right. You will see something like this where **41 is the index we use, the auth id 22 is incorrect**:
 
 ![](assets/label_seq_id.png)
+
+For cropped or exported mmCIF files with gaps in `_entity_poly_seq.num`, selections currently count entries in the stored sequence. For example, if those entries are numbered 1, 3, and 6, selection `3` selects the third entry (label 6). This can also occur when reusing output from `boltzgen check`. Verify selections with `check` after changing the input structure file.
 
 PDB files are converted to this sequence-based numbering. When `SEQRES` is present, unresolved positions remain part of the sequence, so counting only residues with coordinates can give the wrong index. Without `SEQRES`, the parser builds the sequence from the observed residues and numbers it consecutively from 1; original author numbers and their gaps do not set the input indices. Check selections in the mmCIF produced by `boltzgen check`.
 
