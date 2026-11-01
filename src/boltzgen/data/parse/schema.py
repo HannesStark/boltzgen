@@ -1798,12 +1798,12 @@ class YamlDesignParser:
                 if c2 in total_renaming.keys():
                     c2 = total_renaming[c2]
 
-                if c1 not in all_parsed_chains.keys():
+                if c1 not in all_parsed_chains and c1 not in data.chains["name"]:
                     msg = f"Chain {c1} in the specified connection does not exist: {constraint}"
-                    ValueError(msg)
-                if c2 not in all_parsed_chains.keys():
+                    raise ValueError(msg)
+                if c2 not in all_parsed_chains and c2 not in data.chains["name"]:
                     msg = f"Chain {c2} in the specified connection does not exist: {constraint}"
-                    ValueError(msg)
+                    raise ValueError(msg)
 
                 # Map index
                 if (
@@ -1882,7 +1882,10 @@ class YamlDesignParser:
         for leaving_atom in leaving_atoms:
             cidx, ridx, aidx = tuple(leaving_atom["atom"])
             ridx = ridx - 1
-            if all_parsed_chains[cidx].sampleidx_to_specidx is not None:
+            if (
+                cidx in all_parsed_chains
+                and all_parsed_chains[cidx].sampleidx_to_specidx is not None
+            ):
                 ridx = np.where(all_parsed_chains[cidx].sampleidx_to_specidx == ridx)[
                     0
                 ][0].item()
