@@ -1430,7 +1430,6 @@ class YamlDesignParser:
 
             # Keep a mapping of (chain_name, residue_idx, atom_name) to atom_idx
             atom_idx_map = {}
-            local_atom_idx_map = {}
             total_renaming = {}
             extra_mols = {}
             res_bind_type = []
@@ -1448,8 +1447,10 @@ class YamlDesignParser:
             res_aa_constraint_mask = np.zeros((0, len(const.canonical_tokens)), dtype=np.float32)
             chain_to_msa = {}
 
-            global_asym_id = 0
             for item in items_list:
+                renaming = {}
+                incoming_atom_idx_map = {}
+                local_atom_idx_map = {}
                 sym_id = 0
                 entity_type = next(iter(item.keys())).lower()
                 if entity_type != "file":
@@ -1473,7 +1474,6 @@ class YamlDesignParser:
                     ) = parse_entity(
                         item, mols, mol_dir, ligand_id, is_msa_custom, is_msa_auto
                     )
-                    all_parsed_chains.update(parsed_chains)
 
                     extra_mols.update(new_extra_mols)
                     res_bind_type = np.concatenate([res_bind_type, new_res_bind_type])
@@ -1547,8 +1547,8 @@ class YamlDesignParser:
 
                             for atom in res.atoms:
                                 # Add atom to map
-                                atom_idx_map[(chain_name, res.idx, atom.name)] = (
-                                    global_asym_id + asym_id,
+                                incoming_atom_idx_map[(chain_name, res.idx, atom.name)] = (
+                                    len(data.chains) + asym_id,
                                     data.residues.shape[0] + res_idx,
                                     data.atoms.shape[0] + atom_idx,
                                 )
@@ -1621,6 +1621,16 @@ class YamlDesignParser:
                         [res_design_mask, new_res_design_mask]
                     )
                     if fuse_info["fuse"]:
+                        donor_name = str(new_data.chains[0]["name"])
+                        if (
+                            donor_name in all_parsed_chains
+                            or donor_name in data.chains["name"]
+                            or donor_name in total_renaming
+                        ):
+                            raise ValueError(
+                                f"Fused donor chain {donor_name} has an ambiguous alias; "
+                                "use a unique donor id."
+                            )
                         source_context = source_context_utils.merge(
                             source_context,
                             incoming_context,
@@ -1643,13 +1653,13 @@ class YamlDesignParser:
                         if len(renaming) > 0:
                             msg = f"\nChain ids in non-file sequence conflict with existing chain ids. Renaming them {renaming}."
                             self.log_once(msg)
-                        global_asym_id += asym_id + 1
                     new_chain_to_msa = {}
                     for chain_id, msa in entity_chain_to_msa.items():
                         renamed_id = renaming.get(chain_id, chain_id)
                         if renamed_id in chain_to_msa:
-                            raise KeyError(
-                                f"Key '{renamed_id}' already exists in chain_to_msa."
+                            raise ValueError(
+                                f"Chain {renamed_id} conflicts with an existing chain or fused donor alias; "
+                                "use unique input chain ids."
                             )
                         new_chain_to_msa[renamed_id] = msa
                     chain_to_msa.update(new_chain_to_msa)
@@ -1694,7 +1704,6 @@ class YamlDesignParser:
                             data, new_data, return_renaming=True
                         )
                         total_renaming.update(renaming)
-                        global_asym_id += max(new_data.chains["asym_id"]) + 1
                     structure_groups = np.concatenate([structure_groups, new_groups])
                     res_design_mask = np.concatenate([res_design_mask, new_design_mask])
                     res_bind_type = np.concatenate([res_bind_type, fbind_types])
@@ -1710,8 +1719,9 @@ class YamlDesignParser:
                     for chain_id, msa in file_chain_to_msa.items():
                         renamed_id = renaming.get(chain_id, chain_id)
                         if renamed_id in chain_to_msa:
-                            raise KeyError(
-                                f"Key '{renamed_id}' already exists in chain_to_msa."
+                            raise ValueError(
+                                f"Chain {renamed_id} conflicts with an existing chain or fused donor alias; "
+                                "use unique input chain ids."
                             )
                         new_chain_to_msa[renamed_id] = msa
                     chain_to_msa.update(new_chain_to_msa)
@@ -1745,165 +1755,110 @@ class YamlDesignParser:
                     res_bind_type = res_bind_type[order]
                     ss_type = ss_type[order]
                     res_aa_constraint_mask = res_aa_constraint_mask[order]
-                    # Constraint keys retain the original specification's
-                    # chain names, including aliases for fused inline donors.
+                    # Existing endpoints move when the donor is inserted into
+                    # an earlier chain. Incoming endpoints use donor-local offsets.
                     atom_count = len(new_data.atoms)
                     atom_boundary = int(
                         fused_chain["atom_idx"] + fused_chain["atom_num"]
                     ) - atom_count
-                    donor_name = (
-                        str(new_data.chains[0]["name"])
-                        if entity_type != "file"
-                        else None
-                    )
                     for key, endpoint in atom_idx_map.items():
                         chain_index, residue_index, atom_index = endpoint
-                        if key[0] == donor_name:
-                            _, local_residue, local_atom = local_atom_idx_map[key]
-                            atom_idx_map[key] = (
-                                fused_chain_idx,
-                                boundary + local_residue,
-                                atom_boundary + local_atom,
+                        atom_idx_map[key] = (
+                            chain_index,
+                            residue_index + (donor_count if residue_index >= boundary else 0),
+                            atom_index + (atom_count if atom_index >= atom_boundary else 0),
+                        )
+                    for key, (_, local_residue, local_atom) in local_atom_idx_map.items():
+                        incoming_atom_idx_map[key] = (
+                            fused_chain_idx,
+                            boundary + local_residue,
+                            atom_boundary + local_atom,
+                        )
+                if not fuse_info["fuse"]:
+                    for chain_name in new_data.chains["name"]:
+                        final_name = renaming.get(chain_name, chain_name)
+                        if final_name in all_parsed_chains:
+                            raise ValueError(
+                                f"Chain {final_name} conflicts with a fused donor alias; "
+                                "use unique input chain ids."
                             )
-                        else:
-                            atom_idx_map[key] = (
-                                chain_index,
-                                residue_index
-                                + (donor_count if residue_index >= boundary else 0),
-                                atom_index
-                                + (atom_count if atom_index >= atom_boundary else 0),
-                            )
+                if entity_type != "file":
+                    # Register only after renaming, so an incoming duplicate
+                    # cannot overwrite an earlier chain's sampling or atom map.
+                    for chain_name, parsed_chain in parsed_chains.items():
+                        final_name = renaming.get(chain_name, chain_name)
+                        all_parsed_chains[final_name] = parsed_chain
+                    for (chain_name, residue_index, atom_name), endpoint in incoming_atom_idx_map.items():
+                        final_name = renaming.get(chain_name, chain_name)
+                        atom_idx_map[(final_name, residue_index, atom_name)] = endpoint
             if "total_len" in constraints[0]:
                 if len(res_bind_type) >= min_len and len(res_bind_type) <= max_len:
                     break
             if "total_len" not in constraints[0]:
                 break
 
-        # Parse constraints
+        def resolve_atom(selection) -> tuple[int, int, int]:
+            """Resolve one input selection to global chain, residue and atom indices."""
+            chain_name, residue_number, atom_name = selection
+            # Preserve the existing single-step alias rule. Recursing can select
+            # a later unrelated chain when a generated name is reused as input.
+            chain_name = total_renaming.get(chain_name, chain_name)
+            residue_index = residue_number - 1
+            parsed_chain = all_parsed_chains.get(chain_name)
+            if parsed_chain is not None:
+                if parsed_chain.sampleidx_to_specidx is not None:
+                    matches = np.flatnonzero(
+                        parsed_chain.sampleidx_to_specidx == residue_index
+                    )
+                    if len(matches) == 0:
+                        raise ValueError(f"Residue in atom selection {selection} does not exist.")
+                    # Expanded variable-length slots share a specification index.
+                    # Constraints use the first match, as in minimum-length input.
+                    residue_index = int(matches[0])
+                try:
+                    return atom_idx_map[(chain_name, residue_index, atom_name)]
+                except KeyError as error:
+                    raise ValueError(f"Atom selection {selection} does not exist.") from error
+
+            matches = np.flatnonzero(data.chains["name"] == chain_name)
+            if len(matches) != 1:
+                raise ValueError(f"Chain {chain_name} in atom selection {selection} does not exist.")
+            chain_index = int(matches[0])
+            chain = data.chains[chain_index]
+            residues = data.residues[chain["res_idx"] : chain["res_idx"] + chain["res_num"]]
+            matches = np.flatnonzero(residues["res_idx"] == residue_index)
+            if len(matches) != 1:
+                raise ValueError(f"Residue in atom selection {selection} does not exist.")
+            residue_index = int(chain["res_idx"]) + int(matches[0])
+            residue = data.residues[residue_index]
+            atoms = data.atoms[residue["atom_idx"] : residue["atom_idx"] + residue["atom_num"]]
+            matches = np.flatnonzero(atoms["name"] == atom_name)
+            if len(matches) != 1:
+                raise ValueError(f"Atom selection {selection} does not exist.")
+            return chain_index, residue_index, int(residue["atom_idx"]) + int(matches[0])
+
+        # Bonds and leaving atoms must use the same chain and residue mapping.
         for constraint in constraints:
             if "bond" in constraint:
-                if (
-                    "atom1" not in constraint["bond"]
-                    or "atom2" not in constraint["bond"]
-                ):
-                    msg = f"Bond constraint was not properly specified"
-                    raise ValueError(msg)
-
-                c1, r1, a1 = tuple(constraint["bond"]["atom1"])
-                c2, r2, a2 = tuple(constraint["bond"]["atom2"])
-                r1 = r1 - 1  # 1-indexed
-                r2 = r2 - 1  # 1-indexed
-                if c1 in total_renaming.keys():
-                    c1 = total_renaming[c1]
-                if c2 in total_renaming.keys():
-                    c2 = total_renaming[c2]
-
-                if c1 not in all_parsed_chains and c1 not in data.chains["name"]:
-                    msg = f"Chain {c1} in the specified connection does not exist: {constraint}"
-                    raise ValueError(msg)
-                if c2 not in all_parsed_chains and c2 not in data.chains["name"]:
-                    msg = f"Chain {c2} in the specified connection does not exist: {constraint}"
-                    raise ValueError(msg)
-
-                # Map index
-                if (
-                    c1 in all_parsed_chains.keys()
-                    and all_parsed_chains[c1].sampleidx_to_specidx is not None
-                ):
-                    r1 = np.where(all_parsed_chains[c1].sampleidx_to_specidx == r1)[0][
-                        0
-                    ].item()
-                    c1, r1, a1 = atom_idx_map[(c1, r1, a1)]
-                else:
-                    # we have a chain coming from a file where we just use the residue index
-                    chain = data.chains[data.chains["name"] == c1]
-                    c1 = chain["asym_id"].item()
-
-                    res_start = chain["res_idx"].item()
-                    res_end = chain["res_idx"].item() + chain["res_num"].item()
-                    residues = data.residues[res_start:res_end]
-                    residue = residues[residues["res_idx"] == r1]
-                    r1 = res_start + np.flatnonzero(
-                        residues["res_idx"] == r1
-                    ).item()
-
-                    atom_start = residue["atom_idx"].item()
-                    atom_end = residue["atom_idx"].item() + residue["atom_num"].item()
-                    atoms = data.atoms[atom_start:atom_end]
-                    assert a1 in atoms["name"], (
-                        f"Atom {a1} not found in residue {r1} of chain {c1}"
-                    )
-                    a1 = np.where(atoms["name"] == a1)[0].item()
-                    a1 = (
-                        residue["atom_idx"].item() + a1
-                    )  # THIS STILL NEEDS TO BE CORRECTED
-
-                if (
-                    c2 in all_parsed_chains.keys()
-                    and all_parsed_chains[c2].sampleidx_to_specidx is not None
-                ):
-                    r2 = np.where(all_parsed_chains[c2].sampleidx_to_specidx == r2)[0][
-                        0
-                    ].item()
-                    c2, r2, a2 = atom_idx_map[(c2, r2, a2)]
-                else:
-                    # we have a chain coming from a file where we just use the residue index
-                    chain = data.chains[data.chains["name"] == c2]
-                    c2 = chain["asym_id"].item()
-
-                    res_start = chain["res_idx"].item()
-                    res_end = chain["res_idx"].item() + chain["res_num"].item()
-                    residues = data.residues[res_start:res_end]
-                    residue = residues[residues["res_idx"] == r2]
-                    r2 = res_start + np.flatnonzero(
-                        residues["res_idx"] == r2
-                    ).item()
-
-                    atom_start = residue["atom_idx"].item()
-                    atom_end = residue["atom_idx"].item() + residue["atom_num"].item()
-                    atoms = data.atoms[atom_start:atom_end]
-                    assert a2 in atoms["name"], (
-                        f"Atom {a2} not found in residue {r2} of chain {c2}"
-                    )
-                    a2 = np.where(atoms["name"] == a2)[0].item()
-                    a2 = (
-                        residue["atom_idx"].item() + a2
-                    )  # THIS STILL NEEDS TO BE CORRECTED
+                bond = constraint["bond"]
+                if "atom1" not in bond or "atom2" not in bond:
+                    raise ValueError("Bond constraint was not properly specified")
+                c1, r1, a1 = resolve_atom(bond["atom1"])
+                c2, r2, a2 = resolve_atom(bond["atom2"])
                 covalents.append((c1, c2, r1, r2, a1, a2))
-            elif "total_len" in constraints:
-                continue
 
         covalents = [(*c, const.bond_type_ids["COVALENT"]) for c in covalents]
         covalents = np.array(covalents, dtype=Bond)
         data = replace(data, bonds=np.concatenate([data.bonds, covalents]))
 
-        # Parse leaving atoms
-        leaving_atoms = schema.get("leaving_atoms", [])
-        for leaving_atom in leaving_atoms:
-            cidx, ridx, aidx = tuple(leaving_atom["atom"])
-            ridx = ridx - 1
-            if (
-                cidx in all_parsed_chains
-                and all_parsed_chains[cidx].sampleidx_to_specidx is not None
-            ):
-                ridx = np.where(all_parsed_chains[cidx].sampleidx_to_specidx == ridx)[
-                    0
-                ][0].item()
-            if cidx in total_renaming.keys():
-                cidx = total_renaming[cidx]
-            chain = data.chains[np.where(data.chains["name"] == cidx)[0].item()]
-            residues = data.residues[
-                chain["res_idx"] : chain["res_idx"] + chain["res_num"]
-            ]
-            res = residues[np.where(residues["res_idx"] == ridx)[0].item()]
-            atoms = data.atoms[res["atom_idx"] : res["atom_idx"] + res["atom_num"]]
-            atom_idx = res["atom_idx"] + np.where(atoms["name"] == aidx)[0].item()
-            data.atoms["is_present"][atom_idx] = False
-            chain_index = data.chains["name"].tolist().index(cidx)
+        for leaving_atom in schema.get("leaving_atoms", []):
+            chain_index, residue_index, atom_index = resolve_atom(leaving_atom["atom"])
+            data.atoms["is_present"][atom_index] = False
+            chain = data.chains[chain_index]
+            residue_offset = residue_index - int(chain["res_idx"])
             context_entry = source_context["chains"][chain_index]
-            residue_offset = np.where(residues["res_idx"] == ridx)[0].item()
             context_entry.setdefault("omitted_atoms", []).append(
-                [context_entry["indices"][residue_offset], aidx]
+                [context_entry["indices"][residue_offset], leaving_atom["atom"][2]]
             )
 
         # Create metadata
