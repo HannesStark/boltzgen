@@ -164,6 +164,12 @@ The `protein-small_molecule` protocol instead uses BoltzIF and Boltz2 affinity.
 
 All configuration parameters can be overridden using the `--config` option; see `boltzgen run --help` or the `Advanced Users` section below for details.
 
+To require contact with an annotated binding site when rerunning filtering, add `--config filtering filter_bindingsite=true` to the `boltzgen run ... --steps filtering` command. `filter_bindingsite` is a filtering configuration option, not a top-level command-line flag. It keeps designs with `bindsite_under_8rmsd >= 0.0001`.
+
+The legacy metric names `bindsite_under_<threshold>rmsd` report a fraction, not RMSD: for each annotated binding-site token, analysis finds the nearest designed-token center and reports the fraction strictly closer than the threshold in angstroms. These metrics use the generated structure, not the refolded structure. The existing column names are retained for compatibility with filters and saved reports.
+
+The current BoltzGen design and Boltz2 refolding inference loaders use a single sequence. A protein entity's `msa` field does not load an A3M file or run an MSA search for these steps.
+
 See [multichain sequence analysis](docs/sequence-analysis.md) for per-chain
 metrics, aggregation, liability defaults, and report conventions.
 
@@ -172,12 +178,12 @@ metrics, aggregation, liability defaults, and report conventions.
 # How to make a design specification .yaml
 A more detailed explanation of how our <code>.yaml</code> design specification files work is in <a href="example/README.md" target="_blank">example/README.md</a>. Below is an example based explanation, which is sufficient for most tasks.
 
-All residue indices start at 1. For mmCIF polymers with consecutive sequence numbering, use the residue's `label_seq_id`, not its author number `auth_seq_id`. The `*_asym_id` fields identify chains, not residue positions.
+All residue indices are one-based. For mmCIF file selections, the residue's `label_seq_id` matches the selection index when sequence numbering starts at 1 and is consecutive. Do not use the author number `auth_seq_id`. The `*_asym_id` fields identify chains, not residue positions.
 You can check the indexing in your mmcif file by opening it in https://molstar.org/viewer/, hovering over a residue, and checking the index on the bottom right. You will see something like this where **41 is the index we use, the auth id 22 is incorrect**:
 
 ![](assets/label_seq_id.png)
 
-For cropped or exported mmCIF files with gaps in `_entity_poly_seq.num`, selections currently count entries in the stored sequence. For example, if those entries are numbered 1, 3, and 6, selection `3` selects the third entry (label 6). This can also occur when reusing output from `boltzgen check`. Verify selections with `check` after changing the input structure file.
+For cropped or exported mmCIF files with gaps or a leading offset in `_entity_poly_seq.num`, file selections count entries in the stored sequence. If those entries are numbered 1, 3, and 6, selection `3` selects the third entry (label 6). If they start at 14, selection `1` selects the first stored entry (label 14). This can also occur when reusing output from `boltzgen check`. Verify selections with `check` after changing the input structure file.
 
 PDB files are converted to this sequence-based numbering. When `SEQRES` is present, unresolved positions remain part of the sequence, so counting only residues with coordinates can give the wrong index. Without `SEQRES`, the parser builds the sequence from observed `ATOM` residues and numbers it consecutively from 1; original author numbers and their gaps do not set the input indices. If an inferred polymer subchain contains `HETATM` residues, parsing requires `SEQRES` because a modified residue and a bound ligand cannot be distinguished safely from atom names and bonds. This includes known modifications such as MSE or SEP when they occur as `HETATM` in that subchain. Supply `SEQRES` that describes the polymer, or use mmCIF with explicit polymer membership. Separate non-polymer and water subchains do not require `SEQRES`. Check selections in the mmCIF produced by `boltzgen check`.
 
@@ -248,8 +254,11 @@ entities:
             not_binding: "all" 
       
       # Which regions of the target should have their structure specified.
-      # By default, everything is visibility 1 which means that the structure is specified.
-      # If the visibility is 0, then the structure is not specified.
+      # If structure_groups is omitted, all included residues use group 1.
+      # With a list (even an empty list), unlisted residues use group 0.
+      # Entries apply in order. visibility: 0 hides structure; positive values
+      # identify structure groups. Relative positions are specified within
+      # each group, not between different groups. id selects the chain.
       structure_groups:
         - group:
             visibility: 1

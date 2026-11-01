@@ -5,7 +5,7 @@ top_budget:  10
 use_affinity:  false  # This changes the filtering metrics to metrics more amenable to small molecule binder design
 filter_cysteine:  false  # [different from peptide-protein] This filters out all designs that have designed cysteins in them (prespecified cysteins in the design are not counted)
 from_inverse_folded:  false  # This makes it so that we use the backbone refolding rmsd instead of the all-atom RMSD
-filter_bindingsite:  false  # This filters out everything that does not have a residue within 4A of a binding site residue
+filter_bindingsite:  false  # Require bindsite_under_8rmsd >= 0.0001 (binding-site fraction within 8A of a designed token)
 modality: "peptide"  # peptide or antibody
 peptide_type: "linear"  # linear or cyclic
 alpha:  0.001  # 0 quality-only 1 diversity-only

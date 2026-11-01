@@ -98,8 +98,8 @@ class Filter(Task):
         Also require the isolated design (no target) to refold to the same shape,
         via ``designfolding-*_rmsd``.
     filter_bindingsite : bool, default=False
-        Keep only designs with at least one residue within the specified distance of
-        a binding-site residue (e.g., ``bindsite_under_8rmsd > 0``).
+        Require ``bindsite_under_8rmsd >= 0.0001``: the fraction of binding-site
+        tokens less than 8 Angstrom from their nearest designed token.
     filter_target_aligned : bool, default=False
         Require target backbone alignment (``bb_target_aligned<2.5`` flag).
     filter_biased : bool, default=True
@@ -193,7 +193,7 @@ class Filter(Task):
         filter_cysteine: bool = True,  # This filters out all designs that have designed cysteins in them (prespecified cysteins in the design are not counted)
         from_inverse_folded: bool = True,  # This makes it so that we use the backbone refolding rmsd instead of the all-atom RMSD
         filter_designfolding: bool = True,  # Additionally filter based on the RMSD from refolding the design in isolation. This makes sure the design has the same shape with and without the target being present.
-        filter_bindingsite: bool = False,  # This filters out everything that does not have a residue within 4A of a binding site residue
+        filter_bindingsite: bool = False,  # Require a designed-token center within 8 A of a binding-site token.
         filter_target_aligned: bool = False,
         filter_biased: bool = True,  # This filters out sequences that are alanine rich, 30% alanine is threshold
         refolding_rmsd_threshold: float = 2.5,
@@ -301,7 +301,7 @@ class Filter(Task):
         if filter_bindingsite:
             self.filters.append(
                 {
-                    "feature": "bindsite_under_8rmsd",  # center_coord RMSD
+                    "feature": "bindsite_under_8rmsd",  # Fraction within 8 A; legacy name.
                     "lower_is_better": False,
                     "threshold": 0.0001,  # at least one binding site residue
                 },
