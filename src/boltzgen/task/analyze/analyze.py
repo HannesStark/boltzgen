@@ -49,6 +49,7 @@ from boltzgen.task.predict.data_from_generated import FromGeneratedDataModule
 import torch
 import numpy as np
 import pandas as pd
+from boltzgen.data.parse.table import read_metrics_table  # noqa: E402
 from tqdm import tqdm
 from collections import defaultdict
 
@@ -1488,10 +1489,9 @@ class Analyze(Task):
         try:
             subprocess.run(cmd, check=True)
 
-            df_cluster = pd.read_csv(
+            df_cluster = read_metrics_table(
                 str(cluster_prefix) + "_cluster.tsv",
                 sep="\t",
-                header=None,
                 names=["file", "clusters_05_tmscore"],
             )
             df_cluster["file"] = df_cluster["file"].apply(lambda x: Path(x).stem)

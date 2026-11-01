@@ -31,6 +31,7 @@ from boltzgen.task.filter.seqplot_utils import (
     create_alignment_logo,
     plot_seq_liabilities,
 )
+from boltzgen.data.parse.table import read_metrics_table  # noqa: E402
 from boltzgen.task.task import Task
 from boltzgen.task.esmfold2.contract import (
     SCORE_KEY,
@@ -404,17 +405,7 @@ class Filter(Task):
                 f"No file starting with 'aggregate_metrics_' found in {self.design_dir}"
             )
             raise FileNotFoundError(msg)
-        # "NA" is a valid amino-acid sequence; retain normal NA parsing for metrics.
-        sequence_columns = [
-            column
-            for column in pd.read_csv(csv_files[0], nrows=0).columns
-            if column == "designed_chain_sequence"
-            or column.startswith(("designed_sequence", "full_sequence_"))
-        ]
-        df_in = pd.read_csv(
-            csv_files[0],
-            converters=dict.fromkeys(sequence_columns, lambda value: value or None),
-        )
+        df_in = read_metrics_table(csv_files[0])
 
         self.df_in = df_in.copy()
         df = df_in.copy()
