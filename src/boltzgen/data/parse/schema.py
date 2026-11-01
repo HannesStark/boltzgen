@@ -681,7 +681,7 @@ def parse_range(ranges, c_start=0, c_end=None):
             msg = f"Malformed residue range specification '{spec}' in '{ranges}'."
             raise ValueError(msg)
 
-        if start < 0:
+        if start < 0 or (end <= 0 and not spec.endswith("..")):
             msg = f"There is a 0 in the specified range(s) {ranges}. Residue indices are 1 indexed."
             raise ValueError(msg)
 
