@@ -366,6 +366,7 @@ class FromGeneratedDataset(torch.utils.data.Dataset):
 
     def get_feat(self, path, design_mask, ss_type=None, binding_type=None, aa_constraint_mask=None, symmetric_group=None):
         # Load design
+        mols = None
         if self.extra_mol_dir is not None:
             mols = {
                 path.stem: pickle.load(path.open("rb"))
