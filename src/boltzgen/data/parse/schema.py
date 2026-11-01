@@ -686,7 +686,7 @@ def parse_range(ranges, c_start=0, c_end=None):
             raise ValueError(msg)
 
         if c_end is not None and end > c_end - c_start:
-            msg = f"Specified end {ranges} is higher than the length of the chain."
+            msg = f"Specified end {ranges} is out of bounds: higher than the length of the chain."
             raise ValueError(msg)
     return indices
 
@@ -1019,7 +1019,8 @@ def parse_entity(item, mols, mol_dir, ligand_id, is_msa_custom, is_msa_auto):
         seq = item[entity_type]["smiles"]
         mol = AllChem.MolFromSmiles(seq)
         if mol is None:
-            raise ValueError(f"Failed to parse SMILES: {seq}")
+            msg = f"Failed to parse SMILES: {seq}"
+            raise ValueError(msg)
         mol = AllChem.AddHs(mol)
         element_counts = defaultdict(int)
         for i, atom in enumerate(mol.GetAtoms()):
@@ -1984,7 +1985,8 @@ class YamlDesignParser:
                 if "smiles" in chain:
                     mol = AllChem.MolFromSmiles(chain["smiles"])
                     if mol is None:
-                        raise ValueError(f"Failed to parse SMILES: {chain['smiles']}")
+                        msg = f"Failed to parse SMILES: {chain['smiles']}"
+                        raise ValueError(msg)
                     mol = AllChem.AddHs(mol)
                     element_counts = defaultdict(int)
                     for i, atom in enumerate(mol.GetAtoms()):
