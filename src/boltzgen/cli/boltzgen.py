@@ -47,6 +47,8 @@ import pandas as pd
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 import yaml
+
+from boltzgen.data.parse.table import read_metrics_table  # noqa: E402
 import hydra
 import omegaconf
 import torch
@@ -1690,23 +1692,7 @@ def merge_command(args: argparse.Namespace) -> None:
 
             metrics_path = src_dir / "aggregate_metrics_analyze.csv"
             if metrics_path.exists():
-                # Preserve identifiers and valid "NA" sequences when merging.
-                sequence_columns = [
-                    column
-                    for column in pd.read_csv(metrics_path, nrows=0).columns
-                    if column == "designed_chain_sequence"
-                    or column.startswith(("designed_sequence", "full_sequence_"))
-                ]
-                df = pd.read_csv(
-                    metrics_path,
-                    converters={
-                        "id": str,
-                        "file_name": str,
-                        **dict.fromkeys(
-                            sequence_columns, lambda value: value or None
-                        ),
-                    },
-                )
+                df = read_metrics_table(metrics_path)
                 if df.empty:
                     message = (
                         f"Metrics file contains no analyzed designs: {metrics_path}. "
@@ -1807,7 +1793,7 @@ def merge_command(args: argparse.Namespace) -> None:
 
             per_target_path = src_dir / "per_target_metrics_analyze.csv"
             if per_target_path.exists():
-                per_target_frames.append(pd.read_csv(per_target_path))
+                per_target_frames.append(read_metrics_table(per_target_path))
 
             for original_id, new_id, original_file, new_file in source_mappings:
                 _copy_design_files(

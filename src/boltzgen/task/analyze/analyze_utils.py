@@ -27,6 +27,7 @@ from boltzgen.task.predict.data_from_generated import collate
 import torch
 import numpy as np
 import pandas as pd
+from boltzgen.data.parse.table import read_metrics_table  # noqa: E402
 from tqdm import tqdm
 
 from boltzgen.data import const
@@ -583,7 +584,7 @@ def compute_novelty_foldseek(
 
     subprocess.run(cmd, check=True)
 
-    df = pd.read_csv(
+    df = read_metrics_table(
         aln_tsv,
         sep="\t",
         names=["query", "target", "alntmscore", "qtmscore", "ttmscore"],
