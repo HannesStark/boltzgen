@@ -193,6 +193,8 @@ After you constructed your `.yaml` file we recommend that you run the `check` co
 3. Select B-factor coloring in your viewer to inspect the design and binding annotations. These values encode input settings, not model confidence.
 
 
+YAML mapping keys must be unique. Repeating `id:` or `structure_groups:` in the same mapping raises an error with the file and line number. Use separate list entries to select multiple chains. Anchors and YAML merge keys (`<<`) remain supported, including explicit overrides of inherited values.
+
 ## Example based explanation:
 We provide many example `.yaml` files in the `example/` directory, including:
 
