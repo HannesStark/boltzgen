@@ -3,6 +3,7 @@ from boltzgen.utils.quiet import quiet_startup
 quiet_startup()
 
 import os
+from collections.abc import Iterable
 
 # Disable Triton auto-tuning during inference
 os.environ.setdefault("CUEQ_DEFAULT_CONFIG", "1")
@@ -15,6 +16,11 @@ from omegaconf import OmegaConf, listconfig
 from pytorch_lightning import LightningModule, Trainer
 
 from pytorch_lightning.strategies import DDPStrategy
+from lightning_fabric.plugins.environments import (
+    ClusterEnvironment,
+    LightningEnvironment,
+    TorchElasticEnvironment,
+)
 
 from boltzgen.task.predict.data_from_generated import FromGeneratedDataModule
 from boltzgen.task.predict.writer import (
@@ -167,13 +173,37 @@ class Predict(Task):
             if isinstance(devices, (list, listconfig.ListConfig))
             else devices
         )
-        if num_devices > 1:
+        if isinstance(num_devices, int) and num_devices > 1:
             strategy = DDPStrategy()
             if num_devices > len(self.data.predict_set):
-                devices = max(1, len(self.data.predict_set))
+                count = max(1, len(self.data.predict_set))
+                devices = (
+                    devices[:count]
+                    if isinstance(devices, (list, listconfig.ListConfig))
+                    else count
+                )
                 msg = f"Fewer designs than devices. Setting devices to {devices}."
                 print(msg)
                 self.trainer["devices"] = devices
+
+        if (
+            not self.slurm
+            and os.environ.get("SLURM_NTASKS") == "1"
+            and self.trainer.get("num_nodes", 1) == 1
+            and not TorchElasticEnvironment.detect()
+        ):
+            # One SLURM task reserves GPUs but does not launch DDP workers.
+            # Materialize iterables once so checking cannot consume a generator.
+            plugins = self.trainer.get("plugins")
+            if plugins is None:
+                plugins = []
+            elif isinstance(plugins, Iterable):
+                plugins = list(plugins)
+            else:
+                plugins = [plugins]
+            if not any(isinstance(plugin, ClusterEnvironment) for plugin in plugins):
+                plugins.append(LightningEnvironment())
+            self.trainer["plugins"] = plugins
 
         self.lightning_trainer = Trainer(
             default_root_dir=self.output,
@@ -186,9 +216,26 @@ class Predict(Task):
             ),
             **self.trainer,
         )
+        expected_ranks = (
+            self.lightning_trainer.num_devices * self.lightning_trainer.num_nodes
+        )
+        if self.lightning_trainer.world_size != expected_ranks:
+            raise ValueError(
+                "Prediction launcher and device counts disagree: "
+                f"{self.lightning_trainer.world_size} launcher ranks for "
+                f"{expected_ranks} configured workers. Check the launcher, "
+                "devices and num_nodes settings."
+            )
+        if expected_ranks > len(self.data.predict_set):
+            raise ValueError(
+                f"Prediction has {len(self.data.predict_set)} records but "
+                f"{expected_ranks} workers. Set fewer devices or num_nodes so "
+                "each worker receives at least one record."
+            )
         if run_prediction:
             # Run training
             self.lightning_trainer.predict(
                 self.model_module, datamodule=self.data, return_predictions=False
             )
+            self.lightning_trainer.strategy.barrier("prediction writes complete")
             del self.model_module
