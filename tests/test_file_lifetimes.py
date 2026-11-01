@@ -1,18 +1,16 @@
 """Exercise explicit closure through real writer and dataset entry points."""
 
 import builtins
-from pathlib import Path
 from types import SimpleNamespace
 
 import gemmi
 import numpy as np
 import pytest
-import torch
+from test_folding_export_consistency import _features
 
 from boltzgen.model.validation import design as validation
 from boltzgen.task.predict import data_from_generated as data
 from boltzgen.task.predict import writer
-from test_folding_export_consistency import _features
 
 
 class RetainedFile:
