@@ -98,8 +98,8 @@ class Filter(Task):
         Also require the isolated design (no target) to refold to the same shape,
         via ``designfolding-*_rmsd``.
     filter_bindingsite : bool, default=False
-        Keep only designs with at least one residue within the specified distance of
-        a binding-site residue (e.g., ``bindsite_under_8rmsd > 0``).
+        Require ``bindsite_under_8rmsd >= 0.0001``: the fraction of binding-site
+        tokens less than 8 Angstrom from their nearest designed token.
     filter_target_aligned : bool, default=False
         Require target backbone alignment (``bb_target_aligned<2.5`` flag).
     filter_biased : bool, default=True
