@@ -743,12 +743,12 @@ class Analyze(Task):
 
         # largest hydrophobic patch area original
         if self.largest_hydrophobic:
-            if not des_cif_path.exists():
-                save_design_only_structure_to_cif(
-                    atom_design_mask=atom_chain_mask,
-                    structure=feat["str_gen"],
-                    output_path=des_cif_path,
-                )
+            # A prior invocation may have left incomplete or stale scratch data.
+            save_design_only_structure_to_cif(
+                atom_design_mask=atom_chain_mask,
+                structure=feat["str_gen"],
+                output_path=des_cif_path,
+            )
             area = largest_hydrophobic_patch_area(des_cif_path)
             metrics["design_largest_hydrophobic_patch"] = area
         if des_cif_path is not None:
@@ -1138,14 +1138,12 @@ class Analyze(Task):
 
             # largest hydrophobic patch area refolded
             if self.largest_hydrophobic_refolded:
-                if not des_refold_cif_path.exists():
-                    structure, _, _ = Structure.from_feat(feat_out)
-
-                    save_design_only_structure_to_cif(
-                        atom_design_mask=atom_chain_mask,
-                        structure=structure,
-                        output_path=des_refold_cif_path,
-                    )
+                structure, _, _ = Structure.from_feat(feat_out)
+                save_design_only_structure_to_cif(
+                    atom_design_mask=atom_chain_mask,
+                    structure=structure,
+                    output_path=des_refold_cif_path,
+                )
                 area_refold = largest_hydrophobic_patch_area(des_refold_cif_path)
                 metrics["design_largest_hydrophobic_patch_refolded"] = area_refold
             if des_refold_cif_path is not None:
