@@ -103,9 +103,15 @@ class UnknownFilter(StaticFilter):
 
 
 class ConsecutiveCA(StaticFilter):
-    """Filter proteins with consecutive CA atoms above a threshold."""
+    """Filter proteins with consecutive backbone CA atoms above a threshold.
 
-    def __init__(self, max_dist: int = 10.0) -> None:
+    Modified residues use the conventional N-CA-C(=O) names and reference
+    bonds to identify their backbone. Their atom_center is only a placeholder.
+    Other hetero groups, unrecognized backbones and missing CA atoms interrupt
+    the trace; they must not create adjacency between the surrounding residues.
+    """
+
+    def __init__(self, max_dist: float = 10.0) -> None:
         """Initialize the filter.
 
         Parameters
@@ -131,6 +137,16 @@ class ConsecutiveCA(StaticFilter):
 
         """
         valid = np.ones(len(structure.chains), dtype=bool)
+        # Modified residues retain reference connectivity even when individual
+        # backbone atoms have no coordinates. Do not require those atoms to be
+        # resolved to identify a resolved CA.
+        bonds = {
+            (min(b["atom_1"], b["atom_2"]), max(b["atom_1"], b["atom_2"]), b["type"])
+            for b in structure.bonds
+            if b["chain_1"] == b["chain_2"] and b["res_1"] == b["res_2"]
+        }
+        single = const.bond_type_ids["SINGLE"]
+        double = const.bond_type_ids["DOUBLE"]
 
         # Remove chain if consecutive CA atoms are above threshold
         for i, chain in enumerate(structure.chains):
@@ -143,18 +159,42 @@ class ConsecutiveCA(StaticFilter):
             res_end = res_start + chain["res_num"]
             residues = structure.residues[res_start:res_end]
 
-            # Get c-alphas
-            ca_ids = residues["atom_center"]
-            ca_atoms = structure.atoms[ca_ids]
+            ca_valid = np.zeros(len(residues), dtype=bool)
+            ca_coords = np.zeros((len(residues), 3), dtype=structure.atoms["coords"].dtype)
+            for j, residue in enumerate(residues):
+                if not residue["is_present"]:
+                    continue
+                atom_start = residue["atom_idx"]
+                atoms = structure.atoms[atom_start : atom_start + residue["atom_num"]]
+                ca = np.flatnonzero(atoms["name"] == "CA")
+                if len(ca) != 1:
+                    continue
 
-            res_valid = residues["is_present"]
-            ca_valid = ca_atoms["is_present"] & res_valid
-            ca_coords = ca_atoms["coords"]
+                if not residue["is_standard"]:
+                    backbone = {}
+                    for name in ("N", "CA", "C", "O"):
+                        indices = np.flatnonzero(atoms["name"] == name)
+                        if len(indices) == 1:
+                            backbone[name] = atom_start + indices[0]
+                    if len(backbone) != 4:
+                        continue
+                    expected = (("N", "CA", single), ("CA", "C", single), ("C", "O", double))
+                    if any(
+                        (min(backbone[a], backbone[b]), max(backbone[a], backbone[b]), kind)
+                        not in bonds
+                        for a, b, kind in expected
+                    ):
+                        continue
+
+                ca_atom = atoms[ca[0]]
+                ca_valid[j] = ca_atom["is_present"]
+                ca_coords[j] = ca_atom["coords"]
 
             # Compute distances between consecutive atoms
             dist = np.linalg.norm(ca_coords[1:] - ca_coords[:-1], axis=1)
             dist = dist > self._max_dist
-            dist = dist[ca_valid[1:] & ca_valid[:-1]]
+            consecutive = residues["res_idx"][1:] == residues["res_idx"][:-1] + 1
+            dist = dist[ca_valid[1:] & ca_valid[:-1] & consecutive]
 
             # Remove the chain if any valid pair is above threshold
             if np.any(dist):
