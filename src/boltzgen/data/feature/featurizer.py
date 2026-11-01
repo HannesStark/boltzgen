@@ -816,26 +816,24 @@ def process_token_features(  # noqa: C901, PLR0915, PLR0912
 
     # compute cyclic polymer mask
     cyclic_ids = {}
-    for idx_chain, asym_id_iter in enumerate(data.structure.chains["asym_id"]):
+    for idx_chain, chain in enumerate(data.structure.chains):
+        if chain["res_num"] <= 2:
+            continue
+        first_res = chain["res_idx"]
+        last_res = first_res + chain["res_num"] - 1
         for connection in data.structure.bonds:
-            if (
-                idx_chain == connection["chain_1"] == connection["chain_2"]
-                and data.structure.chains[connection["chain_1"]]["res_num"] > 2
-                and connection["res_1"]
-                != connection["res_2"]  # Avoid same residue bonds!
-            ):
+            if not idx_chain == connection["chain_1"] == connection["chain_2"]:
+                continue
+            # Only the first N / last C bond closes the backbone. A terminal
+            # disulfide must not enable head-to-tail cyclic conditioning.
+            for n_end, c_end in ((1, 2), (2, 1)):
                 if (
-                    data.structure.chains[connection["chain_1"]]["res_num"]
-                    == (connection["res_2"] + 1)
-                    and connection["res_1"] == 0
-                ) or (
-                    data.structure.chains[connection["chain_1"]]["res_num"]
-                    == (connection["res_1"] + 1)
-                    and connection["res_2"] == 0
+                    connection[f"res_{n_end}"] == first_res
+                    and connection[f"res_{c_end}"] == last_res
+                    and data.structure.atoms[connection[f"atom_{n_end}"]]["name"] == "N"
+                    and data.structure.atoms[connection[f"atom_{c_end}"]]["name"] == "C"
                 ):
-                    cyclic_ids[asym_id_iter] = data.structure.chains[
-                        connection["chain_1"]
-                    ]["res_num"]
+                    cyclic_ids[chain["asym_id"]] = chain["res_num"]
     cyclic = from_numpy(
         np.array(
             [
